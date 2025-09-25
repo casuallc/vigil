@@ -1,0 +1,16 @@
+# 统一文本文件的换行符
+* text=auto
+
+# 明确某些文件为文本文件，并在检出时使用 LF
+*.txt text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+
+# Windows 脚本使用 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 明确二进制文件，避免被当作文本处理
+*.png binary
+*.jpg binary
+*.zip binary
