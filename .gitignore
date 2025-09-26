@@ -144,3 +144,5 @@ temp/
 dist/
 build/
 output/
+release/
+pkg/
