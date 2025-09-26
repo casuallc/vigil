@@ -4,11 +4,13 @@ import (
   "flag"
   "github.com/casuallc/vigil/api"
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/process"
   "log"
   "os"
   "os/signal"
   "path/filepath"
   "syscall"
+  "time"
 )
 
 func main() {
@@ -41,6 +43,15 @@ func main() {
     cfg = config.DefaultConfig()
   }
 
+  // 创建进程管理器
+  processManager := process.NewManager()
+  
+  // 加载已保存的进程信息
+  processesFilePath := "process/managed_processes.yaml"
+  if err := processManager.LoadManagedProcesses(processesFilePath); err != nil {
+    log.Printf("Warning: failed to load managed processes: %v", err)
+  }
+
   // If not running in foreground, daemonize the process
   if !foreground {
     // Here we would typically daemonize the process
@@ -48,8 +59,8 @@ func main() {
     log.Println("Starting in daemon mode (implementation simplified)")
   }
 
-  // Create and start the API server
-  server := api.NewServer(cfg)
+  // Create and start the API server with the loaded process manager
+  server := api.NewServerWithManager(cfg, processManager)
 
   // Setup signal handling
   sigChan := make(chan os.Signal, 1)
@@ -67,6 +78,13 @@ func main() {
     log.Fatalf("Server error: %v", err)
   case sig := <-sigChan:
     log.Printf("Received signal %s, shutting down...", sig)
-    // Here we would implement graceful shutdown
+    
+    // 在关闭前保存进程信息
+    if err := processManager.SaveManagedProcesses(processesFilePath); err != nil {
+      log.Printf("Warning: failed to save managed processes during shutdown: %v", err)
+    }
+    
+    // 这里应该实现优雅关闭
+    time.Sleep(1 * time.Second) // 给保存操作一点时间
   }
 }

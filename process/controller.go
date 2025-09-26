@@ -13,92 +13,130 @@ import (
   "github.com/casuallc/vigil/config"
 )
 
+// 添加一个全局变量来保存进程配置文件路径
+var processesFilePath = "process/managed_processes.yaml"
+
 // ManageProcess implements ProcManager interface to manage a process
 func (m *Manager) ManageProcess(process ManagedProcess) error {
-  if _, exists := m.processes[process.Name]; exists {
-    return fmt.Errorf("process %s is already managed", process.Name)
+  // 如果未指定namespace，使用默认namespace
+  if process.Metadata.Namespace == "" {
+    process.Metadata.Namespace = "default"
+  }
+
+  key := fmt.Sprintf("%s/%s", process.Metadata.Namespace, process.Metadata.Name)
+  if _, exists := m.processes[key]; exists {
+    return fmt.Errorf("process %s/%s is already managed", process.Metadata.Namespace, process.Metadata.Name)
   }
 
   // Generate ID for the process
-  process.ID = fmt.Sprintf("%s-%d", process.Name, time.Now().UnixNano())
+  process.Metadata.ID = fmt.Sprintf("%s-%d", process.Metadata.Name, time.Now().UnixNano())
 
   // Set start time
-  process.StartTime = time.Now()
+  now := time.Now()
+  process.Status.StartTime = &now
 
   // Store the process
-  m.processes[process.Name] = &process
+  m.processes[key] = &process
+
+  // 保存进程信息
+  if err := m.SaveManagedProcesses(processesFilePath); err != nil {
+    fmt.Printf("Warning: failed to save managed processes: %v\n", err)
+  }
 
   // Start monitoring the process
-  go m.startMonitoring(process.Name)
+  go m.startMonitoring(process.Metadata.Namespace, process.Metadata.Name)
+
+  return nil
+}
+
+// DeleteProcess 删除一个纳管的进程
+func (m *Manager) DeleteProcess(namespace, name string) error {
+  key := fmt.Sprintf("%s/%s", namespace, name)
+  process, exists := m.processes[key]
+  if !exists {
+    return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
+  }
+
+  // 如果进程正在运行，先停止它
+  if process.Status.Phase == PhaseRunning {
+    if err := m.StopProcess(namespace, name); err != nil {
+      return fmt.Errorf("停止进程失败: %w", err)
+    }
+  }
+
+  // 从管理列表中删除进程
+  delete(m.processes, name)
+
+  // 保存更新后的进程列表
+  if err := m.SaveManagedProcesses(processesFilePath); err != nil {
+    fmt.Printf("Warning: failed to save managed processes: %v\n", err)
+  }
 
   return nil
 }
 
 // StartProcess implements ProcManager interface to start a process
-func (m *Manager) StartProcess(name string) error {
-  process, exists := m.processes[name]
+func (m *Manager) StartProcess(namespace, name string) error {
+  key := fmt.Sprintf("%s/%s", namespace, name)
+  process, exists := m.processes[key]
   if !exists {
-    return fmt.Errorf("process %s is not managed", name)
+    return fmt.Errorf("process %s/%s is not managed", namespace, name)
   }
 
-  if process.Status == StatusRunning {
+  if process.Status.Phase == PhaseRunning {
     return fmt.Errorf("process %s is already running", name)
   }
 
-  // Set process status to starting
-  process.Status = StatusStarting
+  // Set process status to pending
+  process.Status.Phase = PhasePending
 
-  // 构建命令 - 现在使用 CommandConfig
-  cmd := exec.Command(process.StartCommand.Command, process.StartCommand.Args...)
+  // 构建命令 - 使用 CommandConfig
+  cmd := exec.Command(process.Spec.Exec.Command, process.Spec.Exec.Args...)
 
   // Set working directory
-  if process.WorkingDir != "" {
-    cmd.Dir = process.WorkingDir
+  if process.Spec.WorkingDir != "" {
+    cmd.Dir = process.Spec.WorkingDir
   } else {
     // Use current directory by default
     currentDir, err := os.Getwd()
     if err != nil {
-      process.Status = StatusFailed
+      process.Status.Phase = PhaseFailed
       return err
     }
     cmd.Dir = currentDir
   }
 
-  // Set environment variables - 现在从 EnvVar 数组构建
+  // Set environment variables - 从 EnvVar 数组构建
   cmd.Env = os.Environ()
   // 从配置中添加环境变量
-  for key, value := range process.Config.Env {
-    cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
-  }
-  // 从 EnvVar 数组添加环境变量
-  for _, envVar := range process.Env {
+  for _, envVar := range process.Spec.Env {
     cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
   }
 
   // 确保日志目录存在
-  if process.LogDir != "" {
-    if err := os.MkdirAll(process.LogDir, 0755); err != nil {
-      process.Status = StatusFailed
+  if process.Spec.Log.Dir != "" {
+    if err := os.MkdirAll(process.Spec.Log.Dir, 0755); err != nil {
+      process.Status.Phase = PhaseFailed
       return err
     }
   }
 
   // Capture standard output and error
-  logDir := process.LogDir
+  logDir := process.Spec.Log.Dir
   if logDir == "" {
     logDir = cmd.Dir
   }
 
   stdout, err := os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%s.stdout.log", name)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
   if err != nil {
-    process.Status = StatusFailed
+    process.Status.Phase = PhaseFailed
     return err
   }
   defer stdout.Close()
 
   stderr, err := os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%s.stderr.log", name)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
   if err != nil {
-    process.Status = StatusFailed
+    process.Status.Phase = PhaseFailed
     return err
   }
   defer stderr.Close()
@@ -113,23 +151,18 @@ func (m *Manager) StartProcess(name string) error {
   }()
 
   // 使用命令配置中的超时时间
-  timeout := process.StartCommand.Timeout
-
-  // 如果没有设置超时时间，默认使用 30 秒
-  if timeout == 0 {
-    timeout = 30 * time.Second
-  }
+  timeout := 30 * time.Second
 
   // Wait for start or timeout
   select {
   case err := <-done:
     if err != nil {
-      process.Status = StatusFailed
+      process.Status.Phase = PhaseFailed
       return err
     }
   case <-time.After(timeout):
     // Timeout, kill the process
-    process.Status = StatusFailed
+    process.Status.Phase = PhaseFailed
     if cmd.Process != nil {
       cmd.Process.Kill()
     }
@@ -137,28 +170,33 @@ func (m *Manager) StartProcess(name string) error {
   }
 
   // Update process information
-  process.PID = cmd.Process.Pid
-  process.Status = StatusRunning
-  process.StartTime = time.Now()
-  process.RestartCount++
+  process.Status.PID = cmd.Process.Pid
+  process.Status.Phase = PhaseRunning
+  now := time.Now()
+  process.Status.StartTime = &now
+  process.Status.RestartCount++
 
   // 异步等待进程退出，增加重启策略和最大重启次数的支持
   go func() {
     err := cmd.Wait()
     if err != nil {
       // 如果有退出码，记录下来
-      if exitErr, ok := err.(*exec.ExitError); ok {
+      var exitErr *exec.ExitError
+      if errors.As(err, &exitErr) {
         if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-          process.LastExitCode = status.ExitStatus()
+          if process.Status.LastTerminationInfo == nil {
+            process.Status.LastTerminationInfo = &TerminationInfo{}
+          }
+          process.Status.LastTerminationInfo.ExitCode = status.ExitStatus()
         }
       }
     }
 
-    process.Status = StatusStopped
+    process.Status.Phase = PhaseStopped
 
     // 应用重启策略
     shouldRestart := false
-    switch process.RestartPolicy {
+    switch process.Spec.RestartPolicy {
     case RestartPolicyAlways:
       shouldRestart = true
     case RestartPolicyOnFailure:
@@ -167,22 +205,19 @@ func (m *Manager) StartProcess(name string) error {
       shouldRestart = err == nil
     case RestartPolicyNever:
       shouldRestart = false
-    default:
-      // 如果没有设置重启策略，回退到旧的 Restart 字段
-      shouldRestart = process.Config.Restart
     }
 
     // 检查是否达到最大重启次数
-    if shouldRestart && (process.MaxRestarts <= 0 || process.RestartCount < process.MaxRestarts) {
+    if shouldRestart && (process.Spec.MaxRestarts <= 0 || process.Status.RestartCount < process.Spec.MaxRestarts) {
       // 应用重启间隔
-      restartInterval := process.RestartInterval
+      restartInterval := process.Spec.RestartInterval
       if restartInterval == 0 {
         restartInterval = 5 * time.Second // 默认 5 秒
       }
 
       go func() {
         time.Sleep(restartInterval)
-        m.StartProcess(name)
+        m.StartProcess(namespace, name)
       }()
     }
   }()
@@ -191,34 +226,35 @@ func (m *Manager) StartProcess(name string) error {
 }
 
 // StopProcess 实现ProcessManager接口，停止一个进程
-func (m *Manager) StopProcess(name string) error {
-  process, exists := m.processes[name]
+func (m *Manager) StopProcess(namespace, name string) error {
+  key := fmt.Sprintf("%s/%s", namespace, name)
+  process, exists := m.processes[key]
   if !exists {
-    return fmt.Errorf("进程 %s 未被纳管", name)
+    return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
 
-  if process.Status == StatusStopped {
+  if process.Status.Phase == PhaseStopped {
     return fmt.Errorf("进程 %s 已经停止", name)
   }
 
   // 设置进程状态为停止中
-  process.Status = StatusStopping
+  process.Status.Phase = PhaseStopping
 
   // 如果有自定义停止命令，使用它
-  if process.StopCommand != nil {
-    cmd := exec.Command(process.StopCommand.Command, process.StopCommand.Args...)
+  if process.Spec.Exec.StopCommand != nil {
+    cmd := exec.Command(process.Spec.Exec.StopCommand.Command, process.Spec.Exec.StopCommand.Args...)
     cmd.Env = os.Environ()
-    for _, envVar := range process.Env {
+    for _, envVar := range process.Spec.Env {
       cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
     }
 
     // 设置工作目录
-    if process.WorkingDir != "" {
-      cmd.Dir = process.WorkingDir
+    if process.Spec.WorkingDir != "" {
+      cmd.Dir = process.Spec.WorkingDir
     }
 
     // 设置超时
-    timeout := process.StopCommand.Timeout
+    timeout := process.Spec.Exec.StopCommand.Timeout
     if timeout == 0 {
       timeout = 30 * time.Second
     }
@@ -241,7 +277,7 @@ func (m *Manager) StopProcess(name string) error {
       return m.forceStopProcess(process)
     }
 
-    process.Status = StatusStopped
+    process.Status.Phase = PhaseStopped
     return nil
   } else {
     // 没有自定义停止命令，使用强制终止
@@ -252,7 +288,7 @@ func (m *Manager) StopProcess(name string) error {
 // 新增一个辅助方法，用于强制终止进程
 func (m *Manager) forceStopProcess(process *ManagedProcess) error {
   // 获取进程
-  sysProcess, err := os.FindProcess(process.PID)
+  sysProcess, err := os.FindProcess(process.Status.PID)
   if err != nil {
     return err
   }
@@ -295,16 +331,16 @@ func (m *Manager) forceStopProcess(process *ManagedProcess) error {
     }
   }
 
-  process.Status = StatusStopped
+  process.Status.Phase = PhaseStopped
   return nil
 }
 
 // RestartProcess 实现ProcessManager接口，重启一个进程
-func (m *Manager) RestartProcess(name string) error {
+func (m *Manager) RestartProcess(namespace, name string) error {
   // 先停止进程
-  if err := m.StopProcess(name); err != nil {
+  if err := m.StopProcess(namespace, name); err != nil {
     // 如果进程已经停止，继续启动
-    if !errors.Is(err, fmt.Errorf("进程 %s 已经停止", name)) {
+    if !errors.Is(err, fmt.Errorf("进程 %s/%s 已经停止", namespace, name)) {
       return err
     }
   }
@@ -313,28 +349,29 @@ func (m *Manager) RestartProcess(name string) error {
   time.Sleep(1 * time.Second)
 
   // 然后启动进程
-  return m.StartProcess(name)
+  return m.StartProcess(namespace, name)
 }
 
 // UpdateProcessConfig 实现ProcessManager接口，更新进程配置
-func (m *Manager) UpdateProcessConfig(name string, config config.AppConfig) error {
-  process, exists := m.processes[name]
+func (m *Manager) UpdateProcessConfig(namespace, name string, config config.AppConfig) error {
+  key := fmt.Sprintf("%s/%s", namespace, name)
+  process, exists := m.processes[key]
   if !exists {
-    return fmt.Errorf("进程 %s 未被纳管", name)
+    return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
 
   // 保存旧配置
-  oldConfig := process.Config
+  oldConfig := process.Spec.Config
 
   // 更新配置
-  process.Config = config
+  process.Spec.Config = config
 
   // 如果进程正在运行，需要重启来应用新配置
-  if process.Status == StatusRunning {
+  if process.Status.Phase == PhaseRunning {
     // 重启进程
-    if err := m.RestartProcess(name); err != nil {
+    if err := m.RestartProcess(namespace, name); err != nil {
       // 如果重启失败，恢复旧配置
-      process.Config = oldConfig
+      process.Spec.Config = oldConfig
       return err
     }
   }
@@ -343,8 +380,9 @@ func (m *Manager) UpdateProcessConfig(name string, config config.AppConfig) erro
 }
 
 // startMonitoring 开始监控进程
-func (m *Manager) startMonitoring(name string) {
-  process, exists := m.processes[name]
+func (m *Manager) startMonitoring(namespace, name string) {
+  key := fmt.Sprintf("%s/%s", namespace, name)
+  process, exists := m.processes[key]
   if !exists {
     return
   }
@@ -356,20 +394,20 @@ func (m *Manager) startMonitoring(name string) {
   for {
     select {
     case <-ticker.C:
-      if process.Status == StatusRunning {
+      if process.Status.Phase == PhaseRunning {
         // 更新资源使用情况
-        stats, err := m.MonitorProcess(name)
+        stats, err := m.MonitorProcess(namespace, name)
         if err == nil {
-          process.Stats = stats
+          process.Status.ResourceStats = stats
         }
       }
     default:
       // 检查进程是否还存在
-      if process.Status == StatusRunning {
-        _, err := os.FindProcess(process.PID)
+      if process.Status.Phase == PhaseRunning {
+        _, err := os.FindProcess(process.Status.PID)
         if err != nil {
           // 进程不存在了
-          process.Status = StatusStopped
+          process.Status.Phase = PhaseStopped
         }
       }
     }

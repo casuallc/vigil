@@ -3,6 +3,7 @@ package api
 import (
   "bytes"
   "encoding/json"
+  "fmt"
   "io"
   "log"
   "net/http"
@@ -16,20 +17,19 @@ import (
 
 // Server represents the HTTP API server
 type Server struct {
-  config         *config.Config
-  processManager *process.Manager
-  monitor        *process.Monitor
+  config  *config.Config
+  manager *process.Manager
+  monitor *process.Monitor
 }
 
-// NewServer creates a new API server
-func NewServer(config *config.Config) *Server {
-  processManager := process.NewManager()
-  monitor := process.NewMonitor(processManager)
+// NewServerWithManager creates a new API server with an existing process manager
+func NewServerWithManager(config *config.Config, manager *process.Manager) *Server {
+  monitor := process.NewMonitor(manager)
 
   return &Server{
-    config:         config,
-    processManager: processManager,
-    monitor:        monitor,
+    config:  config,
+    manager: manager,
+    monitor: monitor,
   }
 }
 
@@ -85,7 +85,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
     duration := time.Since(startTime)
 
     // 记录响应信息（对于大型响应，可以限制记录的长度）
-    maxLogBodySize := 1024 // 限制日志中响应体的大小
+    maxLogBodySize := 65536 // 限制日志中响应体的大小
     responseBody := lrw.body
     if len(responseBody) > maxLogBodySize {
       responseBody = responseBody[:maxLogBodySize]
@@ -131,7 +131,7 @@ func (s *Server) handleScanProcesses(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  processes, err := s.processManager.ScanProcesses(query)
+  processes, err := s.manager.ScanProcesses(query)
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
@@ -147,7 +147,7 @@ func (s *Server) handleManageProcess(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  if err := s.processManager.ManageProcess(process); err != nil {
+  if err := s.manager.ManageProcess(process); err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
@@ -159,7 +159,7 @@ func (s *Server) handleStartProcess(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
   name := vars["name"]
 
-  if err := s.processManager.StartProcess(name); err != nil {
+  if err := s.manager.StartProcess(name); err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
@@ -171,7 +171,7 @@ func (s *Server) handleStopProcess(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
   name := vars["name"]
 
-  if err := s.processManager.StopProcess(name); err != nil {
+  if err := s.manager.StopProcess(name); err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
@@ -183,7 +183,7 @@ func (s *Server) handleRestartProcess(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
   name := vars["name"]
 
-  if err := s.processManager.RestartProcess(name); err != nil {
+  if err := s.manager.RestartProcess(name); err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
@@ -191,11 +191,18 @@ func (s *Server) handleRestartProcess(w http.ResponseWriter, r *http.Request) {
   writeJSON(w, http.StatusOK, map[string]string{"message": "Process restarted successfully"})
 }
 
+// 处理函数更新示例
 func (s *Server) handleGetProcess(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
+  namespace := vars["namespace"]
   name := vars["name"]
+  
+  // 兼容旧版API，没有指定namespace时使用"default"
+  if namespace == "" {
+    namespace = "default"
+  }
 
-  process, err := s.processManager.GetProcessStatus(name)
+  process, err := s.manager.GetProcessStatus(namespace, name)
   if err != nil {
     writeError(w, http.StatusNotFound, err.Error())
     return
@@ -205,13 +212,35 @@ func (s *Server) handleGetProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListProcesses(w http.ResponseWriter, r *http.Request) {
-  processes, err := s.processManager.ListManagedProcesses()
+  vars := mux.Vars(r)
+  namespace := vars["namespace"]
+  
+  // 兼容旧版API，没有指定namespace时返回所有进程
+  processes, err := s.manager.ListManagedProcesses(namespace)
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
 
   writeJSON(w, http.StatusOK, processes)
+}
+
+func (s *Server) handleStartProcess(w http.ResponseWriter, r *http.Request) {
+  vars := mux.Vars(r)
+  namespace := vars["namespace"]
+  name := vars["name"]
+  
+  // 兼容旧版API，没有指定namespace时使用"default"
+  if namespace == "" {
+    namespace = "default"
+  }
+
+  if err := s.manager.StartProcess(namespace, name); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
 }
 
 func (s *Server) handleGetSystemResources(w http.ResponseWriter, r *http.Request) {
@@ -264,4 +293,19 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
   s.config = &newConfig
 
   writeJSON(w, http.StatusOK, map[string]string{"message": "Config updated successfully"})
+}
+
+// handleDeleteProcess handles the DELETE /api/processes/{name} endpoint
+func (s *Server) handleDeleteProcess(w http.ResponseWriter, r *http.Request) {
+  vars := mux.Vars(r)
+  name := vars["name"]
+
+  err := s.manager.DeleteProcess(name)
+  if err != nil {
+    http.Error(w, err.Error(), http.StatusNotFound)
+    return
+  }
+
+  w.WriteHeader(http.StatusOK)
+  w.Write([]byte(fmt.Sprintf("Process %s deleted successfully", name)))
 }

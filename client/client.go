@@ -87,79 +87,120 @@ func (c *Client) ManageProcess(process process.ManagedProcess) error {
 	return nil
 }
 
-func (c *Client) StartProcess(name string) error {
-	resp, err := c.doRequest("POST", fmt.Sprintf("/api/processes/%s/start", name), nil)
-	if err != nil {
-		return err
-	}
+// StartProcess starts a managed process
+func (c *Client) StartProcess(namespace, name string) error {
+  if namespace == "" {
+    namespace = "default"
+  }
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/start", namespace, name), nil)
+  if err != nil {
+    return err
+  }
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
+  if resp.StatusCode != http.StatusOK {
+    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+  }
 
-	return nil
+  return nil
 }
 
-func (c *Client) StopProcess(name string) error {
-	resp, err := c.doRequest("POST", fmt.Sprintf("/api/processes/%s/stop", name), nil)
-	if err != nil {
-		return err
-	}
+// StopProcess stops a managed process
+func (c *Client) StopProcess(namespace, name string) error {
+  if namespace == "" {
+    namespace = "default"
+  }
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/stop", namespace, name), nil)
+  if err != nil {
+    return err
+  }
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
+  if resp.StatusCode != http.StatusOK {
+    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+  }
 
-	return nil
+  return nil
 }
 
-func (c *Client) RestartProcess(name string) error {
-	resp, err := c.doRequest("POST", fmt.Sprintf("/api/processes/%s/restart", name), nil)
-	if err != nil {
-		return err
-	}
+// RestartProcess restarts a managed process
+func (c *Client) RestartProcess(namespace, name string) error {
+  if namespace == "" {
+    namespace = "default"
+  }
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/restart", namespace, name), nil)
+  if err != nil {
+    return err
+  }
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
+  if resp.StatusCode != http.StatusOK {
+    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+  }
 
-	return nil
+  return nil
 }
 
-func (c *Client) GetProcess(name string) (process.ManagedProcess, error) {
-	var process process.ManagedProcess
-	resp, err := c.doRequest("GET", fmt.Sprintf("/api/processes/%s", name), nil)
-	if err != nil {
-		return process, err
-	}
+// GetProcess gets detailed information about a process
+func (c *Client) GetProcess(namespace, name string) (process.ManagedProcess, error) {
+  var process process.ManagedProcess
+  if namespace == "" {
+    namespace = "default"
+  }
+  resp, err := c.doRequest("GET", fmt.Sprintf("/api/namespaces/%s/processes/%s", namespace, name), nil)
+  if err != nil {
+    return process, err
+  }
 
-	if resp.StatusCode != http.StatusOK {
-		return process, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
+  if resp.StatusCode != http.StatusOK {
+    return process, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+  }
 
-	if err := c.getJSONResponse(resp, &process); err != nil {
-		return process, err
-	}
+  if err := c.getJSONResponse(resp, &process); err != nil {
+    return process, err
+  }
 
-	return process, nil
+  return process, nil
 }
 
-func (c *Client) ListProcesses() ([]process.ManagedProcess, error) {
-	resp, err := c.doRequest("GET", "/api/processes", nil)
-	if err != nil {
-		return nil, err
-	}
+// ListProcesses lists all managed processes
+func (c *Client) ListProcesses(namespace string) ([]process.ManagedProcess, error) {
+  var url string
+  if namespace == "" {
+    url = fmt.Sprintf("/api/processes")
+  } else {
+    url = fmt.Sprintf("/api/namespaces/%s/processes", namespace)
+  }
+  
+  resp, err := c.doRequest("GET", url, nil)
+  if err != nil {
+    return nil, err
+  }
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
+  if resp.StatusCode != http.StatusOK {
+    return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+  }
 
-	var processes []process.ManagedProcess
-	if err := c.getJSONResponse(resp, &processes); err != nil {
-		return nil, err
-	}
+  var processes []process.ManagedProcess
+  if err := c.getJSONResponse(resp, &processes); err != nil {
+    return nil, err
+  }
 
-	return processes, nil
+  return processes, nil
+}
+
+// DeleteProcess deletes a managed process
+func (c *Client) DeleteProcess(namespace, name string) error {
+  if namespace == "" {
+    namespace = "default"
+  }
+  resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/namespaces/%s/processes/%s", namespace, name), nil)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+  }
+
+  return nil
 }
 
 func (c *Client) GetSystemResources() (process.ResourceStats, error) {

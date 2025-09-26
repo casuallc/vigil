@@ -6,13 +6,13 @@ import (
 
 // Monitor provides resource monitoring functionality
 type Monitor struct {
-  processManager ProcManager
+  manager *Manager
 }
 
 // NewMonitor creates a new monitor
-func NewMonitor(processManager ProcManager) *Monitor {
+func NewMonitor(manager *Manager) *Monitor {
   return &Monitor{
-    processManager: processManager,
+    manager: manager,
   }
 }
 

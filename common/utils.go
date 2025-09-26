@@ -1,6 +1,8 @@
 package common
 
 import (
+  "strconv"
+  "strings"
   "time"
 )
 
@@ -42,4 +44,24 @@ func ParseProcessStartTime(startTimeStr string) time.Time {
 
   // 如果所有解析都失败，返回当前时间
   return time.Now()
+}
+
+// IsNumber 是否是数字
+func IsNumber(str string) bool {
+  _, err := strconv.Atoi(str)
+  return err == nil
+}
+
+// ParseToString 转换成字符串，替换其中的分隔符为空格
+// 这里主要是处理 linux 下按照 \0 分隔的内容
+func ParseToString(content []byte, split byte) string {
+  var result strings.Builder
+  for i := 0; i < len(content); i++ {
+    if content[i] == split {
+      result.WriteByte(' ')
+    } else {
+      result.WriteByte(content[i])
+    }
+  }
+  return strings.TrimSpace(result.String())
 }

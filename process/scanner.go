@@ -4,6 +4,7 @@ import (
   "bufio"
   "bytes"
   "fmt"
+  "github.com/casuallc/vigil/common"
   "github.com/shirou/gopsutil/v3/process"
   "os"
   "os/exec"
@@ -94,21 +95,12 @@ func (m *Manager) scanWithScript(script string) ([]ManagedProcess, error) {
 
 // scanUnixProcesses scans processes on Unix/Linux/macOS systems
 func (m *Manager) scanUnixProcesses(query string) ([]ManagedProcess, error) {
-  // Use ps command to get process information
-  cmd := exec.Command("ps", "-eo", "pid,user,group,comm,args,lstart,etime,cwd")
-  output, err := cmd.CombinedOutput()
+  dirs, err := os.ReadDir("/proc")
   if err != nil {
-    return nil, fmt.Errorf("failed to scan Unix processes: %v, output: %s", err, string(output))
+    return nil, fmt.Errorf("failed to read /proc: %v", err)
   }
 
   var processes []ManagedProcess
-
-  // Split output lines
-  lines := strings.Split(string(output), "\n")
-  if len(lines) < 2 {
-    return nil, fmt.Errorf("invalid process output")
-  }
-
   // Compile regex for query matching
   queryRegex, err := regexp.Compile(query)
   if err != nil {
@@ -116,27 +108,22 @@ func (m *Manager) scanUnixProcesses(query string) ([]ManagedProcess, error) {
     queryRegex, _ = regexp.Compile(regexp.QuoteMeta(query))
   }
 
-  // Parse each line (skip header)
-  for i := 1; i < len(lines); i++ {
-    line := strings.TrimSpace(lines[i])
-    if line == "" {
+  for _, dir := range dirs {
+    if !dir.IsDir() {
       continue
     }
-
-    // Check if matches query
-    if !queryRegex.MatchString(line) {
-      continue
-    }
-
-    // Split the line into fields
-    fields := strings.Fields(line)
-    if len(fields) < 7 {
-      continue
-    }
-
     // Parse PID
-    pid, err := strconv.Atoi(fields[0])
+    pid, err := strconv.Atoi(dir.Name())
     if err != nil {
+      continue
+    }
+    cmdlinePath := filepath.Join("/proc", dir.Name(), "cmdline")
+    content, err := os.ReadFile(cmdlinePath)
+    if err != nil {
+      continue
+    }
+    cmdLine := common.ParseToString(content, 0)
+    if !queryRegex.MatchString(cmdLine) {
       continue
     }
 
@@ -148,7 +135,6 @@ func (m *Manager) scanUnixProcesses(query string) ([]ManagedProcess, error) {
     }
     processes = append(processes, *managedProcess)
   }
-
   return processes, nil
 }
 
@@ -156,8 +142,10 @@ func (m *Manager) scanUnixProcesses(query string) ([]ManagedProcess, error) {
 func (m *Manager) getProcessByPID(pid int) (*ManagedProcess, error) {
   // 创建基础结构体
   manageProcess := &ManagedProcess{
-    PID:    pid,
-    Status: StatusUnknown,
+    Spec: Spec{},
+    Status: Status{
+      PID: pid,
+    },
   }
 
   // 获取 gopsutil 的进程对象
@@ -204,7 +192,7 @@ func (m *Manager) getProcessByPID(pid int) (*ManagedProcess, error) {
   }
 
   // 设置状态
-  manageProcess.Status = StatusRunning
+  manageProcess.Status.Phase = PhaseRunning
 
   return manageProcess, nil
 }
@@ -216,15 +204,16 @@ func fillBasicInfo(mp *ManagedProcess, proc *process.Process) error {
   if err != nil {
     return fmt.Errorf("failed to get process name: %w", err)
   }
-  mp.Name = name
+  mp.Metadata.Name = name
 
   // 启动时间
-  createTime, err := proc.CreateTime()
+  createTimeMs, err := proc.CreateTime()
   if err != nil {
     return fmt.Errorf("failed to get create time: %w", err)
   }
-  // createTime 是毫秒时间戳
-  mp.StartTime = time.Unix(createTime/1000, (createTime%1000)*1000000)
+  // 转换为 time.Time
+  createTime := time.UnixMilli(createTimeMs)
+  mp.Status.StartTime = &createTime
 
   // 退出码（对于正在运行的进程，这个通常是0或未设置）
   // gopsutil 不直接提供最后退出码，这里保持默认值0
@@ -247,14 +236,12 @@ func fillCommandInfo(mp *ManagedProcess, proc *process.Process) error {
   }
 
   if len(cmdline) > 0 {
-    mp.StartCommand.Command = exe
+    mp.Spec.Exec.StopCommand = &CommandConfig{}
+    mp.Spec.Exec.Command = exe
     if len(cmdline) > 1 {
-      mp.StartCommand.Args = cmdline[1:]
+      mp.Spec.Exec.Args = cmdline[1:]
     }
   }
-
-  // StartCommand 和 StopCommand 无法从运行中的进程推断，保持默认值
-  // 这些通常需要从配置中获取
 
   return nil
 }
@@ -266,11 +253,11 @@ func fillEnvironmentInfo(mp *ManagedProcess, proc *process.Process) error {
     return fmt.Errorf("failed to get environment variables: %w", err)
   }
 
-  mp.Env = make([]EnvVar, 0, len(envVars))
+  mp.Spec.Env = make([]EnvVar, 0, len(envVars))
   for _, envVar := range envVars {
     parts := strings.SplitN(envVar, "=", 2)
     if len(parts) == 2 {
-      mp.Env = append(mp.Env, EnvVar{
+      mp.Spec.Env = append(mp.Spec.Env, EnvVar{
         Name:  parts[0],
         Value: parts[1],
       })
@@ -286,7 +273,7 @@ func fillWorkingDir(mp *ManagedProcess, proc *process.Process) error {
   if err != nil {
     return fmt.Errorf("failed to get working directory: %w", err)
   }
-  mp.WorkingDir = cwd
+  mp.Spec.WorkingDir = cwd
   return nil
 }
 
@@ -300,9 +287,9 @@ func fillUserGroupInfo(mp *ManagedProcess, proc *process.Process) error {
   if len(uids) > 0 {
     uid := uids[0]
     if u, err := user.LookupId(strconv.FormatUint(uint64(uid), 10)); err == nil {
-      mp.User = u.Username
+      mp.Spec.User = u.Username
     } else {
-      mp.User = strconv.FormatUint(uint64(uid), 10)
+      mp.Spec.User = strconv.FormatUint(uint64(uid), 10)
     }
   }
 
@@ -314,7 +301,7 @@ func fillUserGroupInfo(mp *ManagedProcess, proc *process.Process) error {
   if len(gids) > 0 {
     gid := gids[0]
     // gopsutil 可能不直接提供组名查找，这里只存储GID
-    mp.UserGroup = strconv.FormatUint(uint64(gid), 10)
+    mp.Spec.UserGroup = strconv.FormatUint(uint64(gid), 10)
   }
 
   return nil
@@ -327,27 +314,28 @@ func fillResourceStats(mp *ManagedProcess, proc *process.Process) error {
   if err != nil {
     return fmt.Errorf("failed to get CPU percent: %w", err)
   }
-  mp.Stats.CPUUsage = cpuPercent
+  mp.Status.ResourceStats = &ResourceStats{}
+  mp.Status.ResourceStats.CPUUsage = cpuPercent
 
   // 内存使用量
   memInfo, err := proc.MemoryInfo()
   if err != nil {
     return fmt.Errorf("failed to get memory info: %w", err)
   }
-  mp.Stats.MemoryUsage = memInfo.RSS // Resident Set Size
+  mp.Status.ResourceStats.MemoryUsage = memInfo.RSS // Resident Set Size
 
   // 磁盘IO
   ioCounters, err := proc.IOCounters()
   if err != nil {
     // IO counters 可能不可用，不作为致命错误
-    mp.Stats.DiskIO = 0
+    mp.Status.ResourceStats.DiskIO = 0
   } else {
-    mp.Stats.DiskIO = ioCounters.ReadBytes + ioCounters.WriteBytes
+    mp.Status.ResourceStats.DiskIO = ioCounters.ReadBytes + ioCounters.WriteBytes
   }
 
   // 网络IO - gopsutil 不直接提供进程级别的网络IO
   // 这需要更复杂的实现，这里暂时设为0
-  mp.Stats.NetworkIO = 0
+  mp.Status.ResourceStats.NetworkIO = 0
 
   return nil
 }
@@ -371,7 +359,7 @@ func fillListeningPorts(mp *ManagedProcess, proc *process.Process) error {
     }
   }
 
-  mp.Stats.ListeningPorts = listeningPorts
+  mp.Status.ResourceStats.ListeningPorts = listeningPorts
   return nil
 }
 
@@ -388,11 +376,11 @@ func socketTypeToProtocol(t uint32) string {
 }
 
 // Helper function to get process status from /proc (alternative method)
-func getProcessStatusFromProc(pid int) (Status, error) {
+func getProcessStatusFromProc(pid int) (Phase, error) {
   statusPath := filepath.Join("/proc", strconv.Itoa(pid), "status")
   file, err := os.Open(statusPath)
   if err != nil {
-    return StatusUnknown, err
+    return PhaseUnknown, err
   }
   defer file.Close()
 
@@ -405,17 +393,17 @@ func getProcessStatusFromProc(pid int) (Status, error) {
         state := fields[1]
         switch state {
         case "R", "S", "D": // Running, Sleeping, Uninterruptible sleep
-          return StatusRunning, nil
+          return PhaseRunning, nil
         case "Z": // Zombie
-          return StatusFailed, nil
+          return PhaseFailed, nil
         case "T": // Stopped
-          return StatusStopped, nil
+          return PhaseStopped, nil
         default:
-          return StatusUnknown, nil
+          return PhaseUnknown, nil
         }
       }
     }
   }
 
-  return StatusUnknown, scanner.Err()
+  return PhaseUnknown, scanner.Err()
 }
