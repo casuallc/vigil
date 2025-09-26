@@ -38,25 +38,18 @@ func (m *Manager) ManageProcess(process ManagedProcess) error {
 func (m *Manager) StartProcess(name string) error {
   process, exists := m.processes[name]
   if !exists {
-    return fmt.Errorf("Process %s is not managed", name)
+    return fmt.Errorf("process %s is not managed", name)
   }
 
   if process.Status == StatusRunning {
-    return fmt.Errorf("Process %s is already running", name)
+    return fmt.Errorf("process %s is already running", name)
   }
 
   // Set process status to starting
   process.Status = StatusStarting
 
   // 构建命令 - 现在使用 CommandConfig
-  var cmd *exec.Cmd
-  if process.StartCommand.Command != "" {
-    // 如果有自定义启动命令，使用它
-    cmd = exec.Command(process.StartCommand.Command, process.StartCommand.Args...)
-  } else {
-    // 否则使用默认命令配置
-    cmd = exec.Command(process.Command.Command, process.Command.Args...)
-  }
+  cmd := exec.Command(process.StartCommand.Command, process.StartCommand.Args...)
 
   // Set working directory
   if process.WorkingDir != "" {
@@ -71,13 +64,13 @@ func (m *Manager) StartProcess(name string) error {
     cmd.Dir = currentDir
   }
 
-  // Set environment variables - 现在从 EnvironmentVariable 数组构建
+  // Set environment variables - 现在从 EnvVar 数组构建
   cmd.Env = os.Environ()
   // 从配置中添加环境变量
   for key, value := range process.Config.Env {
     cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
   }
-  // 从 EnvironmentVariable 数组添加环境变量
+  // 从 EnvVar 数组添加环境变量
   for _, envVar := range process.Env {
     cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
   }
@@ -120,12 +113,7 @@ func (m *Manager) StartProcess(name string) error {
   }()
 
   // 使用命令配置中的超时时间
-  var timeout time.Duration
-  if process.StartCommand.Command != "" {
-    timeout = process.StartCommand.Timeout
-  } else {
-    timeout = process.Command.Timeout
-  }
+  timeout := process.StartCommand.Timeout
 
   // 如果没有设置超时时间，默认使用 30 秒
   if timeout == 0 {
@@ -145,7 +133,7 @@ func (m *Manager) StartProcess(name string) error {
     if cmd.Process != nil {
       cmd.Process.Kill()
     }
-    return fmt.Errorf("Process start timed out after %v", timeout)
+    return fmt.Errorf("process start timed out after %v", timeout)
   }
 
   // Update process information
@@ -217,7 +205,7 @@ func (m *Manager) StopProcess(name string) error {
   process.Status = StatusStopping
 
   // 如果有自定义停止命令，使用它
-  if process.StopCommand.Command != "" {
+  if process.StopCommand != nil {
     cmd := exec.Command(process.StopCommand.Command, process.StopCommand.Args...)
     cmd.Env = os.Environ()
     for _, envVar := range process.Env {

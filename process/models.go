@@ -1,9 +1,8 @@
 package process
 
 import (
-  "time"
-
   "github.com/casuallc/vigil/config"
+  "time"
 )
 
 // Manager is the implementation of ProcManager
@@ -49,8 +48,8 @@ const (
   RestartPolicyOnSuccess RestartPolicy = "on-success" // 成功时重启
 )
 
-// EnvironmentVariable 定义环境变量的结构体
-type EnvironmentVariable struct {
+// EnvVar 定义环境变量的结构体
+type EnvVar struct {
   Name  string `json:"name" yaml:"name"`   // 环境变量名称
   Value string `json:"value" yaml:"value"` // 环境变量值
 }
@@ -64,24 +63,29 @@ type CommandConfig struct {
 
 // ManagedProcess represents a managed process
 type ManagedProcess struct {
-  ID              string                `json:"id" yaml:"id"`
-  Name            string                `json:"name" yaml:"name"`
-  PID             int                   `json:"pid" yaml:"pid"`
-  Status          Status                `json:"status" yaml:"status"`
-  Command         CommandConfig         `json:"command_config" yaml:"command_config"`
-  Env             []EnvironmentVariable `json:"env" yaml:"env"`
-  WorkingDir      string                `json:"working_dir" yaml:"working_dir"`
-  StartTime       time.Time             `json:"start_time" yaml:"start_time"`
-  LastExitCode    int                   `json:"last_exit_code" yaml:"last_exit_code"`
-  RestartCount    int                   `json:"restart_count" yaml:"restart_count"`
-  Config          config.AppConfig      `json:"config" yaml:"config"`
-  Stats           ResourceStats         `json:"stats" yaml:"stats"`
-  StartCommand    CommandConfig         `json:"start_command_config" yaml:"start_command_config"`
-  StopCommand     CommandConfig         `json:"stop_command_config" yaml:"stop_command_config"`
-  RestartPolicy   RestartPolicy         `json:"restart_policy" yaml:"restart_policy"`
-  LogDir          string                `json:"log_dir" yaml:"log_dir"`
-  MaxRestarts     int                   `json:"max_restarts" yaml:"max_restarts"`         // 最大重启次数
-  RestartInterval time.Duration         `json:"restart_interval" yaml:"restart_interval"` // 重启时间间隔
-  User            string                `json:"user" yaml:"user"`                         // 进程所属用户
-  UserGroup       string                `json:"user_group" yaml:"user_group"`             // 进程所属用户组
+  ID              string        `json:"id" yaml:"id"`
+  Name            string        `json:"name" yaml:"name"`
+  PID             int           `json:"pid" yaml:"pid"`
+  Status          Status        `json:"status" yaml:"status"`
+  StartTime       time.Time     `json:"start_time" yaml:"start_time"`
+  LastExitCode    int           `json:"last_exit_code" yaml:"last_exit_code"`
+  RestartCount    int           `json:"restart_count" yaml:"restart_count"`
+  MaxRestarts     int           `json:"max_restarts" yaml:"max_restarts"`         // 最大重启次数
+  RestartInterval time.Duration `json:"restart_interval" yaml:"restart_interval"` // 重启时间间隔
+  RestartPolicy   RestartPolicy `json:"restart_policy" yaml:"restart_policy"`
+
+  // Execution configuration
+  WorkingDir string   `json:"working_dir" yaml:"working_dir"`
+  User       string   `json:"user" yaml:"user"`             // 进程所属用户
+  UserGroup  string   `json:"user_group" yaml:"user_group"` // 进程所属用户组
+  Env        []EnvVar `json:"env" yaml:"env"`
+  LogDir     string   `json:"log_dir" yaml:"log_dir"`
+
+  // Commands for lifecycle control
+  StartCommand *CommandConfig `json:"start_command" yaml:"start_command"`
+  StopCommand  *CommandConfig `json:"stop_command" yaml:"stop_command"`
+
+  // Runtime and configuration
+  Config config.AppConfig `json:"config" yaml:"config"`
+  Stats  *ResourceStats   `json:"stats" yaml:"stats"`
 }

@@ -31,16 +31,16 @@ func (m *Manager) ListManagedProcesses() ([]ManagedProcess, error) {
 }
 
 // MonitorProcess implements ProcManager interface
-func (m *Manager) MonitorProcess(name string) (ResourceStats, error) {
+func (m *Manager) MonitorProcess(name string) (*ResourceStats, error) {
   // 检查进程是否存在
   process, exists := m.processes[name]
   if !exists {
-    return ResourceStats{}, errors.New(fmt.Sprintf("Process %s is not managed", name))
+    return nil, errors.New(fmt.Sprintf("Process %s is not managed", name))
   }
 
   // 检查进程是否正在运行
   if process.Status != StatusRunning {
-    return ResourceStats{}, errors.New(fmt.Sprintf("Process %s is not running", name))
+    return nil, errors.New(fmt.Sprintf("Process %s is not running", name))
   }
 
   pid := process.PID
@@ -48,7 +48,7 @@ func (m *Manager) MonitorProcess(name string) (ResourceStats, error) {
   // 获取CPU和内存使用情况
   cpuUsage, memoryUsage, err := GetProcessCpuAndMemory(pid)
   if err != nil {
-    return ResourceStats{}, fmt.Errorf("failed to get CPU and memory usage: %v", err)
+    return nil, fmt.Errorf("failed to get CPU and memory usage: %v", err)
   }
 
   // 获取磁盘IO统计信息
@@ -73,7 +73,7 @@ func (m *Manager) MonitorProcess(name string) (ResourceStats, error) {
   }
 
   // 创建并返回ResourceStats
-  stats := ResourceStats{
+  stats := &ResourceStats{
     CPUUsage:       cpuUsage,
     MemoryUsage:    memoryUsage,
     DiskIO:         diskIO,

@@ -35,17 +35,6 @@ func (c *CLI) handleScan(query string, registerAfterScan bool) error {
       startTimeStr = p.StartTime.Format("2006-01-02 15:04:05")
     }
 
-    // 构建完整命令字符串
-    commandStr := p.Command.Command
-    for _, arg := range p.Command.Args {
-      commandStr += " " + arg
-    }
-
-    // 限制命令字符串长度，避免表格变形
-    if len(commandStr) > 40 {
-      commandStr = commandStr[:37] + "..."
-    }
-
     // 显示进程信息，增加序号列
     fmt.Printf("%-5d %-8d %-20s %-15s %-25s %-15s %-20s %-40s\n",
       i+1, // 序号从1开始
@@ -55,7 +44,7 @@ func (c *CLI) handleScan(query string, registerAfterScan bool) error {
       startTimeStr,
       runTimeStr,
       truncateString(p.User, 20),
-      commandStr)
+      p.StartCommand.Command)
 
     // 显示工作目录
     if p.WorkingDir != "" {
@@ -109,13 +98,13 @@ func (c *CLI) promptForRegistration(processes []process.ManagedProcess) error {
 
   // 创建要注册的进程
   managedProcess := process.ManagedProcess{
-    Name:       processName,
-    Status:     process.StatusRunning, // 因为进程已经在运行
-    PID:        selectedProcess.PID,
-    Command:    selectedProcess.Command,
-    WorkingDir: selectedProcess.WorkingDir,
-    User:       selectedProcess.User,
-    UserGroup:  selectedProcess.UserGroup,
+    Name:         processName,
+    Status:       process.StatusRunning, // 因为进程已经在运行
+    PID:          selectedProcess.PID,
+    StartCommand: selectedProcess.StartCommand,
+    WorkingDir:   selectedProcess.WorkingDir,
+    User:         selectedProcess.User,
+    UserGroup:    selectedProcess.UserGroup,
   }
 
   // 调用client进行注册
@@ -172,7 +161,7 @@ func (c *CLI) handleStatus(name string) error {
   fmt.Printf("Process status for '%s':\n", name)
   fmt.Printf("  Status: %s\n", process.Status)
   fmt.Printf("  PID: %d\n", process.PID)
-  fmt.Printf("  Command: %s\n", process.Command)
+  fmt.Printf("  Command: %s\n", process.StartCommand)
   fmt.Printf("  Working Directory: %s\n", process.WorkingDir)
   fmt.Printf("  Start Time: %s\n", process.StartTime.Format("2006-01-02 15:04:05"))
   fmt.Printf("  Restart Count: %d\n", process.RestartCount)

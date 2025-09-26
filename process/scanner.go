@@ -247,9 +247,9 @@ func fillCommandInfo(mp *ManagedProcess, proc *process.Process) error {
   }
 
   if len(cmdline) > 0 {
-    mp.Command.Command = exe
+    mp.StartCommand.Command = exe
     if len(cmdline) > 1 {
-      mp.Command.Args = cmdline[1:]
+      mp.StartCommand.Args = cmdline[1:]
     }
   }
 
@@ -266,11 +266,11 @@ func fillEnvironmentInfo(mp *ManagedProcess, proc *process.Process) error {
     return fmt.Errorf("failed to get environment variables: %w", err)
   }
 
-  mp.Env = make([]EnvironmentVariable, 0, len(envVars))
+  mp.Env = make([]EnvVar, 0, len(envVars))
   for _, envVar := range envVars {
     parts := strings.SplitN(envVar, "=", 2)
     if len(parts) == 2 {
-      mp.Env = append(mp.Env, EnvironmentVariable{
+      mp.Env = append(mp.Env, EnvVar{
         Name:  parts[0],
         Value: parts[1],
       })
