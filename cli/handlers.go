@@ -3,6 +3,7 @@ package cli
 import (
   "fmt"
   "github.com/casuallc/vigil/process"
+  "gopkg.in/yaml.v2" // 导入yaml包用于YAML格式输出
   "time"
 )
 
@@ -166,6 +167,53 @@ func (c *CLI) handleStatus(name string) error {
   fmt.Printf("  Start Time: %s\n", process.StartTime.Format("2006-01-02 15:04:05"))
   fmt.Printf("  Restart Count: %d\n", process.RestartCount)
   fmt.Printf("  Last Exit Code: %d\n", process.LastExitCode)
+
+  return nil
+}
+
+// handleGet 处理get命令，支持输出YAML格式
+func (c *CLI) handleGet(name string, format string) error {
+  process, err := c.client.GetProcess(name)
+  if err != nil {
+    return err
+  }
+
+  if format == "yaml" {
+    // 以YAML格式输出进程信息
+    yamlData, err := yaml.Marshal(process)
+    if err != nil {
+      return fmt.Errorf("failed to marshal process data to YAML: %v", err)
+    }
+    fmt.Println(string(yamlData))
+  } else {
+    // 默认以文本格式输出，与status命令类似但增加更多信息
+    fmt.Printf("Process details for '%s':\n", name)
+    fmt.Printf("  Status: %s\n", process.Status)
+    fmt.Printf("  PID: %d\n", process.PID)
+    fmt.Printf("  Command: %s\n", process.StartCommand.Command)
+    if len(process.StartCommand.Args) > 0 {
+      fmt.Printf("  Args: %v\n", process.StartCommand.Args)
+    }
+    fmt.Printf("  Working Directory: %s\n", process.WorkingDir)
+    fmt.Printf("  Start Time: %s\n", process.StartTime.Format("2006-01-02 15:04:05"))
+    fmt.Printf("  Restart Policy: %s\n", process.RestartPolicy)
+    fmt.Printf("  Restart Count: %d\n", process.RestartCount)
+    fmt.Printf("  Max Restarts: %d\n", process.MaxRestarts)
+    fmt.Printf("  Last Exit Code: %d\n", process.LastExitCode)
+    fmt.Printf("  User: %s\n", process.User)
+    fmt.Printf("  User Group: %s\n", process.UserGroup)
+    if process.LogDir != "" {
+      fmt.Printf("  Log Directory: %s\n", process.LogDir)
+    }
+
+    // 如果有环境变量，输出它们
+    if len(process.Env) > 0 {
+      fmt.Println("  Environment Variables:")
+      for _, env := range process.Env {
+        fmt.Printf("    %s=%s\n", env.Name, env.Value)
+      }
+    }
+  }
 
   return nil
 }

@@ -157,6 +157,21 @@ func (c *CLI) setupCommands() *cobra.Command {
     },
   }
 
+  // Get command - 新增支持YAML格式输出的get命令
+  var getFormat string
+  var getProcessName string
+  getCmd := &cobra.Command{
+    Use:   "get",
+    Short: "Get process details",
+    Long:  "Get detailed information about a managed process",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleGet(getProcessName, getFormat)
+    },
+  }
+  getCmd.Flags().StringVarP(&getProcessName, "name", "n", "", "Process name")
+  getCmd.Flags().StringVarP(&getFormat, "format", "f", "yaml", "Output format (yaml|text)")
+  getCmd.MarkFlagRequired("name")
+
   // Add commands to root command
   rootCmd.AddCommand(scanCmd)
   rootCmd.AddCommand(manageCmd)
@@ -168,6 +183,7 @@ func (c *CLI) setupCommands() *cobra.Command {
   rootCmd.AddCommand(systemResourceCmd)
   rootCmd.AddCommand(processResourceCmd)
   rootCmd.AddCommand(getConfigCmd)
+  rootCmd.AddCommand(getCmd) // 添加新命令到根命令
 
   return rootCmd
 }
