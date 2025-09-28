@@ -107,7 +107,7 @@ func (c *CLI) promptForRegistration(processes []process.ManagedProcess, namespac
   managedProcess.Metadata.Namespace = namespace
 
   // 调用client进行注册
-  err = c.client.ManageProcess(managedProcess)
+  err = c.client.AddProcess(managedProcess)
   if err != nil {
     return fmt.Errorf("failed to register process: %v", err)
   }
@@ -132,7 +132,7 @@ func (c *CLI) handleManage(name, command string, namespace string) error {
     },
   }
 
-  return c.client.ManageProcess(process)
+  return c.client.AddProcess(process)
 }
 
 func (c *CLI) handleStart(name string, namespace string) error {

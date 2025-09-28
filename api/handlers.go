@@ -31,7 +31,7 @@ func (s *Server) handleScanProcesses(w http.ResponseWriter, r *http.Request) {
   writeJSON(w, http.StatusOK, processes)
 }
 
-func (s *Server) handleManageProcess(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAddProcess(w http.ResponseWriter, r *http.Request) {
   var process process.ManagedProcess
   if err := json.NewDecoder(r.Body).Decode(&process); err != nil {
     writeError(w, http.StatusBadRequest, err.Error())
