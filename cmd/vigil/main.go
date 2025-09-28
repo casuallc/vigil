@@ -45,7 +45,7 @@ func main() {
 
   // 创建进程管理器
   processManager := process.NewManager()
-  
+
   // 加载已保存的进程信息
   processesFilePath := "process/managed_processes.yaml"
   if err := processManager.LoadManagedProcesses(processesFilePath); err != nil {
@@ -78,12 +78,12 @@ func main() {
     log.Fatalf("Server error: %v", err)
   case sig := <-sigChan:
     log.Printf("Received signal %s, shutting down...", sig)
-    
+
     // 在关闭前保存进程信息
     if err := processManager.SaveManagedProcesses(processesFilePath); err != nil {
       log.Printf("Warning: failed to save managed processes during shutdown: %v", err)
     }
-    
+
     // 这里应该实现优雅关闭
     time.Sleep(1 * time.Second) // 给保存操作一点时间
   }

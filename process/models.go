@@ -83,6 +83,9 @@ type Spec struct {
 
   // AppConfig 是 Vigil 特有的应用配置
   Config config.AppConfig `json:"config,omitempty" yaml:"config,omitempty"`
+
+  // CheckAlive 用于识别进程的脚本，返回0表示匹配成功
+  CheckAlive *CommandConfig `json:"check_alive,omitempty" yaml:"check_alive,omitempty"`
 }
 
 // Exec 定义如何执行进程
