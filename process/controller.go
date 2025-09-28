@@ -196,6 +196,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
     }
 
     process.Status.Phase = PhaseStopped
+    process.Status.PID = 0
 
     // 应用重启策略
     shouldRestart := false
@@ -281,6 +282,7 @@ func (m *Manager) StopProcess(namespace, name string) error {
     }
 
     process.Status.Phase = PhaseStopped
+    process.Status.PID = 0
     return nil
   } else {
     // 没有自定义停止命令，使用强制终止
@@ -335,6 +337,7 @@ func (m *Manager) forceStopProcess(process *ManagedProcess) error {
   }
 
   process.Status.Phase = PhaseStopped
+  process.Status.PID = 0
   return nil
 }
 
@@ -416,6 +419,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
         if err != nil {
           // 进程不存在了，标记为已停止
           process.Status.Phase = PhaseStopped
+          process.Status.PID = 0
 
           // 尝试重新关联进程
           if process.Spec.RestartPolicy == RestartPolicyAlways ||
@@ -427,6 +431,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
           if err := sysProcess.Signal(syscall.Signal(0)); err != nil {
             // 进程不存在了
             process.Status.Phase = PhaseStopped
+            process.Status.PID = 0
 
             // 尝试重新关联进程
             if process.Spec.RestartPolicy == RestartPolicyAlways ||

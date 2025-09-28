@@ -9,7 +9,7 @@ func (s *Server) Router() *mux.Router {
   r := mux.NewRouter()
 
   // Process management endpoints
-  r.HandleFunc("/api/namespaces/processes/scan", s.handleScanProcesses).Methods("GET")
+  r.HandleFunc("/api/processes/scan", s.handleScanProcesses).Methods("GET")
   r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/add", s.handleAddProcess).Methods("POST")
   r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/start", s.handleStartProcess).Methods("POST")
   r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/stop", s.handleStopProcess).Methods("POST")

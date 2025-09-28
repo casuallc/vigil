@@ -207,13 +207,12 @@ type Status struct {
 type Phase string
 
 const (
-  PhasePending   Phase = "Pending"
-  PhaseRunning   Phase = "Running"
-  PhaseSucceeded Phase = "Succeeded"
-  PhaseFailed    Phase = "Failed"
-  PhaseStopping  Phase = "Stopping"
-  PhaseStopped   Phase = "Stopped"
-  PhaseUnknown   Phase = "Unknown"
+  PhasePending  Phase = "Pending"
+  PhaseRunning  Phase = "Running"
+  PhaseFailed   Phase = "Failed"
+  PhaseStopping Phase = "Stopping"
+  PhaseStopped  Phase = "Stopped"
+  PhaseUnknown  Phase = "Unknown"
 )
 
 // Condition 表示一个状态条件
