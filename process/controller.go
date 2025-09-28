@@ -64,8 +64,8 @@ func (m *Manager) DeleteProcess(namespace, name string) error {
     }
   }
 
-  // 从管理列表中删除进程
-  delete(m.processes, name)
+  // 从管理列表中删除进程 - 修复使用正确的键
+  delete(m.processes, key)
 
   // 保存更新后的进程列表
   if err := m.SaveManagedProcesses(processesFilePath); err != nil {

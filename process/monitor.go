@@ -2,6 +2,10 @@ package process
 
 import (
   "runtime"
+  "time"
+
+  "github.com/shirou/gopsutil/v3/cpu"
+  "github.com/shirou/gopsutil/v3/process"
 )
 
 // Monitor provides resource monitoring functionality
@@ -34,8 +38,14 @@ func GetSystemResourceUsage() (ResourceStats, error) {
 func getWindowsSystemResourceUsage() (ResourceStats, error) {
   var stats ResourceStats
 
-  // Get CPU and memory usage on Windows
-  // Simplified implementation, real project may need more complex methods
+  // Get CPU usage
+  cpuPercent, err := cpu.Percent(time.Second, false)
+  if err == nil && len(cpuPercent) > 0 {
+    stats.CPUUsage = cpuPercent[0]
+  }
+
+  // Get memory usage
+  // 这里简化实现，实际项目中可以使用更复杂的方法
 
   return stats, nil
 }
@@ -44,8 +54,14 @@ func getWindowsSystemResourceUsage() (ResourceStats, error) {
 func getUnixSystemResourceUsage() (ResourceStats, error) {
   var stats ResourceStats
 
-  // Get CPU and memory usage on Unix/Linux/macOS
-  // Simplified implementation, real project may need more complex methods
+  // Get CPU usage
+  cpuPercent, err := cpu.Percent(time.Second, false)
+  if err == nil && len(cpuPercent) > 0 {
+    stats.CPUUsage = cpuPercent[0]
+  }
+
+  // Get memory usage
+  // 这里简化实现，实际项目中可以使用更复杂的方法
 
   return stats, nil
 }
@@ -69,7 +85,22 @@ func getWindowsProcessResourceUsage(pid int) (ResourceStats, error) {
   var stats ResourceStats
 
   // Get process resource usage on Windows
-  // Simplified implementation, real project may need more complex methods
+  proc, err := process.NewProcess(int32(pid))
+  if err != nil {
+    return stats, err
+  }
+
+  // Get CPU usage
+  cpuPercent, err := proc.CPUPercent()
+  if err == nil {
+    stats.CPUUsage = cpuPercent
+  }
+
+  // Get memory usage
+  memInfo, err := proc.MemoryInfo()
+  if err == nil {
+    stats.MemoryUsage = memInfo.RSS
+  }
 
   return stats, nil
 }
@@ -79,7 +110,22 @@ func getUnixProcessResourceUsage(pid int) (ResourceStats, error) {
   var stats ResourceStats
 
   // Get process resource usage on Unix/Linux/macOS
-  // Simplified implementation, real project may need more complex methods
+  proc, err := process.NewProcess(int32(pid))
+  if err != nil {
+    return stats, err
+  }
+
+  // Get CPU usage
+  cpuPercent, err := proc.CPUPercent()
+  if err == nil {
+    stats.CPUUsage = cpuPercent
+  }
+
+  // Get memory usage
+  memInfo, err := proc.MemoryInfo()
+  if err == nil {
+    stats.MemoryUsage = memInfo.RSS
+  }
 
   return stats, nil
 }

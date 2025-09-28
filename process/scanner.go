@@ -25,27 +25,6 @@ const (
   FileScriptPrefix = "file://"
 )
 
-// ScanProcesses implements ProcManager interface to scan system processes
-func (m *Manager) ScanProcesses(query string) ([]ManagedProcess, error) {
-  // 根据查询类型选择不同的扫描方法
-  if strings.HasPrefix(query, ScriptPrefix) {
-    // 直接执行内联脚本
-    scriptContent := strings.TrimPrefix(query, ScriptPrefix)
-    return m.scanWithScript(scriptContent)
-  } else if strings.HasPrefix(query, FileScriptPrefix) {
-    // 从文件加载脚本并执行
-    scriptPath := strings.TrimPrefix(query, FileScriptPrefix)
-    content, err := os.ReadFile(scriptPath)
-    if err != nil {
-      return nil, fmt.Errorf("failed to read script file: %v", err)
-    }
-    return m.scanWithScript(string(content))
-  } else {
-    // 使用标准的Unix进程扫描
-    return m.scanUnixProcesses(query)
-  }
-}
-
 // scanWithScript scans processes using a custom script
 func (m *Manager) scanWithScript(script string) ([]ManagedProcess, error) {
   // 创建一个临时脚本文件

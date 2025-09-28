@@ -4,6 +4,7 @@ import (
   "errors"
   "fmt"
   "os"
+  "strings"
   "time"
 
   "gopkg.in/yaml.v2"
@@ -29,7 +30,7 @@ func (m *Manager) GetProcessStatus(namespace, name string) (ManagedProcess, erro
 // ListManagedProcesses implements ProcManager interface
 func (m *Manager) ListManagedProcesses(namespace string) ([]ManagedProcess, error) {
   result := make([]ManagedProcess, 0)
-  
+
   for _, p := range m.processes {
     // 如果指定了namespace，则只返回该namespace的进程
     if namespace == "" || p.Metadata.Namespace == namespace {
@@ -154,7 +155,7 @@ func (m *Manager) LoadManagedProcesses(filePath string) error {
     // 使用 namespace/name 作为键
     key := fmt.Sprintf("%s/%s", process.Metadata.Namespace, process.Metadata.Name)
     m.processes[key] = &processCopy
-    
+
     // 自动启动标记为需要重启的进程
     if process.Spec.RestartPolicy == RestartPolicyAlways ||
       (process.Spec.RestartPolicy == RestartPolicyOnFailure && process.Status.LastTerminationInfo.ExitCode != 0) {
@@ -169,4 +170,25 @@ func (m *Manager) LoadManagedProcesses(filePath string) error {
   }
 
   return nil
+}
+
+// ScanProcesses implements ProcManager interface to scan system processes
+func (m *Manager) ScanProcesses(query string) ([]ManagedProcess, error) {
+  // 根据查询类型选择不同的扫描方法
+  if strings.HasPrefix(query, ScriptPrefix) {
+    // 直接执行内联脚本
+    scriptContent := strings.TrimPrefix(query, ScriptPrefix)
+    return m.scanWithScript(scriptContent)
+  } else if strings.HasPrefix(query, FileScriptPrefix) {
+    // 从文件加载脚本并执行
+    scriptPath := strings.TrimPrefix(query, FileScriptPrefix)
+    content, err := os.ReadFile(scriptPath)
+    if err != nil {
+      return nil, fmt.Errorf("failed to read script file: %v", err)
+    }
+    return m.scanWithScript(string(content))
+  } else {
+    // 使用标准的Unix进程扫描
+    return m.scanUnixProcesses(query)
+  }
 }
