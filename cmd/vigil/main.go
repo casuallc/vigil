@@ -4,7 +4,7 @@ import (
   "flag"
   "github.com/casuallc/vigil/api"
   "github.com/casuallc/vigil/config"
-  "github.com/casuallc/vigil/process"
+  "github.com/casuallc/vigil/process/core"
   "log"
   "os"
   "os/signal"
@@ -44,7 +44,7 @@ func main() {
   }
 
   // 创建进程管理器
-  processManager := process.NewManager()
+  processManager := core.NewManager()
 
   // 加载已保存的进程信息
   ProcessesFilePath := "process/managed_processes.yaml"
