@@ -91,6 +91,9 @@ func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error)
     NetworkIO:      networkIO,
     ListeningPorts: listeningPorts,
   }
+  
+  // 设置格式化的值
+  stats.SetFormattedValues()
 
   // 更新进程的Stats信息
   process.Status.ResourceStats = stats

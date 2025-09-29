@@ -279,3 +279,30 @@ func (c *Client) CheckHealth() (bool, error) {
 
   return resp.StatusCode == http.StatusOK, nil
 }
+
+// ExecuteCommand executes a command or script on the server
+func (c *Client) ExecuteCommand(command string, isFile bool, envVars []string) (string, error) {
+    reqBody := map[string]interface{}{
+        "command": command,
+        "is_file": isFile,
+        "env":     envVars,
+    }
+    
+    resp, err := c.doRequest("POST", "/api/exec", reqBody)
+    if err != nil {
+        return "", err
+    }
+    
+    if resp.StatusCode != http.StatusOK {
+        return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    }
+    
+    // 读取响应内容
+    defer resp.Body.Close()
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return "", err
+    }
+    
+    return string(body), nil
+}

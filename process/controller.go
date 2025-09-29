@@ -34,10 +34,6 @@ func (m *Manager) ManageProcess(process ManagedProcess) error {
   // Generate ID for the process
   process.Metadata.ID = fmt.Sprintf("%s-%d", process.Metadata.Name, time.Now().UnixNano())
 
-  // Set start time
-  now := time.Now()
-  process.Status.StartTime = &now
-
   // Store the process
   m.processes[key] = &process
 
@@ -212,7 +208,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
     }
 
     // 检查是否达到最大重启次数
-    if shouldRestart && (process.Spec.MaxRestarts <= 0 || process.Status.RestartCount < process.Spec.MaxRestarts) {
+    if shouldRestart {
       // 应用重启间隔
       restartInterval := process.Spec.RestartInterval
       if restartInterval == 0 {
@@ -398,8 +394,8 @@ func (m *Manager) startMonitoring(namespace, name string) {
   defer ticker.Stop()
 
   // 添加重关联检查的计时器
-  CheckTicker := time.NewTicker(30 * time.Second)
-  defer CheckTicker.Stop()
+  checkTicker := time.NewTicker(30 * time.Second)
+  defer checkTicker.Stop()
 
   for {
     select {
@@ -412,7 +408,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
         }
       }
 
-    case <-CheckTicker.C:
+    case <-checkTicker.C:
       // 检查进程是否还在运行
       if process.Status.Phase == PhaseRunning {
         sysProcess, err := os.FindProcess(process.Status.PID)

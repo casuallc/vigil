@@ -206,7 +206,6 @@ func (c *CLI) handleGet(name string, format string, namespace string) error {
     fmt.Printf("  Start Time: %s\n", process.Status.StartTime.Format("2006-01-02 15:04:05"))
     fmt.Printf("  Restart Policy: %s\n", process.Spec.RestartPolicy)
     fmt.Printf("  Restart Count: %d\n", process.Status.RestartCount)
-    fmt.Printf("  Max Restarts: %d\n", process.Spec.MaxRestarts)
     fmt.Printf("  Restart Interval: %s\n", process.Spec.RestartInterval)
     fmt.Printf("  Last Exit Code: %d\n", process.Status.LastTerminationInfo.ExitCode)
     if process.Spec.User != "" {
@@ -285,4 +284,191 @@ func (c *CLI) handleGetConfig() error {
   fmt.Printf("  Managed Apps Count: %d\n", len(cfg.ManagedApps))
 
   return nil
+}
+
+// handleGetInteractive 处理交互式选择进程的情况
+func (c *CLI) handleGetInteractive(format string, namespace string) error {
+  // 获取所有进程
+  processes, err := c.client.ListProcesses(namespace)
+  if err != nil {
+    return err
+  }
+
+  if len(processes) == 0 {
+    return fmt.Errorf("没有找到进程，请先注册一个进程")
+  }
+
+  // 提取进程名称列表
+  processNames := make([]string, len(processes))
+  for i, p := range processes {
+    processNames[i] = p.Metadata.Name
+  }
+
+  idx, _, err := Select(SelectConfig{
+    Label: "select process",
+    Items: processNames,
+  })
+  if err != nil {
+    fmt.Printf("Err: %s", err.Error())
+    return nil
+  }
+
+  // 使用用户选择的进程名称调用原始的handleGet函数
+  selectedProcess := processes[idx]
+  return c.handleGet(selectedProcess.Metadata.Name, format, namespace)
+}
+
+// handleStartInteractive 处理交互式选择要启动的进程
+func (c *CLI) handleStartInteractive(namespace string) error {
+  // 获取所有进程
+  processes, err := c.client.ListProcesses(namespace)
+  if err != nil {
+    return err
+  }
+
+  if len(processes) == 0 {
+    return fmt.Errorf("没有找到进程，请先注册一个进程")
+  }
+
+  // 提取进程名称列表
+  processNames := make([]string, len(processes))
+  for i, p := range processes {
+    processNames[i] = fmt.Sprintf("%s (Status: %s)", p.Metadata.Name, p.Status.Phase)
+  }
+
+  idx, _, err := Select(SelectConfig{
+    Label: "select process",
+    Items: processNames,
+  })
+  if err != nil {
+    fmt.Printf("Err: %s", err.Error())
+    return nil
+  }
+
+  // 使用用户选择的进程名称调用原始的handleStart函数
+  selectedProcess := processes[idx]
+  return c.handleStart(selectedProcess.Metadata.Name, namespace)
+}
+
+// handleStopInteractive 处理交互式选择要停止的进程
+func (c *CLI) handleStopInteractive(namespace string) error {
+  // 获取所有进程
+  processes, err := c.client.ListProcesses(namespace)
+  if err != nil {
+    return err
+  }
+
+  if len(processes) == 0 {
+    return fmt.Errorf("没有找到进程，请先注册一个进程")
+  }
+
+  // 提取进程名称列表
+  processNames := make([]string, len(processes))
+  for i, p := range processes {
+    processNames[i] = fmt.Sprintf("%s (Status: %s, PID: %d)", p.Metadata.Name, p.Status.Phase, p.Status.PID)
+  }
+
+  idx, _, err := Select(SelectConfig{
+    Label: "select process",
+    Items: processNames,
+  })
+  if err != nil {
+    fmt.Printf("Err: %s", err.Error())
+    return nil
+  }
+
+  // 使用用户选择的进程名称调用原始的handleStop函数
+  selectedProcess := processes[idx]
+  return c.handleStop(selectedProcess.Metadata.Name, namespace)
+}
+
+// handleRestartInteractive 处理交互式选择要重启的进程
+func (c *CLI) handleRestartInteractive(namespace string) error {
+  // 获取所有进程
+  processes, err := c.client.ListProcesses(namespace)
+  if err != nil {
+    return err
+  }
+
+  if len(processes) == 0 {
+    return fmt.Errorf("没有找到进程，请先注册一个进程")
+  }
+
+  // 提取进程名称列表
+  processNames := make([]string, len(processes))
+  for i, p := range processes {
+    processNames[i] = fmt.Sprintf("%s (Status: %s, PID: %d)", p.Metadata.Name, p.Status.Phase, p.Status.PID)
+  }
+
+  idx, _, err := Select(SelectConfig{
+    Label: "select process",
+    Items: processNames,
+  })
+  if err != nil {
+    fmt.Printf("Err: %s", err.Error())
+    return nil
+  }
+
+  // 使用用户选择的进程名称调用原始的handleRestart函数
+  selectedProcess := processes[idx]
+  return c.handleRestart(selectedProcess.Metadata.Name, namespace)
+}
+
+// handleDeleteInteractive 处理交互式选择要删除的进程
+func (c *CLI) handleDeleteInteractive(namespace string) error {
+  // 获取所有进程
+  processes, err := c.client.ListProcesses(namespace)
+  if err != nil {
+    return err
+  }
+
+  if len(processes) == 0 {
+    return fmt.Errorf("没有找到进程，请先注册一个进程")
+  }
+
+  // 提取进程名称列表
+  processNames := make([]string, len(processes))
+  for i, p := range processes {
+    processNames[i] = fmt.Sprintf("%s (Status: %s)", p.Metadata.Name, p.Status.Phase)
+  }
+
+  idx, _, err := Select(SelectConfig{
+    Label: "select process",
+    Items: processNames,
+  })
+  if err != nil {
+    fmt.Printf("Err: %s", err.Error())
+    return nil
+  }
+
+  // 使用用户选择的进程名称调用原始的handleDelete函数
+  selectedProcess := processes[idx]
+  return c.handleDelete(selectedProcess.Metadata.Name, namespace)
+}
+
+// handleExec handles the exec command to execute a command or script
+func (c *CLI) handleExec(command string, isFile bool, envVars []string) error {
+    // 如果是文件，读取本地文件内容
+    if isFile {
+        fileContent, err := os.ReadFile(command)
+        if err != nil {
+            return fmt.Errorf("failed to read script file: %w", err)
+        }
+        // 将文件内容作为命令发送，标记为非文件
+        command = string(fileContent)
+        isFile = false
+    }
+    
+    // 执行命令并获取输出
+    output, err := c.client.ExecuteCommand(command, isFile, envVars)
+    
+    // 打印输出
+    fmt.Println(output)
+    
+    // 如果有错误，返回错误信息（但仍然显示输出）
+    if err != nil {
+        return fmt.Errorf("command execution failed: %w", err)
+    }
+    
+    return nil
 }

@@ -66,9 +66,6 @@ type Spec struct {
   // RestartPolicy 控制重启行为
   RestartPolicy RestartPolicy `json:"restart_policy,omitempty" yaml:"restart_policy,omitempty"`
 
-  // MaxRestarts 是最大重启次数（配合 RestartPolicy 使用）
-  MaxRestarts int32 `json:"max_restarts,omitempty" yaml:"max_restarts,omitempty"`
-
   // RestartInterval 是重启间隔（例如 5s）
   RestartInterval time.Duration `json:"restart_interval,omitempty" yaml:"restart_interval,omitempty"`
 
@@ -78,14 +75,14 @@ type Spec struct {
   // HealthCheck 健康检查配置（可选）
   HealthCheck *HealthCheck `json:"health_check,omitempty" yaml:"health_check,omitempty"`
 
-  // Resources 资源限制（预留，可后续实现）
-  Resources *ResourceRequirements `json:"resources,omitempty" yaml:"resources,omitempty"`
-
   // AppConfig 是 Vigil 特有的应用配置
   Config config.AppConfig `json:"config,omitempty" yaml:"config,omitempty"`
 
   // CheckAlive 用于识别进程的脚本，返回0表示匹配成功
   CheckAlive *CommandConfig `json:"check_alive,omitempty" yaml:"check_alive,omitempty"`
+
+  // Resources 资源限制（预留，可后续实现）
+  Resources *ResourceRequirements `json:"resources,omitempty" yaml:"resources,omitempty"`
 }
 
 // Exec 定义如何执行进程
@@ -184,11 +181,11 @@ type Status struct {
   // Phase 是高层次状态（Running, Failed, Succeeded, Unknown）
   Phase Phase `json:"phase" yaml:"phase"`
 
-  // Conditions 是详细状态条件列表（类似 K8s PodConditions）
-  Conditions []Condition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
-
   // PID 是当前进程 ID
   PID int `json:"pid,omitempty" yaml:"pid,omitempty"`
+
+  // Conditions 是详细状态条件列表（类似 K8s PodConditions）
+  Conditions []Condition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
   // StartTime 是本次启动时间
   StartTime *time.Time `json:"start_time,omitempty" yaml:"start_time,omitempty"`
@@ -256,6 +253,12 @@ type ResourceStats struct {
   DiskIO         uint64     `json:"disk_io" yaml:"disk_io"`           // 字节
   NetworkIO      uint64     `json:"network_io" yaml:"network_io"`     // 字节
   ListeningPorts []PortInfo `json:"listening_ports,omitempty" yaml:"listening_ports,omitempty"`
+
+  // 人类可读的格式化字段
+  CPUUsageHuman    string `json:"cpu_usage_human,omitempty" yaml:"cpu_usage_human,omitempty"`       // e.g. "1.2%"
+  MemoryUsageHuman string `json:"memory_usage_human,omitempty" yaml:"memory_usage_human,omitempty"` // e.g. "1.5GiB"
+  DiskIOHuman      string `json:"disk_io_human,omitempty" yaml:"disk_io_human,omitempty"`           // e.g. "128MiB"
+  NetworkIOHuman   string `json:"network_io_human,omitempty" yaml:"network_io_human,omitempty"`     // e.g. "64KiB"
 }
 
 // PortInfo 端口监听信息

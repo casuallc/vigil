@@ -3,6 +3,7 @@ package api
 import (
   "encoding/json"
   "fmt"
+  "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/process"
   "github.com/gorilla/mux"
@@ -185,4 +186,34 @@ func (s *Server) handleDeleteProcess(w http.ResponseWriter, r *http.Request) {
 
   w.WriteHeader(http.StatusOK)
   w.Write([]byte(fmt.Sprintf("Process %s deleted successfully", name)))
+}
+
+// handleExecuteCommand handles the POST /api/exec endpoint
+func (s *Server) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
+  var req struct {
+    Command string   `json:"command"`
+    Env     []string `json:"env"`
+  }
+
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 验证命令不为空
+  if req.Command == "" {
+    writeError(w, http.StatusBadRequest, "Command cannot be empty")
+    return
+  }
+
+  // 忽略is_file标志，始终作为命令执行
+  output, err := common.ExecuteCommand(req.Command, req.Env)
+
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, fmt.Sprintf("Command execution failed: %v, output: %s", err, output))
+    return
+  }
+
+  w.WriteHeader(http.StatusOK)
+  w.Write([]byte(output))
 }
