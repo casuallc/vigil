@@ -4,6 +4,7 @@ import (
   "fmt"
   "github.com/casuallc/vigil/process"
   "gopkg.in/yaml.v2" // 导入yaml包用于YAML格式输出
+  "os"
   "time"
 )
 
@@ -447,7 +448,7 @@ func (c *CLI) handleDeleteInteractive(namespace string) error {
 }
 
 // handleExec handles the exec command to execute a command or script
-func (c *CLI) handleExec(command string, isFile bool, envVars []string) error {
+func (c *CLI) handleExec(command string, isFile bool, envVars []string, outputFile string) error {
     // 如果是文件，读取本地文件内容
     if isFile {
         fileContent, err := os.ReadFile(command)
@@ -462,10 +463,19 @@ func (c *CLI) handleExec(command string, isFile bool, envVars []string) error {
     // 执行命令并获取输出
     output, err := c.client.ExecuteCommand(command, isFile, envVars)
     
-    // 打印输出
-    fmt.Println(output)
+    // 根据outputFile参数决定输出目标
+    if outputFile != "" {
+        // 输出到文件
+        if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
+            return fmt.Errorf("failed to write output to file: %w", err)
+        }
+        fmt.Printf("Command output written to %s\n", outputFile)
+    } else {
+        // 输出到控制台
+        fmt.Println(output)
+    }
     
-    // 如果有错误，返回错误信息（但仍然显示输出）
+    // 如果有错误，返回错误信息
     if err != nil {
         return fmt.Errorf("command execution failed: %w", err)
     }

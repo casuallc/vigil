@@ -284,7 +284,6 @@ func (c *Client) CheckHealth() (bool, error) {
 func (c *Client) ExecuteCommand(command string, isFile bool, envVars []string) (string, error) {
     reqBody := map[string]interface{}{
         "command": command,
-        "is_file": isFile,
         "env":     envVars,
     }
     

@@ -190,30 +190,30 @@ func (s *Server) handleDeleteProcess(w http.ResponseWriter, r *http.Request) {
 
 // handleExecuteCommand handles the POST /api/exec endpoint
 func (s *Server) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
-  var req struct {
-    Command string   `json:"command"`
-    Env     []string `json:"env"`
-  }
-
-  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-    writeError(w, http.StatusBadRequest, err.Error())
-    return
-  }
-
-  // 验证命令不为空
-  if req.Command == "" {
-    writeError(w, http.StatusBadRequest, "Command cannot be empty")
-    return
-  }
-
-  // 忽略is_file标志，始终作为命令执行
-  output, err := common.ExecuteCommand(req.Command, req.Env)
-
-  if err != nil {
-    writeError(w, http.StatusInternalServerError, fmt.Sprintf("Command execution failed: %v, output: %s", err, output))
-    return
-  }
-
-  w.WriteHeader(http.StatusOK)
-  w.Write([]byte(output))
+    var req struct {
+        Command string   `json:"command"`
+        Env     []string `json:"env"`
+    }
+    
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        writeError(w, http.StatusBadRequest, err.Error())
+        return
+    }
+    
+    // 验证命令不为空
+    if req.Command == "" {
+        writeError(w, http.StatusBadRequest, "Command cannot be empty")
+        return
+    }
+    
+    // 使用common包中的ExecuteCommand函数执行命令
+    output, err := common.ExecuteCommand(req.Command, req.Env)
+    
+    if err != nil {
+        writeError(w, http.StatusInternalServerError, fmt.Sprintf("Command execution failed: %v, output: %s", err, output))
+        return
+    }
+    
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte(output))
 }

@@ -238,17 +238,20 @@ func (c *CLI) setupCommands() *cobra.Command {
     // Exec command - 新增执行脚本命令
     var isFile bool
     var envVars []string
+    var outputFile string
+    // 注意：原有的-f参数已经被用作--file标志，所以使用-r作为--result的短选项
     execCmd := &cobra.Command{
         Use:   "exec [command/script]",
         Short: "Execute a command or script",
-        Long:  "Execute a command or script file on the server, with optional environment variables.",
+        Long:  "Execute a command or script file on the server, with optional environment variables and output to file.",
         Args:  cobra.ExactArgs(1),
         RunE: func(cmd *cobra.Command, args []string) error {
-            return c.handleExec(args[0], isFile, envVars)
+            return c.handleExec(args[0], isFile, envVars, outputFile)
         },
     }
     execCmd.Flags().BoolVarP(&isFile, "file", "f", false, "Treat the argument as a script file path")
     execCmd.Flags().StringArrayVarP(&envVars, "env", "e", []string{}, "Environment variables to set (format: KEY=VALUE)")
+    execCmd.Flags().StringVarP(&outputFile, "result", "r", "", "Output result to file instead of console")
     
     // Add all commands to root command
     rootCmd.AddCommand(scanCmd)
