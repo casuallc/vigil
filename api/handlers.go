@@ -6,7 +6,6 @@ import (
   "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/process"
-  "github.com/casuallc/vigil/process/monitor"
   "github.com/gorilla/mux"
   "net/http"
   "strconv"
@@ -122,7 +121,7 @@ func (s *Server) handleStartProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSystemResources(w http.ResponseWriter, r *http.Request) {
-  resources, err := monitor.GetSystemResourceUsage()
+  resources, err := process.GetSystemResourceUsage()
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
@@ -141,7 +140,7 @@ func (s *Server) handleGetProcessResources(w http.ResponseWriter, r *http.Reques
     return
   }
 
-  resources, err := monitor.GetProcessResourceUsage(pid)
+  resources, err := process.GetProcessResourceUsage(pid)
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return

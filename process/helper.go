@@ -1,13 +1,12 @@
-package util
+package process
 
 import (
   "fmt"
-  "github.com/casuallc/vigil/process"
   "strings"
 )
 
 // SetFormattedValues 设置所有格式化的字段值
-func (rs *process.ResourceStats) SetFormattedValues() {
+func (rs *ResourceStats) SetFormattedValues() {
   rs.CPUUsageHuman = FormatCPUUsage(rs.CPUUsage)
   rs.MemoryUsageHuman = FormatBytes(rs.MemoryUsage)
   rs.DiskIOHuman = FormatBytes(rs.DiskIO)
