@@ -103,7 +103,7 @@ start() {
             echo $APP_PID > "$PID_FILE"
             chmod 644 "$PID_FILE"
 
-            # Wait and check if process is still alive
+            # Wait and check if proc is still alive
             sleep 3
 
             if kill -0 $APP_PID 2>/dev/null; then

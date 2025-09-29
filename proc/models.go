@@ -1,15 +1,10 @@
-package process
+package proc
 
 import (
   "time"
 
   "github.com/casuallc/vigil/config"
 )
-
-// Manager is the implementation of ProcManager
-type Manager struct {
-  Processes map[string]*ManagedProcess
-}
 
 // ManagedProcess 是对一个进程的完整声明式描述，包含 Spec（期望状态）和 Status（实际状态）
 type ManagedProcess struct {
@@ -259,6 +254,14 @@ type ResourceStats struct {
   MemoryUsageHuman string `json:"memory_usage_human,omitempty" yaml:"memory_usage_human,omitempty"` // e.g. "1.5GiB"
   DiskIOHuman      string `json:"disk_io_human,omitempty" yaml:"disk_io_human,omitempty"`           // e.g. "128MiB"
   NetworkIOHuman   string `json:"network_io_human,omitempty" yaml:"network_io_human,omitempty"`     // e.g. "64KiB"
+}
+
+// SetFormattedValues 设置所有格式化的字段值
+func (rs *ResourceStats) SetFormattedValues() {
+  rs.CPUUsageHuman = FormatCPUUsage(rs.CPUUsage)
+  rs.MemoryUsageHuman = FormatBytes(rs.MemoryUsage)
+  rs.DiskIOHuman = FormatBytes(rs.DiskIO)
+  rs.NetworkIOHuman = FormatBytes(rs.NetworkIO)
 }
 
 // PortInfo 端口监听信息

@@ -1,7 +1,8 @@
-package process
+package monitor
 
 import (
   "fmt"
+  "github.com/casuallc/vigil/proc"
   "os/exec"
   "regexp"
   "runtime"
@@ -15,19 +16,19 @@ import (
 
 // Monitor provides resource monitoring functionality
 type Monitor struct {
-  manager *Manager
+  manager *proc.Manager
 }
 
 // NewMonitor creates a new monitor
-func NewMonitor(manager *Manager) *Monitor {
+func NewMonitor(manager *proc.Manager) *Monitor {
   return &Monitor{
     manager: manager,
   }
 }
 
 // GetSystemResourceUsage gets system resource usage
-func GetSystemResourceUsage() (ResourceStats, error) {
-  var stats ResourceStats
+func GetSystemResourceUsage() (proc.ResourceStats, error) {
+  var stats proc.ResourceStats
   var err error
 
   if runtime.GOOS == "windows" {
@@ -45,20 +46,20 @@ func GetProcessCpuAndMemory(pid int) (float64, uint64, error) {
   cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "%cpu,rss")
   output, err := cmd.CombinedOutput()
   if err != nil {
-    return 0, 0, fmt.Errorf("failed to get process CPU and memory: %v, output: %s", err, string(output))
+    return 0, 0, fmt.Errorf("failed to get proc CPU and memory: %v, output: %s", err, string(output))
   }
 
   // 解析输出
   lines := strings.Split(string(output), "\n")
   if len(lines) < 2 {
-    return 0, 0, fmt.Errorf("invalid process stats output")
+    return 0, 0, fmt.Errorf("invalid proc stats output")
   }
 
   // 解析第二行（第一行是表头）
   line := strings.TrimSpace(lines[1])
   fields := strings.Fields(line)
   if len(fields) < 2 {
-    return 0, 0, fmt.Errorf("invalid process stats format")
+    return 0, 0, fmt.Errorf("invalid proc stats format")
   }
 
   // 提取CPU使用率（百分比）
@@ -132,8 +133,8 @@ func GetProcessNetworkIO(pid int) (uint64, error) {
 }
 
 // GetProcessListeningPorts 获取进程监听的端口信息
-func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
-  var ports []PortInfo
+func GetProcessListeningPorts(pid int) ([]proc.PortInfo, error) {
+  var ports []proc.PortInfo
 
   // 使用lsof命令获取进程打开的网络连接
   cmd := exec.Command("lsof", "-i", "-P", "-n", "-p", strconv.Itoa(pid))
@@ -191,7 +192,7 @@ func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
       address = addrMatches[1]
     }
 
-    ports = append(ports, PortInfo{
+    ports = append(ports, proc.PortInfo{
       Port:     port,
       Protocol: protocol,
       Address:  address,
@@ -202,8 +203,8 @@ func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
 }
 
 // getWindowsSystemResourceUsage gets Windows system resource usage
-func getWindowsSystemResourceUsage() (ResourceStats, error) {
-  var stats ResourceStats
+func getWindowsSystemResourceUsage() (proc.ResourceStats, error) {
+  var stats proc.ResourceStats
 
   // Get CPU usage
   cpuPercent, err := cpu.Percent(time.Second, false)
@@ -218,8 +219,8 @@ func getWindowsSystemResourceUsage() (ResourceStats, error) {
 }
 
 // getUnixSystemResourceUsage gets Unix/Linux/macOS system resource usage
-func getUnixSystemResourceUsage() (ResourceStats, error) {
-  var stats ResourceStats
+func getUnixSystemResourceUsage() (proc.ResourceStats, error) {
+  var stats proc.ResourceStats
 
   // Get CPU usage
   cpuPercent, err := cpu.Percent(time.Second, false)
@@ -233,9 +234,9 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
   return stats, nil
 }
 
-// GetProcessResourceUsage gets resource usage of a specific process
-func GetProcessResourceUsage(pid int) (ResourceStats, error) {
-  var stats ResourceStats
+// GetProcessResourceUsage gets resource usage of a specific proc
+func GetProcessResourceUsage(pid int) (proc.ResourceStats, error) {
+  var stats proc.ResourceStats
   var err error
 
   if runtime.GOOS == "windows" {
@@ -243,59 +244,59 @@ func GetProcessResourceUsage(pid int) (ResourceStats, error) {
   } else {
     stats, err = getUnixProcessResourceUsage(pid)
   }
-  
+
   // 设置格式化的值
   stats.SetFormattedValues()
-  
+
   return stats, err
 }
 
-// getWindowsProcessResourceUsage gets Windows process resource usage
-func getWindowsProcessResourceUsage(pid int) (ResourceStats, error) {
-  var stats ResourceStats
+// getWindowsProcessResourceUsage gets Windows proc resource usage
+func getWindowsProcessResourceUsage(pid int) (proc.ResourceStats, error) {
+  var stats proc.ResourceStats
 
-  // Get process resource usage on Windows
-  proc, err := process.NewProcess(int32(pid))
+  // Get proc resource usage on Windows
+  newProc, err := process.NewProcess(int32(pid))
   if err != nil {
     return stats, err
   }
 
   // Get CPU usage
-  cpuPercent, err := proc.CPUPercent()
+  cpuPercent, err := newProc.CPUPercent()
   if err == nil {
     stats.CPUUsage = cpuPercent
   }
 
   // Get memory usage
-  memInfo, err := proc.MemoryInfo()
+  memInfo, err := newProc.MemoryInfo()
   if err == nil {
     stats.MemoryUsage = memInfo.RSS
   }
-  
+
   return stats, nil
 }
 
-// getUnixProcessResourceUsage gets Unix/Linux/macOS process resource usage
-func getUnixProcessResourceUsage(pid int) (ResourceStats, error) {
-  var stats ResourceStats
+// getUnixProcessResourceUsage gets Unix/Linux/macOS proc resource usage
+func getUnixProcessResourceUsage(pid int) (proc.ResourceStats, error) {
+  var stats proc.ResourceStats
 
-  // Get process resource usage on Unix/Linux/macOS
-  proc, err := process.NewProcess(int32(pid))
+  // Get proc resource usage on Unix/Linux/macOS
+  newProc, err := process.NewProcess(int32(pid))
   if err != nil {
     return stats, err
   }
 
   // Get CPU usage
-  cpuPercent, err := proc.CPUPercent()
+  cpuPercent, err := newProc.CPUPercent()
   if err == nil {
     stats.CPUUsage = cpuPercent
   }
 
   // Get memory usage
-  memInfo, err := proc.MemoryInfo()
+  memInfo, err := newProc.MemoryInfo()
   if err == nil {
     stats.MemoryUsage = memInfo.RSS
   }
-  
+
   return stats, nil
 }

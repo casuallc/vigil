@@ -14,7 +14,7 @@ func (c *CLI) setupCommands() *cobra.Command {
   rootCmd := &cobra.Command{
     Use:     "vigil",
     Short:   "Process Management Program",
-    Long:    "Vigil - A powerful process management and monitoring tool",
+    Long:    "Vigil - A powerful proc management and monitoring tool",
     Version: "1.0.0",
   }
 
@@ -45,7 +45,7 @@ func (c *CLI) setupCommands() *cobra.Command {
     },
   }
   scanCmd.Flags().StringVarP(&query, "query", "q", "", "Search query string or regex")
-  scanCmd.Flags().BoolVarP(&registerAfterScan, "register", "r", false, "Register a process after scanning")
+  scanCmd.Flags().BoolVarP(&registerAfterScan, "register", "r", false, "Register a proc after scanning")
   scanCmd.Flags().StringVarP(&scanNamespace, "namespace", "n", "default", "Process namespace")
   scanCmd.MarkFlagRequired("query")
 
@@ -55,8 +55,8 @@ func (c *CLI) setupCommands() *cobra.Command {
   var createNamespace string
   createCmd := &cobra.Command{
     Use:   "create [name]",
-    Short: "Manage process",
-    Long:  "Manage an existing process or create a new managed process",
+    Short: "Manage proc",
+    Long:  "Manage an existing proc or create a new managed proc",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       namespaceFlag, _ := cmd.Flags().GetString("namespace")
@@ -75,8 +75,8 @@ func (c *CLI) setupCommands() *cobra.Command {
   var startNamespace string
   startCmd := &cobra.Command{
     Use:   "start [name]",
-    Short: "Start process",
-    Long:  "Start a managed process. If no name is provided, an interactive selection will be shown.",
+    Short: "Start proc",
+    Long:  "Start a managed proc. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       namespaceFlag, _ := cmd.Flags().GetString("namespace")
@@ -95,8 +95,8 @@ func (c *CLI) setupCommands() *cobra.Command {
   var stopNamespace string
   stopCmd := &cobra.Command{
     Use:   "stop [name]",
-    Short: "Stop process",
-    Long:  "Stop a managed process. If no name is provided, an interactive selection will be shown.",
+    Short: "Stop proc",
+    Long:  "Stop a managed proc. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       namespaceFlag, _ := cmd.Flags().GetString("namespace")
@@ -115,8 +115,8 @@ func (c *CLI) setupCommands() *cobra.Command {
   var restartNamespace string
   restartCmd := &cobra.Command{
     Use:   "restart [name]",
-    Short: "Restart process",
-    Long:  "Restart a managed process. If no name is provided, an interactive selection will be shown.",
+    Short: "Restart proc",
+    Long:  "Restart a managed proc. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       namespaceFlag, _ := cmd.Flags().GetString("namespace")
@@ -135,8 +135,8 @@ func (c *CLI) setupCommands() *cobra.Command {
   var deleteNamespace string
   deleteCmd := &cobra.Command{
     Use:   "delete [name]",
-    Short: "Delete a managed process",
-    Long:  "Delete a process from the managed list. If the process is running, it will be stopped first. If no name is provided, an interactive selection will be shown.",
+    Short: "Delete a managed proc",
+    Long:  "Delete a proc from the managed list. If the proc is running, it will be stopped first. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       namespaceFlag, _ := cmd.Flags().GetString("namespace")
@@ -168,8 +168,8 @@ func (c *CLI) setupCommands() *cobra.Command {
   var statusNamespace string
   statusCmd := &cobra.Command{
     Use:   "status [name]",
-    Short: "Check process status",
-    Long:  "Check the status of a managed process",
+    Short: "Check proc status",
+    Long:  "Check the status of a managed proc",
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       namespaceFlag, _ := cmd.Flags().GetString("namespace")
@@ -189,9 +189,9 @@ func (c *CLI) setupCommands() *cobra.Command {
   }
 
   processResourceCmd := &cobra.Command{
-    Use:   "process-resources [pid]",
-    Short: "Get process resources",
-    Long:  "Get resource usage information for a specific process",
+    Use:   "proc-resources [pid]",
+    Short: "Get proc resources",
+    Long:  "Get resource usage information for a specific proc",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       pid := 0
@@ -217,8 +217,8 @@ func (c *CLI) setupCommands() *cobra.Command {
   var getNamespace string
   getCmd := &cobra.Command{
     Use:   "get [name]",
-    Short: "Get process details",
-    Long:  "Get detailed information about a managed process. If no name is provided, an interactive selection will be shown.",
+    Short: "Get proc details",
+    Long:  "Get detailed information about a managed proc. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       namespaceFlag, _ := cmd.Flags().GetString("namespace")
@@ -239,8 +239,8 @@ func (c *CLI) setupCommands() *cobra.Command {
   var editNamespace string
   editCmd := &cobra.Command{
     Use:   "edit [name]",
-    Short: "Edit process definition",
-    Long:  "Edit the definition of a managed process using vim editor. If no name is provided, an interactive selection will be shown.",
+    Short: "Edit proc definition",
+    Long:  "Edit the definition of a managed proc using vim editor. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       namespaceFlag, _ := cmd.Flags().GetString("namespace")

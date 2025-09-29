@@ -5,7 +5,7 @@ import (
   "fmt"
   "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
-  "github.com/casuallc/vigil/process"
+  "github.com/casuallc/vigil/process/monitor"
   "github.com/gorilla/mux"
   "net/http"
   "strconv"
@@ -33,7 +33,7 @@ func (s *Server) handleScanProcesses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAddProcess(w http.ResponseWriter, r *http.Request) {
-  var process process.ManagedProcess
+  var process proc.ManagedProcess
   if err := json.NewDecoder(r.Body).Decode(&process); err != nil {
     writeError(w, http.StatusBadRequest, err.Error())
     return
@@ -121,7 +121,7 @@ func (s *Server) handleStartProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSystemResources(w http.ResponseWriter, r *http.Request) {
-  resources, err := process.GetSystemResourceUsage()
+  resources, err := monitor.GetSystemResourceUsage()
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
@@ -140,7 +140,7 @@ func (s *Server) handleGetProcessResources(w http.ResponseWriter, r *http.Reques
     return
   }
 
-  resources, err := process.GetProcessResourceUsage(pid)
+  resources, err := monitor.GetProcessResourceUsage(pid)
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
@@ -218,13 +218,13 @@ func (s *Server) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
   w.Write([]byte(output))
 }
 
-// handleEditProcess handles updating a managed process
+// handleEditProcess handles updating a managed proc
 func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
   namespace := getNamespace(vars)
   name := vars["name"]
 
-  var updatedProcess process.ManagedProcess
+  var updatedProcess proc.ManagedProcess
   if err := json.NewDecoder(r.Body).Decode(&updatedProcess); err != nil {
     writeError(w, http.StatusBadRequest, err.Error())
     return
@@ -249,7 +249,7 @@ func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
   s.manager.GetProcesses()[key] = &updatedProcess
 
   // 保存更新后的进程信息
-  if err := s.manager.SaveManagedProcesses(process.ProcessesFilePath); err != nil {
+  if err := s.manager.SaveManagedProcesses(proc.ProcessesFilePath); err != nil {
     fmt.Printf("Warning: failed to save managed processes: %v\n", err)
   }
 

@@ -2,7 +2,7 @@ package cli
 
 import (
   "fmt"
-  "github.com/casuallc/vigil/process"
+  "github.com/casuallc/vigil/proc"
   "time"
 )
 
@@ -28,15 +28,15 @@ func truncateString(s string, maxLength int) string {
 }
 
 // selectProcessInteractively 通用的交互式进程选择函数
-func (c *CLI) selectProcessInteractively(namespace string, label string) (process.ManagedProcess, error) {
+func (c *CLI) selectProcessInteractively(namespace string, label string) (proc.ManagedProcess, error) {
   // 获取所有进程
   processes, err := c.client.ListProcesses(namespace)
   if err != nil {
-    return process.ManagedProcess{}, err
+    return proc.ManagedProcess{}, err
   }
 
   if len(processes) == 0 {
-    return process.ManagedProcess{}, fmt.Errorf("没有找到进程，请先注册一个进程")
+    return proc.ManagedProcess{}, fmt.Errorf("没有找到进程，请先注册一个进程")
   }
 
   // 提取进程名称列表
@@ -51,7 +51,7 @@ func (c *CLI) selectProcessInteractively(namespace string, label string) (proces
     Items: processNames,
   })
   if err != nil {
-    return process.ManagedProcess{}, err
+    return proc.ManagedProcess{}, err
   }
 
   return processes[idx], nil

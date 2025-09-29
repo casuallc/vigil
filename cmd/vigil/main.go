@@ -4,7 +4,7 @@ import (
   "flag"
   "github.com/casuallc/vigil/api"
   "github.com/casuallc/vigil/config"
-  "github.com/casuallc/vigil/process"
+  "github.com/casuallc/vigil/process/core"
   "log"
   "os"
   "os/signal"
@@ -44,22 +44,22 @@ func main() {
   }
 
   // 创建进程管理器
-  processManager := process.NewManager()
+  processManager := core.NewManager()
 
   // 加载已保存的进程信息
-  ProcessesFilePath := "process/managed_processes.yaml"
+  ProcessesFilePath := "proc/managed_processes.yaml"
   if err := processManager.LoadManagedProcesses(ProcessesFilePath); err != nil {
     log.Printf("Warning: failed to load managed processes: %v", err)
   }
 
-  // If not running in foreground, daemonize the process
+  // If not running in foreground, daemonize the proc
   if !foreground {
-    // Here we would typically daemonize the process
+    // Here we would typically daemonize the proc
     // For simplicity, we'll just log that we would do this
     log.Println("Starting in daemon mode (implementation simplified)")
   }
 
-  // Create and start the API server with the loaded process manager
+  // Create and start the API server with the loaded proc manager
   server := api.NewServerWithManager(cfg, processManager)
 
   // Setup signal handling
