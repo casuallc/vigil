@@ -71,26 +71,32 @@ func (c *CLI) handleScan(query string, registerAfterScan bool, namespace string)
   return nil
 }
 
-// 添加提示用户注册进程的函数
+// 修改提示用户注册进程的函数，使用与handleDeleteInteractive类似的交互式选择
 func (c *CLI) promptForRegistration(processes []process.ManagedProcess, namespace string) error {
-  var choice int
-  fmt.Print("Enter the number of the process you want to register (0 to cancel): ")
-  _, err := fmt.Scanf("%d", &choice)
+  // 提取进程名称列表用于显示（与selectProcessInteractively相同的方式）
+  processNames := make([]string, len(processes))
+  for i, p := range processes {
+    processNames[i] = fmt.Sprintf("%d: %s (PID: %d, Command: %s)",
+      i+1, p.Metadata.Name, p.Status.PID, p.Spec.Exec.Command)
+  }
+
+  // 使用Select组件进行交互式选择
+  idx, _, err := Select(SelectConfig{
+    Label:    "select process to register (use arrow keys or vim keys to navigate, press Enter to select)",
+    Items:    processNames,
+    PageSize: 10,
+  })
   if err != nil {
-    return fmt.Errorf("invalid input: %v", err)
+    // 如果用户取消选择，不返回错误而是提示取消
+    if err.Error() == "user cancelled" {
+      fmt.Println("Registration cancelled.")
+      return nil
+    }
+    return fmt.Errorf("selection failed: %v", err)
   }
 
-  if choice == 0 {
-    fmt.Println("Registration cancelled.")
-    return nil
-  }
-
-  if choice < 1 || choice > len(processes) {
-    return fmt.Errorf("invalid choice: %d. Please enter a number between 1 and %d", choice, len(processes))
-  }
-
-  // 获取用户选择的进程
-  selectedProcess := processes[choice-1]
+  // 获取选中的进程
+  selectedProcess := processes[idx]
 
   // 提示用户输入进程名称（可选，默认为原进程名称）
   var processName string
