@@ -47,8 +47,8 @@ func main() {
   processManager := process.NewManager()
 
   // 加载已保存的进程信息
-  processesFilePath := "process/managed_processes.yaml"
-  if err := processManager.LoadManagedProcesses(processesFilePath); err != nil {
+  ProcessesFilePath := "process/managed_processes.yaml"
+  if err := processManager.LoadManagedProcesses(ProcessesFilePath); err != nil {
     log.Printf("Warning: failed to load managed processes: %v", err)
   }
 
@@ -80,7 +80,7 @@ func main() {
     log.Printf("Received signal %s, shutting down...", sig)
 
     // 在关闭前保存进程信息
-    if err := processManager.SaveManagedProcesses(processesFilePath); err != nil {
+    if err := processManager.SaveManagedProcesses(ProcessesFilePath); err != nil {
       log.Printf("Warning: failed to save managed processes during shutdown: %v", err)
     }
 

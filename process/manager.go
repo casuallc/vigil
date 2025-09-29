@@ -10,17 +10,23 @@ import (
   "gopkg.in/yaml.v2"
 )
 
-// NewManager creates a new process manager
+// NewManager 修改NewManager函数
 func NewManager() *Manager {
   return &Manager{
-    processes: make(map[string]*ManagedProcess),
+    Processes: make(map[string]*ManagedProcess),
   }
 }
 
-// GetProcessStatus implements ProcManager interface
+// GetProcesses 获取进程
+func (m *Manager) GetProcesses() map[string]*ManagedProcess {
+  return m.Processes
+}
+
+// GetProcessStatus 修改所有使用m.Processes的地方为m.Processes
+// 例如：
 func (m *Manager) GetProcessStatus(namespace, name string) (ManagedProcess, error) {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.processes[key]
+  process, exists := m.Processes[key]
   if !exists {
     return ManagedProcess{}, errors.New(fmt.Sprintf("Process %s/%s is not managed", namespace, name))
   }
@@ -31,7 +37,7 @@ func (m *Manager) GetProcessStatus(namespace, name string) (ManagedProcess, erro
 func (m *Manager) ListManagedProcesses(namespace string) ([]ManagedProcess, error) {
   result := make([]ManagedProcess, 0)
 
-  for _, p := range m.processes {
+  for _, p := range m.Processes {
     // 如果指定了namespace，则只返回该namespace的进程
     if namespace == "" || p.Metadata.Namespace == namespace {
       result = append(result, *p)
@@ -44,7 +50,7 @@ func (m *Manager) ListManagedProcesses(namespace string) ([]ManagedProcess, erro
 func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error) {
   // 检查进程是否存在
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.processes[key]
+  process, exists := m.Processes[key]
   if !exists {
     return nil, errors.New(fmt.Sprintf("Process %s/%s is not managed", namespace, name))
   }
@@ -91,7 +97,7 @@ func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error)
     NetworkIO:      networkIO,
     ListeningPorts: listeningPorts,
   }
-  
+
   // 设置格式化的值
   stats.SetFormattedValues()
 
@@ -103,10 +109,10 @@ func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error)
 
 // SaveManagedProcesses saves all managed processes to a file
 func (m *Manager) SaveManagedProcesses(filePath string) error {
-  processesList := make([]ManagedProcess, 0, len(m.processes))
+  processesList := make([]ManagedProcess, 0, len(m.Processes))
 
   // 过滤掉运行时的状态信息，只保存配置相关信息
-  for _, p := range m.processes {
+  for _, p := range m.Processes {
     processCopy := *p
     // 重置运行时状态
     processCopy.Status.Phase = PhaseFailed
@@ -157,7 +163,7 @@ func (m *Manager) LoadManagedProcesses(filePath string) error {
     processCopy := process
     // 使用 namespace/name 作为键
     key := fmt.Sprintf("%s/%s", process.Metadata.Namespace, process.Metadata.Name)
-    m.processes[key] = &processCopy
+    m.Processes[key] = &processCopy
 
     // 自动启动标记为需要重启的进程
     if process.Spec.RestartPolicy == RestartPolicyAlways ||

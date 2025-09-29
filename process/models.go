@@ -8,7 +8,7 @@ import (
 
 // Manager is the implementation of ProcManager
 type Manager struct {
-  processes map[string]*ManagedProcess
+  Processes map[string]*ManagedProcess
 }
 
 // ManagedProcess 是对一个进程的完整声明式描述，包含 Spec（期望状态）和 Status（实际状态）

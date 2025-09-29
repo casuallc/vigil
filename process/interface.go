@@ -9,7 +9,7 @@ type ProcManager interface {
   // ScanProcesses Scan processes
   ScanProcesses(query string) ([]ManagedProcess, error)
   // ManageProcess Manage a process
-  ManageProcess(process ManagedProcess) error
+  CreateProcess(process ManagedProcess) error
   // StartProcess Start a process
   StartProcess(namespace, name string) error
   // StopProcess Stop a process

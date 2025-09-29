@@ -16,18 +16,18 @@ import (
   "github.com/casuallc/vigil/config"
 )
 
-// 添加一个全局变量来保存进程配置文件路径
-var processesFilePath = "process/managed_processes.yaml"
+// ProcessesFilePath 添加一个全局变量来保存进程配置文件路径
+var ProcessesFilePath = "process/managed_processes.yaml"
 
-// ManageProcess implements ProcManager interface to manage a process
-func (m *Manager) ManageProcess(process ManagedProcess) error {
+// CreateProcess implements ProcManager interface to manage a process
+func (m *Manager) CreateProcess(process ManagedProcess) error {
   // 如果未指定namespace，使用默认namespace
   if process.Metadata.Namespace == "" {
     process.Metadata.Namespace = "default"
   }
 
   key := fmt.Sprintf("%s/%s", process.Metadata.Namespace, process.Metadata.Name)
-  if _, exists := m.processes[key]; exists {
+  if _, exists := m.Processes[key]; exists {
     return fmt.Errorf("process %s/%s is already managed", process.Metadata.Namespace, process.Metadata.Name)
   }
 
@@ -35,10 +35,10 @@ func (m *Manager) ManageProcess(process ManagedProcess) error {
   process.Metadata.ID = fmt.Sprintf("%s-%d", process.Metadata.Name, time.Now().UnixNano())
 
   // Store the process
-  m.processes[key] = &process
+  m.Processes[key] = &process
 
   // 保存进程信息
-  if err := m.SaveManagedProcesses(processesFilePath); err != nil {
+  if err := m.SaveManagedProcesses(ProcessesFilePath); err != nil {
     fmt.Printf("Warning: failed to save managed processes: %v\n", err)
   }
 
@@ -51,7 +51,7 @@ func (m *Manager) ManageProcess(process ManagedProcess) error {
 // DeleteProcess 删除一个纳管的进程
 func (m *Manager) DeleteProcess(namespace, name string) error {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.processes[key]
+  process, exists := m.Processes[key]
   if !exists {
     return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
@@ -64,10 +64,10 @@ func (m *Manager) DeleteProcess(namespace, name string) error {
   }
 
   // 从管理列表中删除进程 - 修复使用正确的键
-  delete(m.processes, key)
+  delete(m.Processes, key)
 
   // 保存更新后的进程列表
-  if err := m.SaveManagedProcesses(processesFilePath); err != nil {
+  if err := m.SaveManagedProcesses(ProcessesFilePath); err != nil {
     fmt.Printf("Warning: failed to save managed processes: %v\n", err)
   }
 
@@ -77,7 +77,7 @@ func (m *Manager) DeleteProcess(namespace, name string) error {
 // StartProcess implements ProcManager interface to start a process
 func (m *Manager) StartProcess(namespace, name string) error {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.processes[key]
+  process, exists := m.Processes[key]
   if !exists {
     return fmt.Errorf("process %s/%s is not managed", namespace, name)
   }
@@ -228,7 +228,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
 // StopProcess 实现ProcessManager接口，停止一个进程
 func (m *Manager) StopProcess(namespace, name string) error {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.processes[key]
+  process, exists := m.Processes[key]
   if !exists {
     return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
@@ -357,7 +357,7 @@ func (m *Manager) RestartProcess(namespace, name string) error {
 // UpdateProcessConfig 实现ProcessManager接口，更新进程配置
 func (m *Manager) UpdateProcessConfig(namespace, name string, config config.AppConfig) error {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.processes[key]
+  process, exists := m.Processes[key]
   if !exists {
     return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
@@ -384,7 +384,7 @@ func (m *Manager) UpdateProcessConfig(namespace, name string, config config.AppC
 // startMonitoring 开始监控进程
 func (m *Manager) startMonitoring(namespace, name string) {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.processes[key]
+  process, exists := m.Processes[key]
   if !exists {
     return
   }
@@ -595,7 +595,7 @@ func (m *Manager) updateProcessInfoFromSystem(managedProc *ManagedProcess) error
 // CheckProcesses 检查并重新关联可能已重启的进程
 func (m *Manager) CheckProcesses() {
   // 遍历所有纳管的进程
-  for key, proc := range m.processes {
+  for key, proc := range m.Processes {
     // 只处理应该运行但当前未运行的进程
     if proc.Status.Phase != PhaseRunning &&
       (proc.Spec.RestartPolicy == RestartPolicyAlways ||

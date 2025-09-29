@@ -74,7 +74,7 @@ func (c *Client) ScanProcesses(query string) ([]process.ManagedProcess, error) {
   return processes, nil
 }
 
-func (c *Client) AddProcess(process process.ManagedProcess) error {
+func (c *Client) CreateProcess(process process.ManagedProcess) error {
   resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/add",
     process.Metadata.Namespace, process.Metadata.Name), process)
   if err != nil {
@@ -282,26 +282,44 @@ func (c *Client) CheckHealth() (bool, error) {
 
 // ExecuteCommand executes a command or script on the server
 func (c *Client) ExecuteCommand(command string, isFile bool, envVars []string) (string, error) {
-    reqBody := map[string]interface{}{
-        "command": command,
-        "env":     envVars,
-    }
-    
-    resp, err := c.doRequest("POST", "/api/exec", reqBody)
-    if err != nil {
-        return "", err
-    }
-    
-    if resp.StatusCode != http.StatusOK {
-        return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-    }
-    
-    // 读取响应内容
-    defer resp.Body.Close()
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-        return "", err
-    }
-    
-    return string(body), nil
+  reqBody := map[string]interface{}{
+    "command": command,
+    "env":     envVars,
+  }
+
+  resp, err := c.doRequest("POST", "/api/exec", reqBody)
+  if err != nil {
+    return "", err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+  }
+
+  // 读取响应内容
+  defer resp.Body.Close()
+  body, err := io.ReadAll(resp.Body)
+  if err != nil {
+    return "", err
+  }
+
+  return string(body), nil
+}
+
+// UpdateProcess updates the configuration of a managed process
+func (c *Client) UpdateProcess(process process.ManagedProcess) error {
+  if process.Metadata.Namespace == "" {
+    process.Metadata.Namespace = "default"
+  }
+  resp, err := c.doRequest("PUT", fmt.Sprintf("/api/namespaces/%s/processes/%s",
+    process.Metadata.Namespace, process.Metadata.Name), process)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+  }
+
+  return nil
 }

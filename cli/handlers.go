@@ -5,6 +5,8 @@ import (
   "github.com/casuallc/vigil/process"
   "gopkg.in/yaml.v2" // 导入yaml包用于YAML格式输出
   "os"
+  "os/exec"
+  "path/filepath"
   "time"
 )
 
@@ -108,7 +110,7 @@ func (c *CLI) promptForRegistration(processes []process.ManagedProcess, namespac
   managedProcess.Metadata.Namespace = namespace
 
   // 调用client进行注册
-  err = c.client.AddProcess(managedProcess)
+  err = c.client.CreateProcess(managedProcess)
   if err != nil {
     return fmt.Errorf("failed to register process: %v", err)
   }
@@ -117,7 +119,7 @@ func (c *CLI) promptForRegistration(processes []process.ManagedProcess, namespac
   return nil
 }
 
-func (c *CLI) handleManage(name, command string, namespace string) error {
+func (c *CLI) handleCreate(name, command string, namespace string) error {
   process := process.ManagedProcess{
     Metadata: process.Metadata{
       Name:      name,
@@ -133,19 +135,49 @@ func (c *CLI) handleManage(name, command string, namespace string) error {
     },
   }
 
-  return c.client.AddProcess(process)
+  return c.client.CreateProcess(process)
 }
 
 func (c *CLI) handleStart(name string, namespace string) error {
   return c.client.StartProcess(namespace, name)
 }
 
+// handleStartInteractive 处理交互式选择要启动的进程
+func (c *CLI) handleStartInteractive(namespace string) error {
+  selectedProcess, err := c.selectProcessInteractively(namespace, "select process to start")
+  if err != nil {
+    fmt.Println("Err: ", err.Error())
+    return nil
+  }
+  return c.handleStart(selectedProcess.Metadata.Name, namespace)
+}
+
 func (c *CLI) handleStop(name string, namespace string) error {
   return c.client.StopProcess(namespace, name)
 }
 
+// handleStopInteractive 处理交互式选择要停止的进程
+func (c *CLI) handleStopInteractive(namespace string) error {
+  selectedProcess, err := c.selectProcessInteractively(namespace, "select process to stop")
+  if err != nil {
+    fmt.Println("Err: ", err.Error())
+    return nil
+  }
+  return c.handleStop(selectedProcess.Metadata.Name, namespace)
+}
+
 func (c *CLI) handleRestart(name string, namespace string) error {
   return c.client.RestartProcess(namespace, name)
+}
+
+// handleRestartInteractive 处理交互式选择要重启的进程
+func (c *CLI) handleRestartInteractive(namespace string) error {
+  selectedProcess, err := c.selectProcessInteractively(namespace, "select process to restart")
+  if err != nil {
+    fmt.Println("Err: ", err.Error())
+    return nil
+  }
+  return c.handleRestart(selectedProcess.Metadata.Name, namespace)
 }
 
 func (c *CLI) handleList(namespace string) error {
@@ -231,6 +263,98 @@ func (c *CLI) handleGet(name string, format string, namespace string) error {
   return nil
 }
 
+// handleGetInteractive 处理交互式选择进程的情况
+func (c *CLI) handleGetInteractive(format string, namespace string) error {
+  selectedProcess, err := c.selectProcessInteractively(namespace, "select process")
+  if err != nil {
+    fmt.Println("Err: ", err.Error())
+    return nil
+  }
+  return c.handleGet(selectedProcess.Metadata.Name, format, namespace)
+}
+
+// handleEdit 处理编辑进程定义的命令
+func (c *CLI) handleEdit(name string, namespace string) error {
+  // 1. 获取进程信息
+  proc, err := c.client.GetProcess(namespace, name)
+  if err != nil {
+    return fmt.Errorf("failed to get process: %v", err)
+  }
+
+  // 2. 创建临时文件
+  tmpDir, err := os.MkdirTemp("", "vigil-edit-")
+  if err != nil {
+    return fmt.Errorf("failed to create temporary directory: %v", err)
+  }
+  defer func(path string) {
+    err := os.RemoveAll(path)
+    if err != nil {
+      fmt.Printf("failed to remove temporary directory: %v", err)
+    }
+  }(tmpDir) // 确保清理临时文件
+
+  tmpFile := filepath.Join(tmpDir, fmt.Sprintf("%s-%s.yaml", namespace, name))
+
+  // 3. 将进程信息序列化为YAML并写入临时文件
+  yamlData, err := yaml.Marshal(proc)
+  if err != nil {
+    return fmt.Errorf("failed to marshal process data: %v", err)
+  }
+
+  if err := os.WriteFile(tmpFile, yamlData, 0644); err != nil {
+    return fmt.Errorf("failed to write temporary file: %v", err)
+  }
+
+  // 4. 打开vim编辑器
+  editor := os.Getenv("EDITOR")
+  if editor == "" {
+    editor = "vim" // 默认使用vim
+  }
+
+  cmd := exec.Command(editor, tmpFile)
+  cmd.Stdin = os.Stdin
+  cmd.Stdout = os.Stdout
+  cmd.Stderr = os.Stderr
+
+  if err := cmd.Run(); err != nil {
+    return fmt.Errorf("editor exited with error: %v", err)
+  }
+
+  // 5. 读取编辑后的文件内容
+  editedData, err := os.ReadFile(tmpFile)
+  if err != nil {
+    return fmt.Errorf("failed to read edited file: %v", err)
+  }
+
+  // 6. 解析编辑后的YAML数据
+  var updatedProc process.ManagedProcess
+  if err := yaml.Unmarshal(editedData, &updatedProc); err != nil {
+    return fmt.Errorf("failed to parse edited data: %v", err)
+  }
+
+  // 7. 确保名称和命名空间不变
+  updatedProc.Metadata.Name = name
+  updatedProc.Metadata.Namespace = namespace
+
+  // 8. 发送更新请求
+  if err := c.client.UpdateProcess(updatedProc); err != nil {
+    return fmt.Errorf("failed to update process: %v", err)
+  }
+
+  fmt.Printf("Successfully updated process '%s' in namespace '%s'\n", name, namespace)
+  return nil
+}
+
+// handleEditInteractive 处理交互式编辑进程的命令
+func (c *CLI) handleEditInteractive(namespace string) error {
+  selectedProcess, err := c.selectProcessInteractively(namespace, "select process to edit")
+  if err != nil {
+    fmt.Println("Err: ", err.Error())
+    return nil
+  }
+  return c.handleEdit(selectedProcess.Metadata.Name, namespace)
+}
+
 // handleDelete handles the delete command to remove a managed process
 func (c *CLI) handleDelete(name string, namespace string) error {
   err := c.client.DeleteProcess(namespace, name)
@@ -240,6 +364,16 @@ func (c *CLI) handleDelete(name string, namespace string) error {
 
   fmt.Printf("进程 %s (命名空间: %s) 删除成功\n", name, namespace)
   return nil
+}
+
+// handleDeleteInteractive 处理交互式选择要删除的进程
+func (c *CLI) handleDeleteInteractive(namespace string) error {
+  selectedProcess, err := c.selectProcessInteractively(namespace, "select process to delete")
+  if err != nil {
+    fmt.Println("Err: ", err.Error())
+    return nil
+  }
+  return c.handleDelete(selectedProcess.Metadata.Name, namespace)
 }
 
 func (c *CLI) handleSystemResources() error {
@@ -287,198 +421,38 @@ func (c *CLI) handleGetConfig() error {
   return nil
 }
 
-// handleGetInteractive 处理交互式选择进程的情况
-func (c *CLI) handleGetInteractive(format string, namespace string) error {
-  // 获取所有进程
-  processes, err := c.client.ListProcesses(namespace)
-  if err != nil {
-    return err
-  }
-
-  if len(processes) == 0 {
-    return fmt.Errorf("没有找到进程，请先注册一个进程")
-  }
-
-  // 提取进程名称列表
-  processNames := make([]string, len(processes))
-  for i, p := range processes {
-    processNames[i] = p.Metadata.Name
-  }
-
-  idx, _, err := Select(SelectConfig{
-    Label: "select process",
-    Items: processNames,
-  })
-  if err != nil {
-    fmt.Printf("Err: %s", err.Error())
-    return nil
-  }
-
-  // 使用用户选择的进程名称调用原始的handleGet函数
-  selectedProcess := processes[idx]
-  return c.handleGet(selectedProcess.Metadata.Name, format, namespace)
-}
-
-// handleStartInteractive 处理交互式选择要启动的进程
-func (c *CLI) handleStartInteractive(namespace string) error {
-  // 获取所有进程
-  processes, err := c.client.ListProcesses(namespace)
-  if err != nil {
-    return err
-  }
-
-  if len(processes) == 0 {
-    return fmt.Errorf("没有找到进程，请先注册一个进程")
-  }
-
-  // 提取进程名称列表
-  processNames := make([]string, len(processes))
-  for i, p := range processes {
-    processNames[i] = fmt.Sprintf("%s (Status: %s)", p.Metadata.Name, p.Status.Phase)
-  }
-
-  idx, _, err := Select(SelectConfig{
-    Label: "select process",
-    Items: processNames,
-  })
-  if err != nil {
-    fmt.Printf("Err: %s", err.Error())
-    return nil
-  }
-
-  // 使用用户选择的进程名称调用原始的handleStart函数
-  selectedProcess := processes[idx]
-  return c.handleStart(selectedProcess.Metadata.Name, namespace)
-}
-
-// handleStopInteractive 处理交互式选择要停止的进程
-func (c *CLI) handleStopInteractive(namespace string) error {
-  // 获取所有进程
-  processes, err := c.client.ListProcesses(namespace)
-  if err != nil {
-    return err
-  }
-
-  if len(processes) == 0 {
-    return fmt.Errorf("没有找到进程，请先注册一个进程")
-  }
-
-  // 提取进程名称列表
-  processNames := make([]string, len(processes))
-  for i, p := range processes {
-    processNames[i] = fmt.Sprintf("%s (Status: %s, PID: %d)", p.Metadata.Name, p.Status.Phase, p.Status.PID)
-  }
-
-  idx, _, err := Select(SelectConfig{
-    Label: "select process",
-    Items: processNames,
-  })
-  if err != nil {
-    fmt.Printf("Err: %s", err.Error())
-    return nil
-  }
-
-  // 使用用户选择的进程名称调用原始的handleStop函数
-  selectedProcess := processes[idx]
-  return c.handleStop(selectedProcess.Metadata.Name, namespace)
-}
-
-// handleRestartInteractive 处理交互式选择要重启的进程
-func (c *CLI) handleRestartInteractive(namespace string) error {
-  // 获取所有进程
-  processes, err := c.client.ListProcesses(namespace)
-  if err != nil {
-    return err
-  }
-
-  if len(processes) == 0 {
-    return fmt.Errorf("没有找到进程，请先注册一个进程")
-  }
-
-  // 提取进程名称列表
-  processNames := make([]string, len(processes))
-  for i, p := range processes {
-    processNames[i] = fmt.Sprintf("%s (Status: %s, PID: %d)", p.Metadata.Name, p.Status.Phase, p.Status.PID)
-  }
-
-  idx, _, err := Select(SelectConfig{
-    Label: "select process",
-    Items: processNames,
-  })
-  if err != nil {
-    fmt.Printf("Err: %s", err.Error())
-    return nil
-  }
-
-  // 使用用户选择的进程名称调用原始的handleRestart函数
-  selectedProcess := processes[idx]
-  return c.handleRestart(selectedProcess.Metadata.Name, namespace)
-}
-
-// handleDeleteInteractive 处理交互式选择要删除的进程
-func (c *CLI) handleDeleteInteractive(namespace string) error {
-  // 获取所有进程
-  processes, err := c.client.ListProcesses(namespace)
-  if err != nil {
-    return err
-  }
-
-  if len(processes) == 0 {
-    return fmt.Errorf("没有找到进程，请先注册一个进程")
-  }
-
-  // 提取进程名称列表
-  processNames := make([]string, len(processes))
-  for i, p := range processes {
-    processNames[i] = fmt.Sprintf("%s (Status: %s)", p.Metadata.Name, p.Status.Phase)
-  }
-
-  idx, _, err := Select(SelectConfig{
-    Label: "select process",
-    Items: processNames,
-  })
-  if err != nil {
-    fmt.Printf("Err: %s", err.Error())
-    return nil
-  }
-
-  // 使用用户选择的进程名称调用原始的handleDelete函数
-  selectedProcess := processes[idx]
-  return c.handleDelete(selectedProcess.Metadata.Name, namespace)
-}
-
 // handleExec handles the exec command to execute a command or script
 func (c *CLI) handleExec(command string, isFile bool, envVars []string, outputFile string) error {
-    // 如果是文件，读取本地文件内容
-    if isFile {
-        fileContent, err := os.ReadFile(command)
-        if err != nil {
-            return fmt.Errorf("failed to read script file: %w", err)
-        }
-        // 将文件内容作为命令发送，标记为非文件
-        command = string(fileContent)
-        isFile = false
-    }
-    
-    // 执行命令并获取输出
-    output, err := c.client.ExecuteCommand(command, isFile, envVars)
-    
-    // 根据outputFile参数决定输出目标
-    if outputFile != "" {
-        // 输出到文件
-        if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
-            return fmt.Errorf("failed to write output to file: %w", err)
-        }
-        fmt.Printf("Command output written to %s\n", outputFile)
-    } else {
-        // 输出到控制台
-        fmt.Println(output)
-    }
-    
-    // 如果有错误，返回错误信息
+  // 如果是文件，读取本地文件内容
+  if isFile {
+    fileContent, err := os.ReadFile(command)
     if err != nil {
-        return fmt.Errorf("command execution failed: %w", err)
+      return fmt.Errorf("failed to read script file: %w", err)
     }
-    
-    return nil
+    // 将文件内容作为命令发送，标记为非文件
+    command = string(fileContent)
+    isFile = false
+  }
+
+  // 执行命令并获取输出
+  output, err := c.client.ExecuteCommand(command, isFile, envVars)
+
+  // 根据outputFile参数决定输出目标
+  if outputFile != "" {
+    // 输出到文件
+    if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
+      return fmt.Errorf("failed to write output to file: %w", err)
+    }
+    fmt.Printf("Command output written to %s\n", outputFile)
+  } else {
+    // 输出到控制台
+    fmt.Println(output)
+  }
+
+  // 如果有错误，返回错误信息
+  if err != nil {
+    return fmt.Errorf("command execution failed: %w", err)
+  }
+
+  return nil
 }

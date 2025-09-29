@@ -39,7 +39,7 @@ func (s *Server) handleAddProcess(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  if err := s.manager.ManageProcess(process); err != nil {
+  if err := s.manager.CreateProcess(process); err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
@@ -190,30 +190,68 @@ func (s *Server) handleDeleteProcess(w http.ResponseWriter, r *http.Request) {
 
 // handleExecuteCommand handles the POST /api/exec endpoint
 func (s *Server) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
-    var req struct {
-        Command string   `json:"command"`
-        Env     []string `json:"env"`
-    }
-    
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        writeError(w, http.StatusBadRequest, err.Error())
-        return
-    }
-    
-    // 验证命令不为空
-    if req.Command == "" {
-        writeError(w, http.StatusBadRequest, "Command cannot be empty")
-        return
-    }
-    
-    // 使用common包中的ExecuteCommand函数执行命令
-    output, err := common.ExecuteCommand(req.Command, req.Env)
-    
-    if err != nil {
-        writeError(w, http.StatusInternalServerError, fmt.Sprintf("Command execution failed: %v, output: %s", err, output))
-        return
-    }
-    
-    w.WriteHeader(http.StatusOK)
-    w.Write([]byte(output))
+  var req struct {
+    Command string   `json:"command"`
+    Env     []string `json:"env"`
+  }
+
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 验证命令不为空
+  if req.Command == "" {
+    writeError(w, http.StatusBadRequest, "Command cannot be empty")
+    return
+  }
+
+  // 使用common包中的ExecuteCommand函数执行命令
+  output, err := common.ExecuteCommand(req.Command, req.Env)
+
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, fmt.Sprintf("Command execution failed: %v, output: %s", err, output))
+    return
+  }
+
+  w.WriteHeader(http.StatusOK)
+  w.Write([]byte(output))
+}
+
+// handleEditProcess handles updating a managed process
+func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
+  vars := mux.Vars(r)
+  namespace := getNamespace(vars)
+  name := vars["name"]
+
+  var updatedProcess process.ManagedProcess
+  if err := json.NewDecoder(r.Body).Decode(&updatedProcess); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 确保请求中的命名空间和名称与URL中的一致
+  updatedProcess.Metadata.Namespace = namespace
+  updatedProcess.Metadata.Name = name
+
+  // 获取原始进程以保留状态信息
+  originalProcess, err := s.manager.GetProcessStatus(namespace, name)
+  if err != nil {
+    writeError(w, http.StatusNotFound, err.Error())
+    return
+  }
+
+  // 保留原始状态信息
+  updatedProcess.Status = originalProcess.Status
+
+  // 更新进程配置
+  key := fmt.Sprintf("%s/%s", namespace, name)
+  s.manager.GetProcesses()[key] = &updatedProcess
+
+  // 保存更新后的进程信息
+  if err := s.manager.SaveManagedProcesses(process.ProcessesFilePath); err != nil {
+    fmt.Printf("Warning: failed to save managed processes: %v\n", err)
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "Process updated successfully"})
 }
