@@ -4,7 +4,7 @@ import (
   amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type RabbitMQServerConfig struct {
+type ServerConfig struct {
   Server   string
   Port     int
   Vhost    string
@@ -12,14 +12,14 @@ type RabbitMQServerConfig struct {
   Password string
 }
 
-type RabbitMQExchangeConfig struct {
+type ExchangeConfig struct {
   Name       string
   Type       string
   Durable    bool
   AutoDelete bool
 }
 
-type RabbitMQQueueConfig struct {
+type QueueConfig struct {
   Name       string
   Passive    bool
   Durable    bool
@@ -28,14 +28,14 @@ type RabbitMQQueueConfig struct {
   Args       amqp.Table
 }
 
-type RabbitMQBindConfig struct {
+type BindConfig struct {
   Queue      string
   Exchange   string
   RoutingKey string
   Arguments  amqp.Table
 }
 
-type RabbitMQPublishConfig struct {
+type PublishConfig struct {
   Exchange   string
   RoutingKey string
   Interval   int        // 时间间隔；毫秒
@@ -45,7 +45,7 @@ type RabbitMQPublishConfig struct {
   Headers    amqp.Table // 消息头
 }
 
-type RabbitMQConsumeConfig struct {
+type ConsumeConfig struct {
   Queue    string
   Consumer string
   AutoAck  bool

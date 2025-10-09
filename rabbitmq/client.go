@@ -11,7 +11,7 @@ import (
 type RabbitClient struct {
   conn    *amqp.Connection
   channel *amqp.Channel
-  Config  *RabbitMQServerConfig
+  Config  *ServerConfig
   mu      sync.Mutex
 }
 
@@ -50,7 +50,7 @@ func (r *RabbitClient) Close() {
   }
 }
 
-func (r *RabbitClient) DeclareExchange(exchange *RabbitMQExchangeConfig) error {
+func (r *RabbitClient) DeclareExchange(exchange *ExchangeConfig) error {
   r.mu.Lock()
   defer r.mu.Unlock()
 
@@ -86,7 +86,7 @@ func (r *RabbitClient) DeleteExchange(name string) error {
   return nil
 }
 
-func (r *RabbitClient) DeclareQueue(queue *RabbitMQQueueConfig) error {
+func (r *RabbitClient) DeclareQueue(queue *QueueConfig) error {
   r.mu.Lock()
   defer r.mu.Unlock()
 
@@ -122,7 +122,7 @@ func (r *RabbitClient) DeleteQueue(name string) error {
   return nil
 }
 
-func (r *RabbitClient) QueueBind(bind *RabbitMQBindConfig) error {
+func (r *RabbitClient) QueueBind(bind *BindConfig) error {
   r.mu.Lock()
   defer r.mu.Unlock()
 
@@ -140,7 +140,7 @@ func (r *RabbitClient) QueueBind(bind *RabbitMQBindConfig) error {
   return nil
 }
 
-func (r *RabbitClient) QueueUnBind(bind *RabbitMQBindConfig) error {
+func (r *RabbitClient) QueueUnBind(bind *BindConfig) error {
   r.mu.Lock()
   defer r.mu.Unlock()
 
@@ -158,7 +158,7 @@ func (r *RabbitClient) QueueUnBind(bind *RabbitMQBindConfig) error {
 }
 
 // PublishMessage 发送消息
-func (r *RabbitClient) PublishMessage(publish *RabbitMQPublishConfig) error {
+func (r *RabbitClient) PublishMessage(publish *PublishConfig) error {
   r.mu.Lock()
   defer r.mu.Unlock()
 
@@ -194,7 +194,7 @@ func (r *RabbitClient) PublishMessage(publish *RabbitMQPublishConfig) error {
 }
 
 // ConsumeMessage 接收消息
-func (r *RabbitClient) ConsumeMessage(consume *RabbitMQConsumeConfig) error {
+func (r *RabbitClient) ConsumeMessage(consume *ConsumeConfig) error {
   r.mu.Lock()
   defer r.mu.Unlock()
 

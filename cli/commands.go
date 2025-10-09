@@ -43,6 +43,22 @@ func (c *CLI) setupCommands() *cobra.Command {
   execCmd := c.setupExecCommand()
   rootCmd.AddCommand(execCmd)
 
+  // Add Redis commands
+  redisCmd := c.setupRedisCommands()
+  rootCmd.AddCommand(redisCmd)
+
+  // Add RabbitMQ commands
+  rabbitCmd := c.setupRabbitCommands()
+  rootCmd.AddCommand(rabbitCmd)
+
+  // Add Zookeeper commands
+  zkCmd := c.setupZkCommands()
+  rootCmd.AddCommand(zkCmd)
+
+  // 添加RocketMQ命令
+  rocketCmd := c.setupRocketCommands()
+  rootCmd.AddCommand(rocketCmd)
+
   return rootCmd
 }
 
