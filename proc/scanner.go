@@ -1,11 +1,10 @@
-package scanner
+package proc
 
 import (
   "bufio"
   "bytes"
   "fmt"
   "github.com/casuallc/vigil/common"
-  "github.com/casuallc/vigil/proc"
   "github.com/shirou/gopsutil/v3/process"
   "os"
   "os/exec"
@@ -24,7 +23,7 @@ const (
 )
 
 // ScanWithScript scans processes using a custom script
-func ScanWithScript(script string) ([]proc.ManagedProcess, error) {
+func ScanWithScript(script string) ([]ManagedProcess, error) {
   // 创建一个临时脚本文件
   // 在实际实现中，应该使用更安全的方式处理临时文件
   // 这里为了简化示例，直接执行脚本内容
@@ -41,7 +40,7 @@ func ScanWithScript(script string) ([]proc.ManagedProcess, error) {
   }
 
   // 解析脚本输出，期望每行包含一个PID
-  var processes []proc.ManagedProcess
+  var processes []ManagedProcess
   lines := strings.Split(output.String(), "\n")
 
   for _, line := range lines {
@@ -71,13 +70,13 @@ func ScanWithScript(script string) ([]proc.ManagedProcess, error) {
 }
 
 // ScanUnixProcesses scans processes on Unix/Linux/macOS systems
-func ScanUnixProcesses(query string) ([]proc.ManagedProcess, error) {
+func ScanUnixProcesses(query string) ([]ManagedProcess, error) {
   dirs, err := os.ReadDir("/proc")
   if err != nil {
     return nil, fmt.Errorf("failed to read /proc: %v", err)
   }
 
-  var processes []proc.ManagedProcess
+  var processes []ManagedProcess
   // Compile regex for query matching
   queryRegex, err := regexp.Compile(query)
   if err != nil {
@@ -116,11 +115,11 @@ func ScanUnixProcesses(query string) ([]proc.ManagedProcess, error) {
 }
 
 // GetProcessByPID 获取指定PID的进程详细信息
-func GetProcessByPID(pid int) (*proc.ManagedProcess, error) {
+func GetProcessByPID(pid int) (*ManagedProcess, error) {
   // 创建基础结构体
-  manageProcess := &proc.ManagedProcess{
-    Spec: proc.Spec{},
-    Status: proc.Status{
+  manageProcess := &ManagedProcess{
+    Spec: Spec{},
+    Status: Status{
       PID: pid,
     },
   }
@@ -132,54 +131,54 @@ func GetProcessByPID(pid int) (*proc.ManagedProcess, error) {
   }
 
   // 填充基本信息
-  if err := proc.FillBasicInfo(manageProcess, sysProcess); err != nil {
+  if err := FillBasicInfo(manageProcess, sysProcess); err != nil {
     return nil, fmt.Errorf("failed to fill basic info: %w", err)
   }
 
   // 填充命令和参数信息
-  if err := proc.FillCommandInfo(manageProcess, sysProcess); err != nil {
+  if err := FillCommandInfo(manageProcess, sysProcess); err != nil {
     return nil, fmt.Errorf("failed to fill command info: %w", err)
   }
 
   // 填充环境变量
-  if err := proc.FillEnvironmentInfo(manageProcess, sysProcess); err != nil {
+  if err := FillEnvironmentInfo(manageProcess, sysProcess); err != nil {
     // 环境变量可能因为权限问题无法读取，这里不作为致命错误
     fmt.Printf("Warning: failed to read environment variables for PID %d: %v\n", pid, err)
   }
 
   // 填充工作目录
-  if err := proc.FillWorkingDir(manageProcess, sysProcess); err != nil {
+  if err := FillWorkingDir(manageProcess, sysProcess); err != nil {
     // 工作目录可能因为权限问题无法读取
     fmt.Printf("Warning: failed to read working directory for PID %d: %v\n", pid, err)
   }
 
   // 填充用户和用户组信息
-  if err := proc.FillUserGroupInfo(manageProcess, sysProcess); err != nil {
+  if err := FillUserGroupInfo(manageProcess, sysProcess); err != nil {
     fmt.Printf("Warning: failed to read user/group info for PID %d: %v\n", pid, err)
   }
 
   // 填充资源统计信息
-  if err := proc.FillResourceStats(manageProcess, sysProcess); err != nil {
+  if err := FillResourceStats(manageProcess, sysProcess); err != nil {
     fmt.Printf("Warning: failed to read resource stats for PID %d: %v\n", pid, err)
   }
 
   // 填充监听端口信息
-  if err := proc.FillListeningPorts(manageProcess, sysProcess); err != nil {
+  if err := FillListeningPorts(manageProcess, sysProcess); err != nil {
     fmt.Printf("Warning: failed to read listening ports for PID %d: %v\n", pid, err)
   }
 
   // 设置状态
-  manageProcess.Status.Phase = proc.PhaseRunning
+  manageProcess.Status.Phase = PhaseRunning
 
   return manageProcess, nil
 }
 
 // Helper function to get proc status from /proc (alternative method)
-func getProcessStatusFromProc(pid int) (proc.Phase, error) {
+func getProcessStatusFromProc(pid int) (Phase, error) {
   statusPath := filepath.Join("/proc", strconv.Itoa(pid), "status")
   file, err := os.Open(statusPath)
   if err != nil {
-    return proc.PhaseUnknown, err
+    return PhaseUnknown, err
   }
   defer file.Close()
 
@@ -192,17 +191,17 @@ func getProcessStatusFromProc(pid int) (proc.Phase, error) {
         state := fields[1]
         switch state {
         case "R", "S", "D": // Running, Sleeping, Uninterruptible sleep
-          return proc.PhaseRunning, nil
+          return PhaseRunning, nil
         case "Z": // Zombie
-          return proc.PhaseFailed, nil
+          return PhaseFailed, nil
         case "T": // Stopped
-          return proc.PhaseStopped, nil
+          return PhaseStopped, nil
         default:
-          return proc.PhaseUnknown, nil
+          return PhaseUnknown, nil
         }
       }
     }
   }
 
-  return proc.PhaseUnknown, scanner.Err()
+  return PhaseUnknown, scanner.Err()
 }

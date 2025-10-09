@@ -1,8 +1,7 @@
-package core
+package proc
 
 import (
   "fmt"
-  "github.com/casuallc/vigil/proc"
   "gopkg.in/yaml.v3"
   "os"
   "time"
@@ -10,13 +9,13 @@ import (
 
 // SaveManagedProcesses 保存所有已管理的进程到文件
 func (m *Manager) SaveManagedProcesses(filePath string) error {
-  processesList := make([]proc.ManagedProcess, 0, len(m.Processes))
+  processesList := make([]ManagedProcess, 0, len(m.Processes))
 
   // 过滤掉运行时的状态信息，只保存配置相关信息
   for _, p := range m.Processes {
     processCopy := *p
     // 重置运行时状态
-    processCopy.Status.Phase = proc.PhaseFailed
+    processCopy.Status.Phase = PhaseFailed
     processCopy.Status.PID = 0
     processCopy.Status.StartTime = &time.Time{}
     processCopy.Status.ResourceStats = nil
@@ -54,7 +53,7 @@ func (m *Manager) LoadManagedProcesses(filePath string) error {
   }
 
   // 解析YAML
-  var processesList []proc.ManagedProcess
+  var processesList []ManagedProcess
   if err := yaml.Unmarshal(data, &processesList); err != nil {
     return fmt.Errorf("failed to unmarshal processes: %v", err)
   }
@@ -67,8 +66,8 @@ func (m *Manager) LoadManagedProcesses(filePath string) error {
     m.Processes[key] = &processCopy
 
     // 自动启动标记为需要重启的进程
-    if process.Spec.RestartPolicy == proc.RestartPolicyAlways ||
-      (process.Spec.RestartPolicy == proc.RestartPolicyOnFailure && process.Status.LastTerminationInfo.ExitCode != 0) {
+    if process.Spec.RestartPolicy == RestartPolicyAlways ||
+      (process.Spec.RestartPolicy == RestartPolicyOnFailure && process.Status.LastTerminationInfo.ExitCode != 0) {
       go func(namespace, name string) {
         // 延迟启动，避免启动时资源竞争
         time.Sleep(1 * time.Second)

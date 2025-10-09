@@ -1,9 +1,8 @@
-package core
+package proc
 
 import (
   "errors"
   "fmt"
-  "github.com/casuallc/vigil/proc"
   "os"
   "os/exec"
   "path/filepath"
@@ -13,7 +12,7 @@ import (
 )
 
 // CreateProcess implements ProcManager interface to manage a proc
-func (m *Manager) CreateProcess(process proc.ManagedProcess) error {
+func (m *Manager) CreateProcess(process ManagedProcess) error {
   // 如果未指定namespace，使用默认namespace
   if process.Metadata.Namespace == "" {
     process.Metadata.Namespace = "default"
@@ -50,7 +49,7 @@ func (m *Manager) DeleteProcess(namespace, name string) error {
   }
 
   // 如果进程正在运行，先停止它
-  if process.Status.Phase == proc.PhaseRunning {
+  if process.Status.Phase == PhaseRunning {
     if err := m.StopProcess(namespace, name); err != nil {
       return fmt.Errorf("停止进程失败: %w", err)
     }
@@ -75,12 +74,12 @@ func (m *Manager) StartProcess(namespace, name string) error {
     return fmt.Errorf("proc %s/%s is not managed", namespace, name)
   }
 
-  if process.Status.Phase == proc.PhaseRunning {
+  if process.Status.Phase == PhaseRunning {
     return fmt.Errorf("proc %s is already running", name)
   }
 
   // Set proc status to pending
-  process.Status.Phase = proc.PhasePending
+  process.Status.Phase = PhasePending
 
   // 构建命令 - 使用 CommandConfig
   cmd := exec.Command(process.Spec.Exec.Command, process.Spec.Exec.Args...)
@@ -92,7 +91,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
     // Use current directory by default
     currentDir, err := os.Getwd()
     if err != nil {
-      process.Status.Phase = proc.PhaseFailed
+      process.Status.Phase = PhaseFailed
       return err
     }
     cmd.Dir = currentDir
@@ -108,7 +107,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
   // 确保日志目录存在
   if process.Spec.Log.Dir != "" {
     if err := os.MkdirAll(process.Spec.Log.Dir, 0755); err != nil {
-      process.Status.Phase = proc.PhaseFailed
+      process.Status.Phase = PhaseFailed
       return err
     }
   }
@@ -121,14 +120,14 @@ func (m *Manager) StartProcess(namespace, name string) error {
 
   stdout, err := os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%s.stdout.log", name)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
   if err != nil {
-    process.Status.Phase = proc.PhaseFailed
+    process.Status.Phase = PhaseFailed
     return err
   }
   defer stdout.Close()
 
   stderr, err := os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%s.stderr.log", name)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
   if err != nil {
-    process.Status.Phase = proc.PhaseFailed
+    process.Status.Phase = PhaseFailed
     return err
   }
   defer stderr.Close()
@@ -149,12 +148,12 @@ func (m *Manager) StartProcess(namespace, name string) error {
   select {
   case err := <-done:
     if err != nil {
-      process.Status.Phase = proc.PhaseFailed
+      process.Status.Phase = PhaseFailed
       return err
     }
   case <-time.After(timeout):
     // Timeout, kill the proc
-    process.Status.Phase = proc.PhaseFailed
+    process.Status.Phase = PhaseFailed
     if cmd.Process != nil {
       cmd.Process.Kill()
     }
@@ -163,7 +162,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
 
   // Update proc information
   process.Status.PID = cmd.Process.Pid
-  process.Status.Phase = proc.PhaseRunning
+  process.Status.Phase = PhaseRunning
   now := time.Now()
   process.Status.StartTime = &now
   process.Status.RestartCount++
@@ -177,26 +176,26 @@ func (m *Manager) StartProcess(namespace, name string) error {
       if errors.As(err, &exitErr) {
         if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
           if process.Status.LastTerminationInfo == nil {
-            process.Status.LastTerminationInfo = &proc.TerminationInfo{}
+            process.Status.LastTerminationInfo = &TerminationInfo{}
           }
           process.Status.LastTerminationInfo.ExitCode = status.ExitStatus()
         }
       }
     }
 
-    process.Status.Phase = proc.PhaseStopped
+    process.Status.Phase = PhaseStopped
     process.Status.PID = 0
 
     // 应用重启策略
     shouldRestart := false
     switch process.Spec.RestartPolicy {
-    case proc.RestartPolicyAlways:
+    case RestartPolicyAlways:
       shouldRestart = true
-    case proc.RestartPolicyOnFailure:
+    case RestartPolicyOnFailure:
       shouldRestart = err != nil
-    case proc.RestartPolicyOnSuccess:
+    case RestartPolicyOnSuccess:
       shouldRestart = err == nil
-    case proc.RestartPolicyNever:
+    case RestartPolicyNever:
       shouldRestart = false
     }
 
@@ -226,12 +225,12 @@ func (m *Manager) StopProcess(namespace, name string) error {
     return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
 
-  if process.Status.Phase == proc.PhaseStopped {
+  if process.Status.Phase == PhaseStopped {
     return fmt.Errorf("进程 %s 已经停止", name)
   }
 
   // 设置进程状态为停止中
-  process.Status.Phase = proc.PhaseStopping
+  process.Status.Phase = PhaseStopping
 
   // 如果有自定义停止命令，使用它
   if process.Spec.Exec.StopCommand != nil {
@@ -270,7 +269,7 @@ func (m *Manager) StopProcess(namespace, name string) error {
       return m.forceStopProcess(process)
     }
 
-    process.Status.Phase = proc.PhaseStopped
+    process.Status.Phase = PhaseStopped
     process.Status.PID = 0
     return nil
   } else {
@@ -280,7 +279,7 @@ func (m *Manager) StopProcess(namespace, name string) error {
 }
 
 // 新增一个辅助方法，用于强制终止进程
-func (m *Manager) forceStopProcess(process *proc.ManagedProcess) error {
+func (m *Manager) forceStopProcess(process *ManagedProcess) error {
   // 获取进程
   sysProcess, err := os.FindProcess(process.Status.PID)
   if err != nil {
@@ -325,7 +324,7 @@ func (m *Manager) forceStopProcess(process *proc.ManagedProcess) error {
     }
   }
 
-  process.Status.Phase = proc.PhaseStopped
+  process.Status.Phase = PhaseStopped
   process.Status.PID = 0
   return nil
 }

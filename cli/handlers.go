@@ -282,9 +282,9 @@ func (c *CLI) handleGetInteractive(format string, namespace string) error {
 // handleEdit 处理编辑进程定义的命令
 func (c *CLI) handleEdit(name string, namespace string) error {
   // 1. 获取进程信息
-  proc, err := c.client.GetProcess(namespace, name)
+  process, err := c.client.GetProcess(namespace, name)
   if err != nil {
-    return fmt.Errorf("failed to get proc: %v", err)
+    return fmt.Errorf("failed to get process: %v", err)
   }
 
   // 2. 创建临时文件
@@ -302,9 +302,9 @@ func (c *CLI) handleEdit(name string, namespace string) error {
   tmpFile := filepath.Join(tmpDir, fmt.Sprintf("%s-%s.yaml", namespace, name))
 
   // 3. 将进程信息序列化为YAML并写入临时文件
-  yamlData, err := yaml.Marshal(proc)
+  yamlData, err := yaml.Marshal(process)
   if err != nil {
-    return fmt.Errorf("failed to marshal proc data: %v", err)
+    return fmt.Errorf("failed to marshal process data: %v", err)
   }
 
   if err := os.WriteFile(tmpFile, yamlData, 0644); err != nil {
@@ -344,10 +344,10 @@ func (c *CLI) handleEdit(name string, namespace string) error {
 
   // 8. 发送更新请求
   if err := c.client.UpdateProcess(updatedProc); err != nil {
-    return fmt.Errorf("failed to update proc: %v", err)
+    return fmt.Errorf("failed to update process: %v", err)
   }
 
-  fmt.Printf("Successfully updated proc '%s' in namespace '%s'\n", name, namespace)
+  fmt.Printf("Successfully updated process '%s' in namespace '%s'\n", name, namespace)
   return nil
 }
 

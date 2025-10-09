@@ -1,12 +1,9 @@
-package core
+package proc
 
 import (
   "errors"
   "fmt"
   "github.com/casuallc/vigil/config"
-  "github.com/casuallc/vigil/proc"
-  "github.com/casuallc/vigil/proc/monitor"
-  "github.com/casuallc/vigil/proc/scanner"
   "github.com/shirou/gopsutil/v3/process"
   "os"
   "os/exec"
@@ -19,34 +16,34 @@ import (
 // NewManager 创建一个新的进程管理器
 func NewManager() *Manager {
   return &Manager{
-    Processes: make(map[string]*proc.ManagedProcess),
+    Processes: make(map[string]*ManagedProcess),
   }
 }
 
 // Manager 实现了所有进程管理相关的接口
 // 它实现了 ProcessScanner, ProcessLifecycle, ProcessInfo, ProcessConfig 和 ProcessMonitor 接口
 type Manager struct {
-  Processes map[string]*proc.ManagedProcess
+  Processes map[string]*ManagedProcess
 }
 
 // GetProcesses 获取所有进程的映射
-func (m *Manager) GetProcesses() map[string]*proc.ManagedProcess {
+func (m *Manager) GetProcesses() map[string]*ManagedProcess {
   return m.Processes
 }
 
 // GetProcessStatus 获取进程状态
-func (m *Manager) GetProcessStatus(namespace, name string) (proc.ManagedProcess, error) {
+func (m *Manager) GetProcessStatus(namespace, name string) (ManagedProcess, error) {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.Processes[key]
+  managedProcess, exists := m.Processes[key]
   if !exists {
-    return proc.ManagedProcess{}, errors.New(fmt.Sprintf("Process %s/%s is not managed", namespace, name))
+    return ManagedProcess{}, errors.New(fmt.Sprintf("Process %s/%s is not managed", namespace, name))
   }
-  return *process, nil
+  return *managedProcess, nil
 }
 
 // ListManagedProcesses 获取所有已管理的进程
-func (m *Manager) ListManagedProcesses(namespace string) ([]proc.ManagedProcess, error) {
-  result := make([]proc.ManagedProcess, 0)
+func (m *Manager) ListManagedProcesses(namespace string) ([]ManagedProcess, error) {
+  result := make([]ManagedProcess, 0)
 
   for _, p := range m.Processes {
     // 如果指定了namespace，则只返回该namespace的进程
@@ -58,50 +55,50 @@ func (m *Manager) ListManagedProcesses(namespace string) ([]proc.ManagedProcess,
 }
 
 // MonitorProcess 监控进程资源使用情况
-func (m *Manager) MonitorProcess(namespace, name string) (*proc.ResourceStats, error) {
+func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error) {
   // 检查进程是否存在
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.Processes[key]
+  managedProcess, exists := m.Processes[key]
   if !exists {
     return nil, errors.New(fmt.Sprintf("Process %s/%s is not managed", namespace, name))
   }
 
   // 检查进程是否正在运行
-  if process.Status.Phase != proc.PhaseRunning {
+  if managedProcess.Status.Phase != PhaseRunning {
     return nil, errors.New(fmt.Sprintf("Process %s/%s is not running", namespace, name))
   }
 
-  pid := process.Status.PID
+  pid := managedProcess.Status.PID
 
   // 获取CPU和内存使用情况
-  cpuUsage, memoryUsage, err := monitor.GetProcessCpuAndMemory(pid)
+  cpuUsage, memoryUsage, err := GetProcessCpuAndMemory(pid)
   if err != nil {
     return nil, fmt.Errorf("failed to get CPU and memory usage: %v", err)
   }
 
   // 获取磁盘IO统计信息
-  diskIO, err := monitor.GetProcessDiskIO(pid)
+  diskIO, err := GetProcessDiskIO(pid)
   if err != nil {
     // 磁盘IO获取失败不应阻止整个监控过程
     fmt.Printf("Warning: failed to get disk IO: %v\n", err)
   }
 
   // 获取网络IO统计信息
-  networkIO, err := monitor.GetProcessNetworkIO(pid)
+  networkIO, err := GetProcessNetworkIO(pid)
   if err != nil {
     // 网络IO获取失败不应阻止整个监控过程
     fmt.Printf("Warning: failed to get network IO: %v\n", err)
   }
 
   // 获取监听端口信息
-  listeningPorts, err := monitor.GetProcessListeningPorts(pid)
+  listeningPorts, err := GetProcessListeningPorts(pid)
   if err != nil {
     // 监听端口获取失败不应阻止整个监控过程
     fmt.Printf("Warning: failed to get listening ports: %v\n", err)
   }
 
   // 创建并返回ResourceStats
-  stats := &proc.ResourceStats{
+  stats := &ResourceStats{
     CPUUsage:       cpuUsage,
     MemoryUsage:    memoryUsage,
     DiskIO:         diskIO,
@@ -113,29 +110,29 @@ func (m *Manager) MonitorProcess(namespace, name string) (*proc.ResourceStats, e
   stats.SetFormattedValues()
 
   // 更新进程的Stats信息
-  process.Status.ResourceStats = stats
+  managedProcess.Status.ResourceStats = stats
 
   return stats, nil
 }
 
 // ScanProcesses 扫描系统进程
-func (m *Manager) ScanProcesses(query string) ([]proc.ManagedProcess, error) {
+func (m *Manager) ScanProcesses(query string) ([]ManagedProcess, error) {
   // 根据查询类型选择不同的扫描方法
-  if strings.HasPrefix(query, scanner.ScriptPrefix) {
+  if strings.HasPrefix(query, ScriptPrefix) {
     // 直接执行内联脚本
-    scriptContent := strings.TrimPrefix(query, scanner.ScriptPrefix)
-    return scanner.ScanWithScript(scriptContent)
-  } else if strings.HasPrefix(query, scanner.FileScriptPrefix) {
+    scriptContent := strings.TrimPrefix(query, ScriptPrefix)
+    return ScanWithScript(scriptContent)
+  } else if strings.HasPrefix(query, FileScriptPrefix) {
     // 从文件加载脚本并执行
-    scriptPath := strings.TrimPrefix(query, scanner.FileScriptPrefix)
+    scriptPath := strings.TrimPrefix(query, FileScriptPrefix)
     content, err := os.ReadFile(scriptPath)
     if err != nil {
       return nil, fmt.Errorf("failed to read script file: %v", err)
     }
-    return scanner.ScanWithScript(string(content))
+    return ScanWithScript(string(content))
   } else {
     // 使用标准的Unix进程扫描
-    return scanner.ScanUnixProcesses(query)
+    return ScanUnixProcesses(query)
   }
 }
 
@@ -145,23 +142,23 @@ var ProcessesFilePath = "proc/managed_processes.yaml"
 // UpdateProcessConfig 实现ProcessManager接口，更新进程配置
 func (m *Manager) UpdateProcessConfig(namespace, name string, config config.AppConfig) error {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.Processes[key]
+  managedProcess, exists := m.Processes[key]
   if !exists {
     return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
 
   // 保存旧配置
-  oldConfig := process.Spec.Config
+  oldConfig := managedProcess.Spec.Config
 
   // 更新配置
-  process.Spec.Config = config
+  managedProcess.Spec.Config = config
 
   // 如果进程正在运行，需要重启来应用新配置
-  if process.Status.Phase == proc.PhaseRunning {
+  if managedProcess.Status.Phase == PhaseRunning {
     // 重启进程
     if err := m.RestartProcess(namespace, name); err != nil {
       // 如果重启失败，恢复旧配置
-      process.Spec.Config = oldConfig
+      managedProcess.Spec.Config = oldConfig
       return err
     }
   }
@@ -172,7 +169,7 @@ func (m *Manager) UpdateProcessConfig(namespace, name string, config config.AppC
 // startMonitoring 开始监控进程
 func (m *Manager) startMonitoring(namespace, name string) {
   key := fmt.Sprintf("%s/%s", namespace, name)
-  process, exists := m.Processes[key]
+  managedProcess, exists := m.Processes[key]
   if !exists {
     return
   }
@@ -188,39 +185,39 @@ func (m *Manager) startMonitoring(namespace, name string) {
   for {
     select {
     case <-ticker.C:
-      if process.Status.Phase == proc.PhaseRunning {
+      if managedProcess.Status.Phase == PhaseRunning {
         // 更新资源使用情况
         stats, err := m.MonitorProcess(namespace, name)
         if err == nil {
-          process.Status.ResourceStats = stats
+          managedProcess.Status.ResourceStats = stats
         }
       }
 
     case <-checkTicker.C:
       // 检查进程是否还在运行
-      if process.Status.Phase == proc.PhaseRunning {
-        sysProcess, err := os.FindProcess(process.Status.PID)
+      if managedProcess.Status.Phase == PhaseRunning {
+        sysProcess, err := os.FindProcess(managedProcess.Status.PID)
         if err != nil {
           // 进程不存在了，标记为已停止
-          process.Status.Phase = proc.PhaseStopped
-          process.Status.PID = 0
+          managedProcess.Status.Phase = PhaseStopped
+          managedProcess.Status.PID = 0
 
           // 尝试重新关联进程
-          if process.Spec.RestartPolicy == proc.RestartPolicyAlways ||
-            process.Spec.RestartPolicy == proc.RestartPolicyOnFailure {
-            go m.tryCheckProcess(process)
+          if managedProcess.Spec.RestartPolicy == RestartPolicyAlways ||
+            managedProcess.Spec.RestartPolicy == RestartPolicyOnFailure {
+            go m.tryCheckProcess(managedProcess)
           }
         } else {
           // 在Unix系统上，我们可以发送0信号来检查进程是否存在
           if err := sysProcess.Signal(syscall.Signal(0)); err != nil {
             // 进程不存在了
-            process.Status.Phase = proc.PhaseStopped
-            process.Status.PID = 0
+            managedProcess.Status.Phase = PhaseStopped
+            managedProcess.Status.PID = 0
 
             // 尝试重新关联进程
-            if process.Spec.RestartPolicy == proc.RestartPolicyAlways ||
-              process.Spec.RestartPolicy == proc.RestartPolicyOnFailure {
-              go m.tryCheckProcess(process)
+            if managedProcess.Spec.RestartPolicy == RestartPolicyAlways ||
+              managedProcess.Spec.RestartPolicy == RestartPolicyOnFailure {
+              go m.tryCheckProcess(managedProcess)
             }
           }
         }
@@ -230,7 +227,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
 }
 
 // matchProcess 根据多个特征匹配进程，优先使用用户定义的识别脚本
-func (m *Manager) matchProcess(managedProc *proc.ManagedProcess, sysProcess *process.Process) bool {
+func (m *Manager) matchProcess(managedProc *ManagedProcess, sysProcess *process.Process) bool {
   // 如果用户定义了识别脚本，优先使用它
   if managedProc.Spec.CheckAlive != nil {
     return m.matchProcessByScript(managedProc, sysProcess)
@@ -241,7 +238,7 @@ func (m *Manager) matchProcess(managedProc *proc.ManagedProcess, sysProcess *pro
 }
 
 // matchProcessByScript 使用用户定义的脚本匹配进程
-func (m *Manager) matchProcessByScript(managedProc *proc.ManagedProcess, sysProcess *process.Process) bool {
+func (m *Manager) matchProcessByScript(managedProc *ManagedProcess, sysProcess *process.Process) bool {
   // 获取进程的PID
   pid := int(sysProcess.Pid)
 
@@ -296,7 +293,7 @@ func (m *Manager) matchProcessByScript(managedProc *proc.ManagedProcess, sysProc
 }
 
 // matchProcessByAttributes 使用进程属性匹配进程
-func (m *Manager) matchProcessByAttributes(managedProc *proc.ManagedProcess, sysProcess *process.Process) bool {
+func (m *Manager) matchProcessByAttributes(managedProc *ManagedProcess, sysProcess *process.Process) bool {
   // 匹配命令行参数
   cmdline, err := sysProcess.Cmdline()
   if err == nil {
@@ -326,7 +323,7 @@ func (m *Manager) matchProcessByAttributes(managedProc *proc.ManagedProcess, sys
 }
 
 // TryMatchProcessByScript 尝试使用用户定义的脚本匹配系统中的进程
-func (m *Manager) TryMatchProcessByScript(managedProc *proc.ManagedProcess) (*proc.ManagedProcess, error) {
+func (m *Manager) TryMatchProcessByScript(managedProc *ManagedProcess) (*ManagedProcess, error) {
   if managedProc.Spec.CheckAlive == nil {
     return nil, fmt.Errorf("no identify script defined for proc")
   }
@@ -343,7 +340,7 @@ func (m *Manager) TryMatchProcessByScript(managedProc *proc.ManagedProcess) (*pr
       // 找到匹配的进程，更新信息
       matchedProcess := *managedProc
       matchedProcess.Status.PID = int(sysProcess.Pid)
-      matchedProcess.Status.Phase = proc.PhaseRunning
+      matchedProcess.Status.Phase = PhaseRunning
 
       // 获取并更新进程的其他信息
       if err := m.updateProcessInfoFromSystem(&matchedProcess); err != nil {
@@ -359,7 +356,7 @@ func (m *Manager) TryMatchProcessByScript(managedProc *proc.ManagedProcess) (*pr
 }
 
 // updateProcessInfoFromSystem 从系统中更新进程的详细信息
-func (m *Manager) updateProcessInfoFromSystem(managedProc *proc.ManagedProcess) error {
+func (m *Manager) updateProcessInfoFromSystem(managedProc *ManagedProcess) error {
   // 获取系统进程对象
   sysProc, err := process.NewProcess(int32(managedProc.Status.PID))
   if err != nil {
@@ -367,7 +364,7 @@ func (m *Manager) updateProcessInfoFromSystem(managedProc *proc.ManagedProcess) 
   }
 
   // 更新进程的基本信息
-  if err := scanner.fillBasicInfo(managedProc, sysProc); err != nil {
+  if err := FillBasicInfo(managedProc, sysProc); err != nil {
     return fmt.Errorf("failed to fill basic info: %w", err)
   }
 
@@ -385,9 +382,9 @@ func (m *Manager) CheckProcesses() {
   // 遍历所有纳管的进程
   for key, managedProc := range m.Processes {
     // 只处理应该运行但当前未运行的进程
-    if managedProc.Status.Phase != proc.PhaseRunning &&
-      (managedProc.Spec.RestartPolicy == proc.RestartPolicyAlways ||
-        managedProc.Spec.RestartPolicy == proc.RestartPolicyOnFailure) {
+    if managedProc.Status.Phase != PhaseRunning &&
+      (managedProc.Spec.RestartPolicy == RestartPolicyAlways ||
+        managedProc.Spec.RestartPolicy == RestartPolicyOnFailure) {
 
       // 尝试通过标识重新发现进程
       checked, err := m.tryCheckProcess(managedProc)
@@ -401,7 +398,7 @@ func (m *Manager) CheckProcesses() {
 }
 
 // tryCheckProcess 尝试通过进程特征检查进程状态
-func (m *Manager) tryCheckProcess(managedProc *proc.ManagedProcess) (bool, error) {
+func (m *Manager) tryCheckProcess(managedProc *ManagedProcess) (bool, error) {
   // 获取当前系统中的所有进程
   allProcesses, err := process.Processes()
   if err != nil {
@@ -414,7 +411,7 @@ func (m *Manager) tryCheckProcess(managedProc *proc.ManagedProcess) (bool, error
     if m.matchProcess(managedProc, sysProcess) {
       // 找到匹配的进程，更新状态
       managedProc.Status.PID = int(sysProcess.Pid)
-      managedProc.Status.Phase = proc.PhaseRunning
+      managedProc.Status.Phase = PhaseRunning
       now := time.Now()
       managedProc.Status.StartTime = &now
 

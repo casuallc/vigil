@@ -1,8 +1,7 @@
-package monitor
+package proc
 
 import (
   "fmt"
-  "github.com/casuallc/vigil/proc"
   "os/exec"
   "regexp"
   "runtime"
@@ -16,19 +15,19 @@ import (
 
 // Monitor provides resource monitoring functionality
 type Monitor struct {
-  manager *proc.Manager
+  manager *Manager
 }
 
 // NewMonitor creates a new monitor
-func NewMonitor(manager *proc.Manager) *Monitor {
+func NewMonitor(manager *Manager) *Monitor {
   return &Monitor{
     manager: manager,
   }
 }
 
 // GetSystemResourceUsage gets system resource usage
-func GetSystemResourceUsage() (proc.ResourceStats, error) {
-  var stats proc.ResourceStats
+func GetSystemResourceUsage() (ResourceStats, error) {
+  var stats ResourceStats
   var err error
 
   if runtime.GOOS == "windows" {
@@ -133,8 +132,8 @@ func GetProcessNetworkIO(pid int) (uint64, error) {
 }
 
 // GetProcessListeningPorts 获取进程监听的端口信息
-func GetProcessListeningPorts(pid int) ([]proc.PortInfo, error) {
-  var ports []proc.PortInfo
+func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
+  var ports []PortInfo
 
   // 使用lsof命令获取进程打开的网络连接
   cmd := exec.Command("lsof", "-i", "-P", "-n", "-p", strconv.Itoa(pid))
@@ -192,7 +191,7 @@ func GetProcessListeningPorts(pid int) ([]proc.PortInfo, error) {
       address = addrMatches[1]
     }
 
-    ports = append(ports, proc.PortInfo{
+    ports = append(ports, PortInfo{
       Port:     port,
       Protocol: protocol,
       Address:  address,
@@ -203,8 +202,8 @@ func GetProcessListeningPorts(pid int) ([]proc.PortInfo, error) {
 }
 
 // getWindowsSystemResourceUsage gets Windows system resource usage
-func getWindowsSystemResourceUsage() (proc.ResourceStats, error) {
-  var stats proc.ResourceStats
+func getWindowsSystemResourceUsage() (ResourceStats, error) {
+  var stats ResourceStats
 
   // Get CPU usage
   cpuPercent, err := cpu.Percent(time.Second, false)
@@ -219,8 +218,8 @@ func getWindowsSystemResourceUsage() (proc.ResourceStats, error) {
 }
 
 // getUnixSystemResourceUsage gets Unix/Linux/macOS system resource usage
-func getUnixSystemResourceUsage() (proc.ResourceStats, error) {
-  var stats proc.ResourceStats
+func getUnixSystemResourceUsage() (ResourceStats, error) {
+  var stats ResourceStats
 
   // Get CPU usage
   cpuPercent, err := cpu.Percent(time.Second, false)
@@ -235,8 +234,8 @@ func getUnixSystemResourceUsage() (proc.ResourceStats, error) {
 }
 
 // GetProcessResourceUsage gets resource usage of a specific proc
-func GetProcessResourceUsage(pid int) (proc.ResourceStats, error) {
-  var stats proc.ResourceStats
+func GetProcessResourceUsage(pid int) (ResourceStats, error) {
+  var stats ResourceStats
   var err error
 
   if runtime.GOOS == "windows" {
@@ -252,8 +251,8 @@ func GetProcessResourceUsage(pid int) (proc.ResourceStats, error) {
 }
 
 // getWindowsProcessResourceUsage gets Windows proc resource usage
-func getWindowsProcessResourceUsage(pid int) (proc.ResourceStats, error) {
-  var stats proc.ResourceStats
+func getWindowsProcessResourceUsage(pid int) (ResourceStats, error) {
+  var stats ResourceStats
 
   // Get proc resource usage on Windows
   newProc, err := process.NewProcess(int32(pid))
@@ -277,8 +276,8 @@ func getWindowsProcessResourceUsage(pid int) (proc.ResourceStats, error) {
 }
 
 // getUnixProcessResourceUsage gets Unix/Linux/macOS proc resource usage
-func getUnixProcessResourceUsage(pid int) (proc.ResourceStats, error) {
-  var stats proc.ResourceStats
+func getUnixProcessResourceUsage(pid int) (ResourceStats, error) {
+  var stats ResourceStats
 
   // Get proc resource usage on Unix/Linux/macOS
   newProc, err := process.NewProcess(int32(pid))

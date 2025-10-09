@@ -3,7 +3,7 @@ package api
 import (
   "bytes"
   "encoding/json"
-  "github.com/casuallc/vigil/process/monitor"
+  "github.com/casuallc/vigil/proc"
   "io"
   "log"
   "net/http"
@@ -16,12 +16,12 @@ import (
 type Server struct {
   config  *config.Config
   manager *proc.Manager
-  monitor *monitor.Monitor
+  monitor *proc.Monitor
 }
 
 // NewServerWithManager creates a new API server with an existing proc manager
 func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server {
-  monitor := monitor.NewMonitor(manager)
+  monitor := proc.NewMonitor(manager)
 
   return &Server{
     config:  config,
