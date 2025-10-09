@@ -140,7 +140,7 @@ func (s *Server) handleGetProcessResources(w http.ResponseWriter, r *http.Reques
     return
   }
 
-  resources, err := proc.GetProcessResourceUsage(pid)
+  resources, err := proc.GetUnixProcessResourceUsage(pid)
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return

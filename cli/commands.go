@@ -189,9 +189,9 @@ func (c *CLI) setupCommands() *cobra.Command {
   }
 
   processResourceCmd := &cobra.Command{
-    Use:   "proc-resources [pid]",
-    Short: "Get proc resources",
-    Long:  "Get resource usage information for a specific proc",
+    Use:   "process-resources [pid]",
+    Short: "Get process resources",
+    Long:  "Get resource usage information for a specific process",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
       pid := 0

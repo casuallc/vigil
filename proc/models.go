@@ -243,17 +243,15 @@ type TerminationInfo struct {
 
 // ResourceStats 表示资源使用情况
 type ResourceStats struct {
-  CPUUsage       float64    `json:"cpu_usage" yaml:"cpu_usage"`       // 百分比
-  MemoryUsage    uint64     `json:"memory_usage" yaml:"memory_usage"` // 字节
-  DiskIO         uint64     `json:"disk_io" yaml:"disk_io"`           // 字节
-  NetworkIO      uint64     `json:"network_io" yaml:"network_io"`     // 字节
-  ListeningPorts []PortInfo `json:"listening_ports,omitempty" yaml:"listening_ports,omitempty"`
-
-  // 人类可读的格式化字段
-  CPUUsageHuman    string `json:"cpu_usage_human,omitempty" yaml:"cpu_usage_human,omitempty"`       // e.g. "1.2%"
-  MemoryUsageHuman string `json:"memory_usage_human,omitempty" yaml:"memory_usage_human,omitempty"` // e.g. "1.5GiB"
-  DiskIOHuman      string `json:"disk_io_human,omitempty" yaml:"disk_io_human,omitempty"`           // e.g. "128MiB"
-  NetworkIOHuman   string `json:"network_io_human,omitempty" yaml:"network_io_human,omitempty"`     // e.g. "64KiB"
+  CPUUsage         float64    `json:"cpu_usage" yaml:"cpu_usage"`                                       // 百分比
+  CPUUsageHuman    string     `json:"cpu_usage_human,omitempty" yaml:"cpu_usage_human,omitempty"`       // e.g. "1.2%"
+  MemoryUsage      uint64     `json:"memory_usage" yaml:"memory_usage"`                                 // 字节
+  MemoryUsageHuman string     `json:"memory_usage_human,omitempty" yaml:"memory_usage_human,omitempty"` // e.g. "1.5GiB"
+  DiskIO           uint64     `json:"disk_io" yaml:"disk_io"`                                           // 字节
+  DiskIOHuman      string     `json:"disk_io_human,omitempty" yaml:"disk_io_human,omitempty"`           // e.g. "128MiB"
+  NetworkIO        uint64     `json:"network_io" yaml:"network_io"`                                     // 字节
+  NetworkIOHuman   string     `json:"network_io_human,omitempty" yaml:"network_io_human,omitempty"`     // e.g. "64KiB"
+  ListeningPorts   []PortInfo `json:"listening_ports,omitempty" yaml:"listening_ports,omitempty"`
 }
 
 // SetFormattedValues 设置所有格式化的字段值

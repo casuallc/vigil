@@ -224,7 +224,7 @@ func (c *Client) GetSystemResources() (proc.ResourceStats, error) {
 
 func (c *Client) GetProcessResources(pid int) (proc.ResourceStats, error) {
   var resources proc.ResourceStats
-  resp, err := c.doRequest("GET", fmt.Sprintf("/api/resources/proc/%d", pid), nil)
+  resp, err := c.doRequest("GET", fmt.Sprintf("/api/resources/process/%d", pid), nil)
   if err != nil {
     return resources, err
   }

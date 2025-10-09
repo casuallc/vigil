@@ -3,6 +3,7 @@ package proc
 import (
   "fmt"
   "github.com/shirou/gopsutil/v3/process"
+  "os/exec"
   "os/user"
   "strconv"
   "strings"
@@ -188,34 +189,12 @@ func FillUserGroupInfo(mp *ManagedProcess, process *process.Process) error {
 
 // FillResourceStats 填充资源统计信息
 func FillResourceStats(mp *ManagedProcess, process *process.Process) error {
-  // CPU 使用率
-  cpuPercent, err := process.CPUPercent()
+  stats, err := GetUnixProcessResourceUsage(int(process.Pid))
   if err != nil {
-    return fmt.Errorf("failed to get CPU percent: %w", err)
-  }
-  mp.Status.ResourceStats = &ResourceStats{}
-  mp.Status.ResourceStats.CPUUsage = cpuPercent
-
-  // 内存使用量
-  memInfo, err := process.MemoryInfo()
-  if err != nil {
-    return fmt.Errorf("failed to get memory info: %w", err)
-  }
-  mp.Status.ResourceStats.MemoryUsage = memInfo.RSS // Resident Set Size
-
-  // 磁盘IO
-  ioCounters, err := process.IOCounters()
-  if err != nil {
-    // IO counters 可能不可用，不作为致命错误
-    mp.Status.ResourceStats.DiskIO = 0
-  } else {
-    mp.Status.ResourceStats.DiskIO = ioCounters.ReadBytes + ioCounters.WriteBytes
+    return err
   }
 
-  // 网络IO - gopsutil 不直接提供进程级别的网络IO
-  // 这需要更复杂的实现，这里暂时设为0
-  mp.Status.ResourceStats.NetworkIO = 0
-
+  mp.Status.ResourceStats = stats
   return nil
 }
 
@@ -252,4 +231,44 @@ func socketTypeToProtocol(t uint32) string {
   default:
     return "UNKNOWN"
   }
+}
+
+// GetProcessCpuAndMemory 获取进程的CPU和内存使用情况
+func GetProcessCpuAndMemory(pid int) (float64, uint64, error) {
+  // 使用ps命令获取进程的CPU和内存使用情况
+  cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "%cpu,rss")
+  output, err := cmd.CombinedOutput()
+  if err != nil {
+    return 0, 0, fmt.Errorf("failed to get proc CPU and memory: %v, output: %s", err, string(output))
+  }
+
+  // 解析输出
+  lines := strings.Split(string(output), "\n")
+  if len(lines) < 2 {
+    return 0, 0, fmt.Errorf("invalid proc stats output")
+  }
+
+  // 解析第二行（第一行是表头）
+  line := strings.TrimSpace(lines[1])
+  fields := strings.Fields(line)
+  if len(fields) < 2 {
+    return 0, 0, fmt.Errorf("invalid proc stats format")
+  }
+
+  // 提取CPU使用率（百分比）
+  cpuUsage, err := strconv.ParseFloat(fields[0], 64)
+  if err != nil {
+    return 0, 0, fmt.Errorf("failed to parse CPU usage: %v", err)
+  }
+
+  // 提取内存使用量（KB）并转换为字节
+  rss, err := strconv.ParseUint(fields[1], 10, 64)
+  if err != nil {
+    return 0, 0, fmt.Errorf("failed to parse memory usage: %v", err)
+  }
+
+  // 转换为字节
+  memoryUsage := rss * 1024
+
+  return cpuUsage, memoryUsage, nil
 }

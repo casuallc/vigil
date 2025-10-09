@@ -69,41 +69,10 @@ func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error)
   }
 
   pid := managedProcess.Status.PID
-
-  // 获取CPU和内存使用情况
-  cpuUsage, memoryUsage, err := GetProcessCpuAndMemory(pid)
+  stats, err := GetUnixProcessResourceUsage(pid)
   if err != nil {
-    return nil, fmt.Errorf("failed to get CPU and memory usage: %v", err)
-  }
-
-  // 获取磁盘IO统计信息
-  diskIO, err := GetProcessDiskIO(pid)
-  if err != nil {
-    // 磁盘IO获取失败不应阻止整个监控过程
-    fmt.Printf("Warning: failed to get disk IO: %v\n", err)
-  }
-
-  // 获取网络IO统计信息
-  networkIO, err := GetProcessNetworkIO(pid)
-  if err != nil {
-    // 网络IO获取失败不应阻止整个监控过程
-    fmt.Printf("Warning: failed to get network IO: %v\n", err)
-  }
-
-  // 获取监听端口信息
-  listeningPorts, err := GetProcessListeningPorts(pid)
-  if err != nil {
-    // 监听端口获取失败不应阻止整个监控过程
-    fmt.Printf("Warning: failed to get listening ports: %v\n", err)
-  }
-
-  // 创建并返回ResourceStats
-  stats := &ResourceStats{
-    CPUUsage:       cpuUsage,
-    MemoryUsage:    memoryUsage,
-    DiskIO:         diskIO,
-    NetworkIO:      networkIO,
-    ListeningPorts: listeningPorts,
+    fmt.Printf("Warning: failed to get process resource usage: %v\n", err)
+    return nil, err
   }
 
   // 设置格式化的值

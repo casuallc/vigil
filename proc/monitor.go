@@ -39,46 +39,6 @@ func GetSystemResourceUsage() (ResourceStats, error) {
   return stats, err
 }
 
-// GetProcessCpuAndMemory 获取进程的CPU和内存使用情况
-func GetProcessCpuAndMemory(pid int) (float64, uint64, error) {
-  // 使用ps命令获取进程的CPU和内存使用情况
-  cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "%cpu,rss")
-  output, err := cmd.CombinedOutput()
-  if err != nil {
-    return 0, 0, fmt.Errorf("failed to get proc CPU and memory: %v, output: %s", err, string(output))
-  }
-
-  // 解析输出
-  lines := strings.Split(string(output), "\n")
-  if len(lines) < 2 {
-    return 0, 0, fmt.Errorf("invalid proc stats output")
-  }
-
-  // 解析第二行（第一行是表头）
-  line := strings.TrimSpace(lines[1])
-  fields := strings.Fields(line)
-  if len(fields) < 2 {
-    return 0, 0, fmt.Errorf("invalid proc stats format")
-  }
-
-  // 提取CPU使用率（百分比）
-  cpuUsage, err := strconv.ParseFloat(fields[0], 64)
-  if err != nil {
-    return 0, 0, fmt.Errorf("failed to parse CPU usage: %v", err)
-  }
-
-  // 提取内存使用量（KB）并转换为字节
-  rss, err := strconv.ParseUint(fields[1], 10, 64)
-  if err != nil {
-    return 0, 0, fmt.Errorf("failed to parse memory usage: %v", err)
-  }
-
-  // 转换为字节
-  memoryUsage := rss * 1024
-
-  return cpuUsage, memoryUsage, nil
-}
-
 // GetProcessDiskIO 获取进程的磁盘IO统计信息
 func GetProcessDiskIO(pid int) (uint64, error) {
   // 在Linux系统上，我们可以使用iostat或直接读取/proc文件系统
@@ -227,62 +187,79 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
     stats.CPUUsage = cpuPercent[0]
   }
 
-  // Get memory usage
-  // 这里简化实现，实际项目中可以使用更复杂的方法
+  // Get memory usage using gopsutil
+  _, err = process.NewProcess(0) // 使用0表示获取系统内存信息
+  if err == nil {
+    // 使用系统级别的内存信息
+    // 注意：这里使用一个简化的方式获取系统内存使用情况
+    // 在实际项目中，应该使用专门的内存信息获取方法
+    // 由于gopsutil库没有直接的系统内存信息获取函数，我们可以使用exec.Command来获取
+    cmd := exec.Command("free", "-b")
+    output, err := cmd.CombinedOutput()
+    if err == nil {
+      lines := strings.Split(string(output), "\n")
+      for _, line := range lines {
+        if strings.HasPrefix(line, "Mem:") {
+          fields := strings.Fields(line)
+          if len(fields) >= 3 {
+            // 提取已使用内存（第二列是总量，第三列是已使用量）
+            usedMem, err := strconv.ParseUint(fields[2], 10, 64)
+            if err == nil {
+              stats.MemoryUsage = usedMem
+            }
+          }
+          break
+        }
+      }
+    }
+  }
+
+  // Get disk IO usage
+  // 在Linux系统上，我们可以使用iostat命令获取磁盘IO统计信息
+  cmd := exec.Command("iostat", "-d", "-k", "1", "1")
+  output, err := cmd.CombinedOutput()
+  if err == nil {
+    // 解析iostat输出，提取磁盘IO信息
+    // 这里使用一个简化的实现，实际应用中可能需要根据不同系统进行适配
+    // 注意：完整的实现需要累加所有磁盘的IO数据
+    lines := strings.Split(string(output), "\n")
+    var totalRead, totalWrite uint64
+
+    // 标记是否开始读取数据行
+    dataStarted := false
+    for _, line := range lines {
+      if strings.Contains(line, "Device") {
+        dataStarted = true
+        continue
+      }
+
+      if dataStarted && strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "\t") {
+        fields := strings.Fields(line)
+        if len(fields) >= 5 {
+          // 读取和写入的KB数（假设第3和第4列是读写数据）
+          readKB, _ := strconv.ParseUint(fields[2], 10, 64)
+          writeKB, _ := strconv.ParseUint(fields[3], 10, 64)
+          totalRead += readKB * 1024   // 转换为字节
+          totalWrite += writeKB * 1024 // 转换为字节
+        }
+      }
+    }
+
+    // 累加读写IO总量
+    stats.DiskIO = totalRead + totalWrite
+  }
 
   return stats, nil
 }
 
-// GetProcessResourceUsage gets resource usage of a specific proc
-func GetProcessResourceUsage(pid int) (ResourceStats, error) {
-  var stats ResourceStats
-  var err error
-
-  if runtime.GOOS == "windows" {
-    stats, err = getWindowsProcessResourceUsage(pid)
-  } else {
-    stats, err = getUnixProcessResourceUsage(pid)
-  }
-
-  // 设置格式化的值
-  stats.SetFormattedValues()
-
-  return stats, err
-}
-
-// getWindowsProcessResourceUsage gets Windows proc resource usage
-func getWindowsProcessResourceUsage(pid int) (ResourceStats, error) {
-  var stats ResourceStats
-
-  // Get proc resource usage on Windows
-  newProc, err := process.NewProcess(int32(pid))
-  if err != nil {
-    return stats, err
-  }
-
-  // Get CPU usage
-  cpuPercent, err := newProc.CPUPercent()
-  if err == nil {
-    stats.CPUUsage = cpuPercent
-  }
-
-  // Get memory usage
-  memInfo, err := newProc.MemoryInfo()
-  if err == nil {
-    stats.MemoryUsage = memInfo.RSS
-  }
-
-  return stats, nil
-}
-
-// getUnixProcessResourceUsage gets Unix/Linux/macOS proc resource usage
-func getUnixProcessResourceUsage(pid int) (ResourceStats, error) {
+// GetUnixProcessResourceUsage gets Unix/Linux/macOS proc resource usage
+func GetUnixProcessResourceUsage(pid int) (*ResourceStats, error) {
   var stats ResourceStats
 
   // Get proc resource usage on Unix/Linux/macOS
   newProc, err := process.NewProcess(int32(pid))
   if err != nil {
-    return stats, err
+    return &stats, err
   }
 
   // Get CPU usage
@@ -297,5 +274,23 @@ func getUnixProcessResourceUsage(pid int) (ResourceStats, error) {
     stats.MemoryUsage = memInfo.RSS
   }
 
-  return stats, nil
+  // Get disk IO for the process
+  diskIO, err := GetProcessDiskIO(pid)
+  if err == nil {
+    stats.DiskIO = diskIO
+  }
+
+  // Get network IO for the process
+  networkIO, err := GetProcessNetworkIO(pid)
+  if err == nil {
+    stats.NetworkIO = networkIO
+  }
+
+  // Get listening ports for the process
+  listeningPorts, err := GetProcessListeningPorts(pid)
+  if err == nil {
+    stats.ListeningPorts = listeningPorts
+  }
+
+  return &stats, nil
 }
