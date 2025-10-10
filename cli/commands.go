@@ -67,6 +67,10 @@ func (c *CLI) setupCommands() *cobra.Command {
   mqttCmd := c.setupMqttCommands()
   rootCmd.AddCommand(mqttCmd)
 
+  // Add Pulsar commands
+  pulsarCmd := c.setupPulsarCommands()
+  rootCmd.AddCommand(pulsarCmd)
+
   return rootCmd
 }
 

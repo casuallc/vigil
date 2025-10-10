@@ -3,7 +3,7 @@ package cli
 import (
   "fmt"
   "github.com/casuallc/vigil/proc"
-  "gopkg.in/yaml.v2" // 导入yaml包用于YAML格式输出
+  "gopkg.in/yaml.v3" // 导入yaml包用于YAML格式输出
   "os"
   "os/exec"
   "path/filepath"

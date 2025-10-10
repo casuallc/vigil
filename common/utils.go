@@ -83,6 +83,8 @@ func ParsePropertyArray(str string) [][]string {
     if len(kv) != 2 {
       continue
     }
+    kv[0] = strings.TrimSpace(kv[0])
+    kv[1] = strings.TrimSpace(kv[1])
     result[i] = kv
   }
   return result
