@@ -379,15 +379,34 @@ func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
     Use:   "publish",
     Short: "Publish a message to an exchange",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitPublish(exchangeName, routingKey, message, interval, repeat, rateLimit, server, port, vhost, user, password)
+      client := &rabbitmq.RabbitClient{
+        Config: &rabbitmq.ServerConfig{
+          Server:   server,
+          Port:     port,
+          Vhost:    vhost,
+          User:     user,
+          Password: password,
+        },
+      }
+
+      config := &rabbitmq.PublishConfig{
+        PrintLog:   printLog,
+        Exchange:   exchangeName,
+        RoutingKey: routingKey,
+        Message:    message,
+        Interval:   interval,
+        Repeat:     repeat,
+        RateLimit:  rateLimit,
+      }
+      return c.handleRabbitPublish(client, config)
     },
   }
 
-  cmd.Flags().BoolVar(&printLog, "print", true, "Print log")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "PrintLog log")
   cmd.Flags().StringVarP(&exchangeName, "exchange", "e", "", "Exchange name")
   cmd.Flags().StringVarP(&routingKey, "routing-key", "r", "", "Routing key")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
-  cmd.Flags().IntVarP(&interval, "interval", "t", 1, "Time interval in seconds between messages")
+  cmd.Flags().IntVarP(&interval, "interval", "t", 1000, "Time interval in milliseconds between messages")
   cmd.Flags().IntVarP(&repeat, "repeat", "r", 10, "Number of times to repeat sending the message")
   cmd.Flags().IntVarP(&rateLimit, "rate-limit", "l", 0, "Send rate limit")
   cmd.MarkFlagRequired("message")
@@ -396,36 +415,18 @@ func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
 }
 
 // handleRabbitPublish 处理发布消息命令
-func (c *CLI) handleRabbitPublish(exchange, routingKey, message string, interval, repeat, rateLimit int, server string, port int, vhost, user, password string) error {
-  client := &rabbitmq.RabbitClient{
-    Config: &rabbitmq.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Vhost:    vhost,
-      User:     user,
-      Password: password,
-    },
-  }
+func (c *CLI) handleRabbitPublish(client *rabbitmq.RabbitClient, config *rabbitmq.PublishConfig) error {
 
   if err := client.Connect(); err != nil {
     return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
   }
   defer client.Close()
 
-  publish := &rabbitmq.PublishConfig{
-    Exchange:   exchange,
-    RoutingKey: routingKey,
-    Message:    message,
-    Interval:   interval,
-    Repeat:     repeat,
-    RateLimit:  rateLimit,
-  }
-
-  if err := client.PublishMessage(publish); err != nil {
+  if err := client.PublishMessage(config); err != nil {
     return fmt.Errorf("failed to publish message: %w", err)
   }
 
-  fmt.Printf("Message published to exchange '%s' with routing key '%s'\n", exchange, routingKey)
+  fmt.Printf("Message published to exchange '%s' with routing key '%s'\n", config.Exchange, config.RoutingKey)
   return nil
 }
 

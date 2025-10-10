@@ -36,10 +36,10 @@ type BindConfig struct {
 }
 
 type PublishConfig struct {
-  Print      bool
+  PrintLog   bool
   Exchange   string
   RoutingKey string
-  Interval   int        // 时间间隔；秒
+  Interval   int        // 时间间隔；毫秒
   Message    string     // 消息内容
   Repeat     int        // 重复次数
   RateLimit  int        // 发送速率
