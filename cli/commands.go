@@ -18,18 +18,6 @@ func (c *CLI) setupCommands() *cobra.Command {
     Version: "1.0.0",
   }
 
-  // Global flags
-  rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://localhost:8080", "API server host address")
-
-  // Override PreRun to create client with the provided host
-  rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-    // Only create a new client if we're not in the root command
-    if cmd != rootCmd {
-      c.client = client.NewClient(apiHost)
-    }
-    return nil
-  }
-
   // Add subcommands
   procCmd := c.setupProcCommands()
   rootCmd.AddCommand(procCmd)
@@ -42,6 +30,18 @@ func (c *CLI) setupCommands() *cobra.Command {
 
   execCmd := c.setupExecCommand()
   rootCmd.AddCommand(execCmd)
+
+  // Global flags
+  rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://localhost:8080", "API server host address")
+
+  // Override PreRun to create client with the provided host
+  rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+    // Only create a new client if we're not in the proc command
+    if cmd == procCmd || cmd == resourceCmd || cmd == configCmd || cmd == execCmd {
+      c.client = client.NewClient(apiHost)
+    }
+    return nil
+  }
 
   // Add Redis commands
   redisCmd := c.setupRedisCommands()
