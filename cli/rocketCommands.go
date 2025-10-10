@@ -3,6 +3,7 @@ package cli
 import (
   "context"
   "fmt"
+  "github.com/apache/rocketmq-client-go/v2/primitive"
   "github.com/casuallc/vigil/rocketmq"
   "github.com/spf13/cobra"
 )
@@ -21,6 +22,9 @@ func (c *CLI) setupRocketCommands() *cobra.Command {
   rocketCmd.PersistentFlags().IntVar(&config.Port, "port", 9876, "RocketMQ server port")
   rocketCmd.PersistentFlags().StringVar(&config.User, "user", "", "Username for authentication")
   rocketCmd.PersistentFlags().StringVar(&config.Password, "password", "", "Password for authentication")
+  rocketCmd.PersistentFlags().StringVar(&config.Namespace, "namespace", "", "Namespace")
+  rocketCmd.PersistentFlags().StringVar(&config.AccessKey, "access-key", "", "Access Key for authentication")
+  rocketCmd.PersistentFlags().StringVar(&config.SecretKey, "secret-key", "", "Secret Key for authentication")
 
   // 存储配置到上下文
   rocketCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
@@ -30,11 +34,13 @@ func (c *CLI) setupRocketCommands() *cobra.Command {
   // 添加子命令
   rocketCmd.AddCommand(c.setupRocketSendCommand())
   rocketCmd.AddCommand(c.setupRocketReceiveCommand())
+  rocketCmd.AddCommand(c.setupRocketBatchSendCommand())
+  rocketCmd.AddCommand(c.setupRocketTransactionSendCommand())
 
   return rocketCmd
 }
 
-// 修改子命令，移除重复的连接标志
+// setupRocketSendCommand 设置发送消息命令
 func (c *CLI) setupRocketSendCommand() *cobra.Command {
   var groupName string
   var topic string
@@ -43,14 +49,18 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
   var message string
   var repeat int
   var interval int
+  var sendType string
+  var delayLevel int
+  var printLog bool
+  var useMessageTrace bool
+  var messageLength int
 
   cmd := &cobra.Command{
     Use:   "send",
     Short: "Send message to RocketMQ",
     RunE: func(cmd *cobra.Command, args []string) error {
-      //config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
-      //return c.handleRocketSend(config, groupName, topic, tags, keys, message, repeat, interval)
-      return nil
+      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
+      return c.handleRocketSend(config, groupName, topic, tags, keys, message, repeat, interval, sendType, delayLevel, printLog, useMessageTrace, messageLength)
     },
   }
 
@@ -60,7 +70,12 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
   cmd.Flags().StringVar(&keys, "keys", "", "Message keys")
   cmd.Flags().StringVar(&message, "message", "", "Message content")
   cmd.Flags().IntVar(&repeat, "repeat", 1, "Number of times to repeat sending")
-  cmd.Flags().IntVar(&interval, "interval", 0, "Interval between messages")
+  cmd.Flags().IntVar(&interval, "interval", 1000, "Interval between messages in milliseconds")
+  cmd.Flags().StringVar(&sendType, "send-type", "sync", "Send type: sync or async")
+  cmd.Flags().IntVar(&delayLevel, "delay-level", 0, "Delay level for delayed messages")
+  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
+  cmd.Flags().BoolVar(&useMessageTrace, "use-trace", false, "Use message trace")
+  cmd.Flags().IntVar(&messageLength, "message-length", 0, "Message length, will pad with spaces if necessary")
 
   cmd.MarkFlagRequired("topic")
   cmd.MarkFlagRequired("message")
@@ -70,20 +85,23 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
 
 // setupRocketReceiveCommand 设置接收消息命令
 func (c *CLI) setupRocketReceiveCommand() *cobra.Command {
-  var server string
-  var port int
-  var user string
-  var password string
   var groupName string
   var topic string
   var tags string
   var timeout int
+  var startConsumePos string
+  var consumeTimestamp string
+  var consumeType string
+  var printLog bool
+  var retryCount int
+  var useMessageTrace bool
 
   cmd := &cobra.Command{
     Use:   "receive",
     Short: "Receive messages from RocketMQ",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRocketReceive(server, port, user, password, groupName, topic, tags, timeout)
+      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
+      return c.handleRocketReceive(config, groupName, topic, tags, timeout, startConsumePos, consumeTimestamp, consumeType, printLog, retryCount, useMessageTrace)
     },
   }
 
@@ -91,23 +109,96 @@ func (c *CLI) setupRocketReceiveCommand() *cobra.Command {
   cmd.Flags().StringVar(&topic, "topic", "", "Message topic to subscribe")
   cmd.Flags().StringVar(&tags, "tags", "*", "Message tags filter (use * for all)")
   cmd.Flags().IntVar(&timeout, "timeout", 0, "Consumer timeout in seconds (0 for no timeout)")
+  cmd.Flags().StringVar(&startConsumePos, "start-pos", "LAST", "Start consume position: FIRST, LAST, TIMESTAMP")
+  cmd.Flags().StringVar(&consumeTimestamp, "timestamp", "", "Consume timestamp in format 20060102150405")
+  cmd.Flags().StringVar(&consumeType, "consume-type", "SYNC", "Consume type: SYNC or ASYNC")
+  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
+  cmd.Flags().IntVar(&retryCount, "retry-count", 0, "Message retry count")
+  cmd.Flags().BoolVar(&useMessageTrace, "use-trace", false, "Use message trace")
 
-  // 设置必填参数
   cmd.MarkFlagRequired("topic")
 
   return cmd
 }
 
-// handleRocketSend 处理发送消息
-func (c *CLI) handleRocketSend(server string, port int, user string, password string, groupName string, topic string, tags string, keys string, message string, repeat int, interval int) error {
-  // 创建配置
-  config := &rocketmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    User:     user,
-    Password: password,
+// setupRocketBatchSendCommand 设置批量发送消息命令
+func (c *CLI) setupRocketBatchSendCommand() *cobra.Command {
+  var groupName string
+  var topic string
+  var tags string
+  var keys string
+  var message string
+  var repeat int
+  var interval int
+  var batchSize int
+  var printLog bool
+  var useMessageTrace bool
+
+  cmd := &cobra.Command{
+    Use:   "batch-send",
+    Short: "Batch send messages to RocketMQ",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
+      return c.handleRocketBatchSend(config, groupName, topic, tags, keys, message, repeat, interval, batchSize, printLog, useMessageTrace)
+    },
   }
 
+  cmd.Flags().StringVar(&groupName, "group", "default_group", "Producer group name")
+  cmd.Flags().StringVar(&topic, "topic", "", "Message topic")
+  cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
+  cmd.Flags().StringVar(&keys, "keys", "", "Message keys")
+  cmd.Flags().StringVar(&message, "message", "", "Message content")
+  cmd.Flags().IntVar(&repeat, "repeat", 1, "Number of times to repeat sending")
+  cmd.Flags().IntVar(&interval, "interval", 1000, "Interval between batches in milliseconds")
+  cmd.Flags().IntVar(&batchSize, "batch-size", 10, "Batch size")
+  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
+  cmd.Flags().BoolVar(&useMessageTrace, "use-trace", false, "Use message trace")
+
+  cmd.MarkFlagRequired("topic")
+  cmd.MarkFlagRequired("message")
+
+  return cmd
+}
+
+// setupRocketTransactionSendCommand 设置事务消息发送命令
+func (c *CLI) setupRocketTransactionSendCommand() *cobra.Command {
+  var groupName string
+  var topic string
+  var tags string
+  var keys string
+  var message string
+  var repeat int
+  var interval int
+  var printLog bool
+  var checkTimes int
+
+  cmd := &cobra.Command{
+    Use:   "transaction-send",
+    Short: "Send transaction messages to RocketMQ",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
+      return c.handleRocketTransactionSend(config, groupName, topic, tags, keys, message, repeat, interval, printLog, checkTimes)
+    },
+  }
+
+  cmd.Flags().StringVar(&groupName, "group", "default_transaction_group", "Transaction producer group name")
+  cmd.Flags().StringVar(&topic, "topic", "", "Message topic")
+  cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
+  cmd.Flags().StringVar(&keys, "keys", "", "Message keys")
+  cmd.Flags().StringVar(&message, "message", "", "Message content")
+  cmd.Flags().IntVar(&repeat, "repeat", 1, "Number of times to repeat sending")
+  cmd.Flags().IntVar(&interval, "interval", 1000, "Interval between messages in milliseconds")
+  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
+  cmd.Flags().IntVar(&checkTimes, "check-times", 3, "Transaction check times")
+
+  cmd.MarkFlagRequired("topic")
+  cmd.MarkFlagRequired("message")
+
+  return cmd
+}
+
+// handleRocketSend 处理发送消息
+func (c *CLI) handleRocketSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, sendType string, delayLevel int, printLog bool, useMessageTrace bool, messageLength int) error {
   // 创建客户端
   client := rocketmq.NewClient(config)
   defer client.Close()
@@ -117,15 +208,26 @@ func (c *CLI) handleRocketSend(server string, port int, user string, password st
     return fmt.Errorf("failed to connect to RocketMQ server: %w", err)
   }
 
+  // 确定发送类型
+  sendTypeEnum := rocketmq.SyncSend
+  if sendType == "async" {
+    sendTypeEnum = rocketmq.AsyncSend
+  }
+
   // 创建生产者配置
   producerConfig := &rocketmq.ProducerConfig{
-    GroupName: groupName,
-    Topic:     topic,
-    Tags:      tags,
-    Keys:      keys,
-    Message:   message,
-    Repeat:    repeat,
-    Interval:  interval,
+    GroupName:       groupName,
+    Topic:           topic,
+    Tags:            tags,
+    Keys:            keys,
+    Message:         message,
+    Repeat:          repeat,
+    Interval:        interval,
+    SendType:        sendTypeEnum,
+    DelayLevel:      delayLevel,
+    PrintLog:        printLog,
+    UseMessageTrace: useMessageTrace,
+    MessageLength:   messageLength,
   }
 
   // 发送消息
@@ -138,15 +240,7 @@ func (c *CLI) handleRocketSend(server string, port int, user string, password st
 }
 
 // handleRocketReceive 处理接收消息
-func (c *CLI) handleRocketReceive(server string, port int, user string, password string, groupName string, topic string, tags string, timeout int) error {
-  // 创建配置
-  config := &rocketmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    User:     user,
-    Password: password,
-  }
-
+func (c *CLI) handleRocketReceive(config *rocketmq.ServerConfig, groupName string, topic string, tags string, timeout int, startConsumePos string, consumeTimestamp string, consumeType string, printLog bool, retryCount int, useMessageTrace bool) error {
   // 创建客户端
   client := rocketmq.NewClient(config)
   defer client.Close()
@@ -158,11 +252,17 @@ func (c *CLI) handleRocketReceive(server string, port int, user string, password
 
   // 创建消费者配置
   consumerConfig := &rocketmq.ConsumerConfig{
-    GroupName: groupName,
-    Topic:     topic,
-    Tags:      tags,
-    Timeout:   timeout,
-    Handler: func(msg *rocketmq.Message) {
+    GroupName:        groupName,
+    Topic:            topic,
+    Tags:             tags,
+    Timeout:          timeout,
+    StartConsumePos:  startConsumePos,
+    ConsumeTimestamp: consumeTimestamp,
+    ConsumeType:      consumeType,
+    PrintLog:         printLog,
+    RetryCount:       retryCount,
+    UseMessageTrace:  useMessageTrace,
+    Handler: func(msg *rocketmq.Message) bool {
       fmt.Printf("\nReceived message:\n")
       fmt.Printf("  Topic: %s\n", msg.Topic)
       fmt.Printf("  Tags: %s\n", msg.Tags)
@@ -170,6 +270,7 @@ func (c *CLI) handleRocketReceive(server string, port int, user string, password
       fmt.Printf("  MsgID: %s\n", msg.MsgID)
       fmt.Printf("  QueueID: %d\n", msg.QueueID)
       fmt.Printf("  Body: %s\n", msg.Body)
+      return true
     },
   }
 
@@ -186,4 +287,101 @@ func (c *CLI) handleRocketReceive(server string, port int, user string, password
   }
 
   return nil
+}
+
+// handleRocketBatchSend 处理批量发送消息
+func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, batchSize int, printLog bool, useMessageTrace bool) error {
+  // 创建客户端
+  client := rocketmq.NewClient(config)
+  defer client.Close()
+
+  // 连接到服务器
+  if err := client.Connect(); err != nil {
+    return fmt.Errorf("failed to connect to RocketMQ server: %w", err)
+  }
+
+  // 创建生产者配置
+  producerConfig := &rocketmq.ProducerConfig{
+    GroupName:       groupName,
+    Topic:           topic,
+    Tags:            tags,
+    Keys:            keys,
+    Message:         message,
+    Repeat:          repeat,
+    Interval:        interval,
+    BatchSize:       batchSize,
+    PrintLog:        printLog,
+    UseMessageTrace: useMessageTrace,
+  }
+
+  // 发送消息
+  if err := client.SendMessage(producerConfig); err != nil {
+    return fmt.Errorf("failed to send batch messages: %w", err)
+  }
+
+  fmt.Printf("Successfully sent %d batch messages to topic %s\n", repeat, topic)
+  return nil
+}
+
+// handleRocketTransactionSend 处理事务消息发送
+func (c *CLI) handleRocketTransactionSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, printLog bool, checkTimes int) error {
+  // 创建客户端
+  client := rocketmq.NewClient(config)
+  defer client.Close()
+
+  // 连接到服务器
+  if err := client.Connect(); err != nil {
+    return fmt.Errorf("failed to connect to RocketMQ server: %w", err)
+  }
+
+  // 创建事务监听器
+  listener := &simpleTransactionListener{
+    printLog: printLog,
+  }
+
+  // 创建生产者配置
+  producerConfig := &rocketmq.ProducerConfig{
+    GroupName:  groupName,
+    Topic:      topic,
+    Tags:       tags,
+    Keys:       keys,
+    Message:    message,
+    Repeat:     repeat,
+    Interval:   interval,
+    PrintLog:   printLog,
+    CheckTimes: checkTimes,
+  }
+
+  // 发送事务消息
+  if err := client.SendTransactionMessage(producerConfig, listener); err != nil {
+    return fmt.Errorf("failed to send transaction message: %w", err)
+  }
+
+  fmt.Printf("Successfully sent %d transaction messages to topic %s\n", repeat, topic)
+  return nil
+}
+
+// simpleTransactionListener 简单的事务监听器实现
+type simpleTransactionListener struct {
+  printLog bool
+}
+
+// ExecuteLocalTransaction 执行本地事务
+func (l *simpleTransactionListener) ExecuteLocalTransaction(msg *primitive.Message) primitive.LocalTransactionState {
+  // 模拟本地事务执行
+  if l.printLog {
+    fmt.Printf("Executing local transaction for message: %s\n", msg.TransactionId)
+  }
+  // 这里返回 COMMIT_MESSAGE 表示事务成功，实际应用中应根据业务逻辑判断
+  return primitive.CommitMessageState
+}
+
+// CheckLocalTransaction 检查本地事务状态
+func (l *simpleTransactionListener) CheckLocalTransaction(msg *primitive.MessageExt) primitive.LocalTransactionState {
+  // 模拟事务回查
+  if l.printLog {
+    fmt.Printf("Checking local transaction for message: %s\n", msg.MsgId)
+  }
+  // 这里返回 COMMIT_MESSAGE 表示事务成功，实际应用中应查询事务状态
+  return primitive.CommitMessageState
 }

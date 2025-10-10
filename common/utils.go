@@ -65,3 +65,25 @@ func ParseToString(content []byte, split byte) string {
   }
   return strings.TrimSpace(result.String())
 }
+
+// ParsePropertyArray 把 k=v,k2=v2 转换成二维数组
+func ParsePropertyArray(str string) [][]string {
+  if str == "" {
+    return nil
+  }
+
+  array := strings.Split(str, ",")
+  if len(array) == 0 {
+    return nil
+  }
+
+  result := make([][]string, len(array))
+  for i := 0; i < len(array); i++ {
+    kv := strings.SplitN(array[i], "=", 2)
+    if len(kv) != 2 {
+      continue
+    }
+    result[i] = kv
+  }
+  return result
+}

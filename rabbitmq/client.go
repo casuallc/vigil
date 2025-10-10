@@ -198,7 +198,7 @@ func (r *RabbitClient) PublishMessage(publish *PublishConfig) error {
     }
   }
 
-  log.Printf("Publish message count: %d", publish.Repeat)
+  log.Printf("Total messages sent: %d", publish.Repeat)
   return nil
 }
 

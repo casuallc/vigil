@@ -94,15 +94,13 @@ func (c *CLI) handleRabbitDeclareExchange(name, typ string, durable, autoDelete 
 // setupRabbitDeleteExchangeCommand 设置删除交换机命令
 func (c *CLI) setupRabbitDeleteExchangeCommand() *cobra.Command {
   var exchangeName string
-  var server string
-  var port int
-  var vhost, user, password string
 
   cmd := &cobra.Command{
     Use:   "delete-exchange",
     Short: "Delete a RabbitMQ exchange",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitDeleteExchange(exchangeName, server, port, vhost, user, password)
+      config := cmd.Context().Value("rabbitConfig").(*rabbitmq.ServerConfig)
+      return c.handleRabbitDeleteExchange(exchangeName, config)
     },
   }
 
@@ -113,15 +111,9 @@ func (c *CLI) setupRabbitDeleteExchangeCommand() *cobra.Command {
 }
 
 // handleRabbitDeleteExchange 处理删除交换机命令
-func (c *CLI) handleRabbitDeleteExchange(name string, server string, port int, vhost, user, password string) error {
+func (c *CLI) handleRabbitDeleteExchange(name string, config *rabbitmq.ServerConfig) error {
   client := &rabbitmq.RabbitClient{
-    Config: &rabbitmq.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Vhost:    vhost,
-      User:     user,
-      Password: password,
-    },
+    Config: config,
   }
 
   if err := client.Connect(); err != nil {
@@ -141,15 +133,13 @@ func (c *CLI) handleRabbitDeleteExchange(name string, server string, port int, v
 func (c *CLI) setupRabbitDeclareQueueCommand() *cobra.Command {
   var queueName string
   var durable, autoDelete, exclusive bool
-  var server string
-  var port int
-  var vhost, user, password string
 
   cmd := &cobra.Command{
     Use:   "declare-queue",
     Short: "Declare a RabbitMQ queue",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitDeclareQueue(queueName, durable, autoDelete, exclusive, server, port, vhost, user, password)
+      config := cmd.Context().Value("rabbitConfig").(*rabbitmq.ServerConfig)
+      return c.handleRabbitDeclareQueue(queueName, durable, autoDelete, exclusive, config)
     },
   }
 
@@ -163,15 +153,9 @@ func (c *CLI) setupRabbitDeclareQueueCommand() *cobra.Command {
 }
 
 // handleRabbitDeclareQueue 处理声明队列命令
-func (c *CLI) handleRabbitDeclareQueue(name string, durable, autoDelete, exclusive bool, server string, port int, vhost, user, password string) error {
+func (c *CLI) handleRabbitDeclareQueue(name string, durable, autoDelete, exclusive bool, config *rabbitmq.ServerConfig) error {
   client := &rabbitmq.RabbitClient{
-    Config: &rabbitmq.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Vhost:    vhost,
-      User:     user,
-      Password: password,
-    },
+    Config: config,
   }
 
   if err := client.Connect(); err != nil {
@@ -197,15 +181,13 @@ func (c *CLI) handleRabbitDeclareQueue(name string, durable, autoDelete, exclusi
 // setupRabbitDeleteQueueCommand 设置删除队列命令
 func (c *CLI) setupRabbitDeleteQueueCommand() *cobra.Command {
   var queueName string
-  var server string
-  var port int
-  var vhost, user, password string
 
   cmd := &cobra.Command{
     Use:   "delete-queue",
     Short: "Delete a RabbitMQ queue",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitDeleteQueue(queueName, server, port, vhost, user, password)
+      config := cmd.Context().Value("rabbitConfig").(*rabbitmq.ServerConfig)
+      return c.handleRabbitDeleteQueue(queueName, config)
     },
   }
 
@@ -216,15 +198,9 @@ func (c *CLI) setupRabbitDeleteQueueCommand() *cobra.Command {
 }
 
 // handleRabbitDeleteQueue 处理删除队列命令
-func (c *CLI) handleRabbitDeleteQueue(name string, server string, port int, vhost, user, password string) error {
+func (c *CLI) handleRabbitDeleteQueue(name string, config *rabbitmq.ServerConfig) error {
   client := &rabbitmq.RabbitClient{
-    Config: &rabbitmq.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Vhost:    vhost,
-      User:     user,
-      Password: password,
-    },
+    Config: config,
   }
 
   if err := client.Connect(); err != nil {
@@ -244,9 +220,6 @@ func (c *CLI) handleRabbitDeleteQueue(name string, server string, port int, vhos
 func (c *CLI) setupRabbitQueueBindCommand() *cobra.Command {
   var queueName, exchangeName, routingKey string
   var args string
-  var server string
-  var port int
-  var vhost, user, password string
 
   cmd := &cobra.Command{
     Use:   "queue-bind",
@@ -254,10 +227,11 @@ func (c *CLI) setupRabbitQueueBindCommand() *cobra.Command {
     RunE: func(cmd *cobra.Command, args []string) error {
       var bindArgs map[string]interface{}
       // 解析绑定参数
-      if args[0] != "" {
+      if len(args) > 0 && args[0] != "" {
         bindArgs = parseBindArgs(args[0])
       }
-      return c.handleRabbitQueueBind(queueName, exchangeName, routingKey, bindArgs, server, port, vhost, user, password)
+      config := cmd.Context().Value("rabbitConfig").(*rabbitmq.ServerConfig)
+      return c.handleRabbitQueueBind(queueName, exchangeName, routingKey, bindArgs, config)
     },
   }
 
@@ -272,15 +246,9 @@ func (c *CLI) setupRabbitQueueBindCommand() *cobra.Command {
 }
 
 // handleRabbitQueueBind 处理队列绑定命令
-func (c *CLI) handleRabbitQueueBind(queue, exchange, routingKey string, args map[string]interface{}, server string, port int, vhost, user, password string) error {
+func (c *CLI) handleRabbitQueueBind(queue, exchange, routingKey string, args map[string]interface{}, config *rabbitmq.ServerConfig) error {
   client := &rabbitmq.RabbitClient{
-    Config: &rabbitmq.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Vhost:    vhost,
-      User:     user,
-      Password: password,
-    },
+    Config: config,
   }
 
   if err := client.Connect(); err != nil {
@@ -307,9 +275,6 @@ func (c *CLI) handleRabbitQueueBind(queue, exchange, routingKey string, args map
 func (c *CLI) setupRabbitQueueUnbindCommand() *cobra.Command {
   var queueName, exchangeName, routingKey string
   var args string
-  var server string
-  var port int
-  var vhost, user, password string
 
   cmd := &cobra.Command{
     Use:   "queue-unbind",
@@ -320,7 +285,8 @@ func (c *CLI) setupRabbitQueueUnbindCommand() *cobra.Command {
       if args[0] != "" {
         bindArgs = parseBindArgs(args[0])
       }
-      return c.handleRabbitQueueUnbind(queueName, exchangeName, routingKey, bindArgs, server, port, vhost, user, password)
+      config := cmd.Context().Value("rabbitConfig").(*rabbitmq.ServerConfig)
+      return c.handleRabbitQueueUnbind(queueName, exchangeName, routingKey, bindArgs, config)
     },
   }
 
@@ -335,15 +301,9 @@ func (c *CLI) setupRabbitQueueUnbindCommand() *cobra.Command {
 }
 
 // handleRabbitQueueUnbind 处理队列解绑命令
-func (c *CLI) handleRabbitQueueUnbind(queue, exchange, routingKey string, args map[string]interface{}, server string, port int, vhost, user, password string) error {
+func (c *CLI) handleRabbitQueueUnbind(queue, exchange, routingKey string, args map[string]interface{}, config *rabbitmq.ServerConfig) error {
   client := &rabbitmq.RabbitClient{
-    Config: &rabbitmq.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Vhost:    vhost,
-      User:     user,
-      Password: password,
-    },
+    Config: config,
   }
 
   if err := client.Connect(); err != nil {
@@ -371,34 +331,14 @@ func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
   var printLog bool
   var exchangeName, routingKey, message string
   var interval, repeat, rateLimit int
-  var server string
-  var port int
-  var vhost, user, password string
 
   cmd := &cobra.Command{
     Use:   "publish",
     Short: "Publish a message to an exchange",
     RunE: func(cmd *cobra.Command, args []string) error {
-      client := &rabbitmq.RabbitClient{
-        Config: &rabbitmq.ServerConfig{
-          Server:   server,
-          Port:     port,
-          Vhost:    vhost,
-          User:     user,
-          Password: password,
-        },
-      }
 
-      config := &rabbitmq.PublishConfig{
-        PrintLog:   printLog,
-        Exchange:   exchangeName,
-        RoutingKey: routingKey,
-        Message:    message,
-        Interval:   interval,
-        Repeat:     repeat,
-        RateLimit:  rateLimit,
-      }
-      return c.handleRabbitPublish(client, config)
+      config := cmd.Context().Value("rabbitConfig").(*rabbitmq.ServerConfig)
+      return c.handleRabbitPublish(printLog, exchangeName, routingKey, message, interval, repeat, rateLimit, config)
     },
   }
 
@@ -406,8 +346,8 @@ func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
   cmd.Flags().StringVarP(&exchangeName, "exchange", "e", "", "Exchange name")
   cmd.Flags().StringVarP(&routingKey, "routing-key", "r", "", "Routing key")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
-  cmd.Flags().IntVarP(&interval, "interval", "t", 1000, "Time interval in milliseconds between messages")
-  cmd.Flags().IntVarP(&repeat, "repeat", "r", 10, "Number of times to repeat sending the message")
+  cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Time interval in milliseconds between messages")
+  cmd.Flags().IntVarP(&repeat, "repeat", "t", 10, "Number of times to repeat sending the message")
   cmd.Flags().IntVarP(&rateLimit, "rate-limit", "l", 0, "Send rate limit")
   cmd.MarkFlagRequired("message")
 
@@ -415,18 +355,29 @@ func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
 }
 
 // handleRabbitPublish 处理发布消息命令
-func (c *CLI) handleRabbitPublish(client *rabbitmq.RabbitClient, config *rabbitmq.PublishConfig) error {
-
+func (c *CLI) handleRabbitPublish(printLog bool, exchangeName, routingKey, message string, interval, repeat, rateLimit int, config *rabbitmq.ServerConfig) error {
+  client := &rabbitmq.RabbitClient{
+    Config: config,
+  }
   if err := client.Connect(); err != nil {
     return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
   }
   defer client.Close()
 
-  if err := client.PublishMessage(config); err != nil {
+  publish := &rabbitmq.PublishConfig{
+    PrintLog:   printLog,
+    Exchange:   exchangeName,
+    RoutingKey: routingKey,
+    Message:    message,
+    Interval:   interval,
+    Repeat:     repeat,
+    RateLimit:  rateLimit,
+  }
+  if err := client.PublishMessage(publish); err != nil {
     return fmt.Errorf("failed to publish message: %w", err)
   }
 
-  fmt.Printf("Message published to exchange '%s' with routing key '%s'\n", config.Exchange, config.RoutingKey)
+  fmt.Printf("Message published to exchange '%s' with routing key '%s'\n", exchangeName, routingKey)
   return nil
 }
 
@@ -435,15 +386,13 @@ func (c *CLI) setupRabbitConsumeCommand() *cobra.Command {
   var queueName, consumer string
   var autoAck bool
   var timeout int
-  var server string
-  var port int
-  var vhost, user, password string
 
   cmd := &cobra.Command{
     Use:   "consume",
     Short: "Consume messages from a queue",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitConsume(queueName, consumer, autoAck, timeout, server, port, vhost, user, password)
+      config := cmd.Context().Value("rabbitConfig").(*rabbitmq.ServerConfig)
+      return c.handleRabbitConsume(queueName, consumer, autoAck, timeout, config)
     },
   }
 
@@ -457,15 +406,9 @@ func (c *CLI) setupRabbitConsumeCommand() *cobra.Command {
 }
 
 // handleRabbitConsume 处理消费消息命令
-func (c *CLI) handleRabbitConsume(queue, consumer string, autoAck bool, timeout int, server string, port int, vhost, user, password string) error {
+func (c *CLI) handleRabbitConsume(queue, consumer string, autoAck bool, timeout int, config *rabbitmq.ServerConfig) error {
   client := &rabbitmq.RabbitClient{
-    Config: &rabbitmq.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Vhost:    vhost,
-      User:     user,
-      Password: password,
-    },
+    Config: config,
   }
 
   if err := client.Connect(); err != nil {
