@@ -17,9 +17,9 @@ func (c *CLI) setupKafkaCommands() *cobra.Command {
 
   // 为父命令添加持久化标志
   var config kafka.ServerConfig
-  kafkaCmd.PersistentFlags().StringVar(&config.Servers, "servers", "localhost", "Kafka server addresses (comma separated)")
-  kafkaCmd.PersistentFlags().IntVar(&config.Port, "port", 9092, "Kafka server port")
-  kafkaCmd.PersistentFlags().StringVar(&config.User, "user", "", "Username for authentication")
+  kafkaCmd.PersistentFlags().StringVarP(&config.Servers, "servers", "s", "localhost", "Kafka server addresses (comma separated)")
+  kafkaCmd.PersistentFlags().IntVarP(&config.Port, "port", "p", 9092, "Kafka server port")
+  kafkaCmd.PersistentFlags().StringVarP(&config.User, "user", "u", "", "Username for authentication")
   kafkaCmd.PersistentFlags().StringVar(&config.Password, "password", "", "Password for authentication")
   kafkaCmd.PersistentFlags().StringVar(&config.SASLMechanism, "sasl-mechanism", "", "SASL mechanism (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512)")
   kafkaCmd.PersistentFlags().StringVar(&config.SASLProtocol, "sasl-protocol", "SASL_PLAINTEXT", "SASL protocol")
@@ -59,55 +59,19 @@ func (c *CLI) setupKafkaSendCommand() *cobra.Command {
     },
   }
 
-  cmd.Flags().StringVar(&topic, "topic", "", "Message topic")
-  cmd.Flags().StringVar(&message, "message", "", "Message content")
-  cmd.Flags().StringVar(&key, "key", "", "Message key")
-  cmd.Flags().IntVar(&repeat, "repeat", 1, "Number of times to repeat sending")
-  cmd.Flags().IntVar(&interval, "interval", 1000, "Interval between messages in milliseconds")
-  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
-  cmd.Flags().StringVar(&acks, "acks", "1", "Acknowledgment level (0, 1, -1/all)")
+  cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic")
+  cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().StringVarP(&key, "key", "k", "", "Message key")
+  cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat sending")
+  cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between messages in milliseconds")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
+  cmd.Flags().StringVarP(&acks, "acks", "a", "1", "Acknowledgment level (0, 1, -1/all)")
   cmd.Flags().IntVar(&messageLength, "message-length", 0, "Message length, will pad with spaces if necessary")
-  cmd.Flags().StringVar(&compression, "compression", "", "Compression type (gzip, snappy, lz4, zstd)")
+  cmd.Flags().StringVarP(&compression, "compression", "c", "", "Compression type (gzip, snappy, lz4, zstd)")
   cmd.Flags().StringVar(&headers, "headers", "", "Message headers in format name=value,name2=value2")
 
   cmd.MarkFlagRequired("topic")
   cmd.MarkFlagRequired("message")
-
-  return cmd
-}
-
-// setupKafkaReceiveCommand 设置接收消息命令
-func (c *CLI) setupKafkaReceiveCommand() *cobra.Command {
-  var topic string
-  var groupID string
-  var partition int32
-  var offset int64
-  var offsetType string
-  var timeout int
-  var printLog bool
-  var maxMessages int
-  var commitInterval int
-
-  cmd := &cobra.Command{
-    Use:   "receive",
-    Short: "Receive messages from Kafka",
-    RunE: func(cmd *cobra.Command, args []string) error {
-      config := cmd.Context().Value("kafkaConfig").(*kafka.ServerConfig)
-      return c.handleKafkaReceive(config, topic, groupID, partition, offset, offsetType, timeout, printLog, maxMessages, commitInterval)
-    },
-  }
-
-  cmd.Flags().StringVar(&topic, "topic", "", "Message topic to subscribe")
-  cmd.Flags().StringVar(&groupID, "group-id", "default_consumer_group", "Consumer group ID")
-  cmd.Flags().Int32Var(&partition, "partition", -1, "Partition number (-1 for all partitions)")
-  cmd.Flags().Int64Var(&offset, "offset", 0, "Offset value (only valid if offset-type is 'specific')")
-  cmd.Flags().StringVar(&offsetType, "offset-type", "latest", "Offset type (earliest, latest, specific)")
-  cmd.Flags().IntVar(&timeout, "timeout", 0, "Consumer timeout in seconds (0 for no timeout)")
-  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
-  cmd.Flags().IntVar(&maxMessages, "max-messages", 0, "Maximum number of messages to receive (0 for unlimited)")
-  cmd.Flags().IntVar(&commitInterval, "commit-interval", 0, "Commit interval in milliseconds")
-
-  cmd.MarkFlagRequired("topic")
 
   return cmd
 }
@@ -144,6 +108,42 @@ func (c *CLI) handleKafkaSend(config *kafka.ServerConfig, topic, message, key st
 
   fmt.Printf("Successfully sent %d messages to Kafka topic '%s'\n", repeat, topic)
   return nil
+}
+
+// setupKafkaReceiveCommand 设置接收消息命令
+func (c *CLI) setupKafkaReceiveCommand() *cobra.Command {
+  var topic string
+  var groupID string
+  var partition int32
+  var offset int64
+  var offsetType string
+  var timeout int
+  var printLog bool
+  var maxMessages int
+  var commitInterval int
+
+  cmd := &cobra.Command{
+    Use:   "receive",
+    Short: "Receive messages from Kafka",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      config := cmd.Context().Value("kafkaConfig").(*kafka.ServerConfig)
+      return c.handleKafkaReceive(config, topic, groupID, partition, offset, offsetType, timeout, printLog, maxMessages, commitInterval)
+    },
+  }
+
+  cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic to subscribe")
+  cmd.Flags().StringVarP(&groupID, "group-id", "g", "default_consumer_group", "Consumer group ID")
+  cmd.Flags().Int32VarP(&partition, "partition", "p", -1, "Partition number (-1 for all partitions)")
+  cmd.Flags().Int64VarP(&offset, "offset", "o", 0, "Offset value (only valid if offset-type is 'specific')")
+  cmd.Flags().StringVar(&offsetType, "offset-type", "latest", "Offset type (earliest, latest, specific)")
+  cmd.Flags().IntVar(&timeout, "timeout", 0, "Consumer timeout in seconds (0 for no timeout)")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
+  cmd.Flags().IntVar(&maxMessages, "max-messages", 0, "Maximum number of messages to receive (0 for unlimited)")
+  cmd.Flags().IntVar(&commitInterval, "commit-interval", 0, "Commit interval in milliseconds")
+
+  cmd.MarkFlagRequired("topic")
+
+  return cmd
 }
 
 // handleKafkaReceive 处理接收消息

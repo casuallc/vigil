@@ -18,11 +18,10 @@ func (c *CLI) setupRocketCommands() *cobra.Command {
 
   // 为父命令添加持久化标志
   var config rocketmq.ServerConfig
-  rocketCmd.PersistentFlags().StringVar(&config.Server, "server", "localhost", "RocketMQ server host")
-  rocketCmd.PersistentFlags().IntVar(&config.Port, "port", 9876, "RocketMQ server port")
-  rocketCmd.PersistentFlags().StringVar(&config.User, "user", "", "Username for authentication")
-  rocketCmd.PersistentFlags().StringVar(&config.Password, "password", "", "Password for authentication")
-  rocketCmd.PersistentFlags().StringVar(&config.Namespace, "namespace", "", "Namespace")
+  rocketCmd.PersistentFlags().StringVarP(&config.Server, "server", "s", "localhost", "RocketMQ server host")
+  rocketCmd.PersistentFlags().IntVarP(&config.Port, "port", "p", 9876, "RocketMQ server port")
+  rocketCmd.PersistentFlags().StringVarP(&config.User, "user", "u", "", "Username for authentication")
+  rocketCmd.PersistentFlags().StringVarP(&config.Namespace, "namespace", "n", "", "Namespace")
   rocketCmd.PersistentFlags().StringVar(&config.AccessKey, "access-key", "", "Access Key for authentication")
   rocketCmd.PersistentFlags().StringVar(&config.SecretKey, "secret-key", "", "Secret Key for authentication")
 
@@ -64,132 +63,18 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
     },
   }
 
-  cmd.Flags().StringVar(&groupName, "group", "default_group", "Producer group name")
-  cmd.Flags().StringVar(&topic, "topic", "", "Message topic")
+  cmd.Flags().StringVarP(&groupName, "group", "g", "default_group", "Producer group name")
+  cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic")
   cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
-  cmd.Flags().StringVar(&keys, "keys", "", "Message keys")
-  cmd.Flags().StringVar(&message, "message", "", "Message content")
-  cmd.Flags().IntVar(&repeat, "repeat", 1, "Number of times to repeat sending")
-  cmd.Flags().IntVar(&interval, "interval", 1000, "Interval between messages in milliseconds")
+  cmd.Flags().StringVarP(&keys, "keys", "k", "", "Message keys")
+  cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat sending")
+  cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between messages in milliseconds")
   cmd.Flags().StringVar(&sendType, "send-type", "sync", "Send type: sync or async")
   cmd.Flags().IntVar(&delayLevel, "delay-level", 0, "Delay level for delayed messages")
-  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
-  cmd.Flags().BoolVar(&useMessageTrace, "use-trace", false, "Use message trace")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
+  cmd.Flags().BoolVar(&useMessageTrace, "trace", false, "Use message trace")
   cmd.Flags().IntVar(&messageLength, "message-length", 0, "Message length, will pad with spaces if necessary")
-
-  cmd.MarkFlagRequired("topic")
-  cmd.MarkFlagRequired("message")
-
-  return cmd
-}
-
-// setupRocketReceiveCommand 设置接收消息命令
-func (c *CLI) setupRocketReceiveCommand() *cobra.Command {
-  var groupName string
-  var topic string
-  var tags string
-  var timeout int
-  var startConsumePos string
-  var consumeTimestamp string
-  var consumeType string
-  var printLog bool
-  var retryCount int
-  var useMessageTrace bool
-
-  cmd := &cobra.Command{
-    Use:   "receive",
-    Short: "Receive messages from RocketMQ",
-    RunE: func(cmd *cobra.Command, args []string) error {
-      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
-      return c.handleRocketReceive(config, groupName, topic, tags, timeout, startConsumePos, consumeTimestamp, consumeType, printLog, retryCount, useMessageTrace)
-    },
-  }
-
-  cmd.Flags().StringVar(&groupName, "group", "default_consumer_group", "Consumer group name")
-  cmd.Flags().StringVar(&topic, "topic", "", "Message topic to subscribe")
-  cmd.Flags().StringVar(&tags, "tags", "*", "Message tags filter (use * for all)")
-  cmd.Flags().IntVar(&timeout, "timeout", 0, "Consumer timeout in seconds (0 for no timeout)")
-  cmd.Flags().StringVar(&startConsumePos, "start-pos", "LAST", "Start consume position: FIRST, LAST, TIMESTAMP")
-  cmd.Flags().StringVar(&consumeTimestamp, "timestamp", "", "Consume timestamp in format 20060102150405")
-  cmd.Flags().StringVar(&consumeType, "consume-type", "SYNC", "Consume type: SYNC or ASYNC")
-  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
-  cmd.Flags().IntVar(&retryCount, "retry-count", 0, "Message retry count")
-  cmd.Flags().BoolVar(&useMessageTrace, "use-trace", false, "Use message trace")
-
-  cmd.MarkFlagRequired("topic")
-
-  return cmd
-}
-
-// setupRocketBatchSendCommand 设置批量发送消息命令
-func (c *CLI) setupRocketBatchSendCommand() *cobra.Command {
-  var groupName string
-  var topic string
-  var tags string
-  var keys string
-  var message string
-  var repeat int
-  var interval int
-  var batchSize int
-  var printLog bool
-  var useMessageTrace bool
-
-  cmd := &cobra.Command{
-    Use:   "batch-send",
-    Short: "Batch send messages to RocketMQ",
-    RunE: func(cmd *cobra.Command, args []string) error {
-      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
-      return c.handleRocketBatchSend(config, groupName, topic, tags, keys, message, repeat, interval, batchSize, printLog, useMessageTrace)
-    },
-  }
-
-  cmd.Flags().StringVar(&groupName, "group", "default_group", "Producer group name")
-  cmd.Flags().StringVar(&topic, "topic", "", "Message topic")
-  cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
-  cmd.Flags().StringVar(&keys, "keys", "", "Message keys")
-  cmd.Flags().StringVar(&message, "message", "", "Message content")
-  cmd.Flags().IntVar(&repeat, "repeat", 1, "Number of times to repeat sending")
-  cmd.Flags().IntVar(&interval, "interval", 1000, "Interval between batches in milliseconds")
-  cmd.Flags().IntVar(&batchSize, "batch-size", 10, "Batch size")
-  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
-  cmd.Flags().BoolVar(&useMessageTrace, "use-trace", false, "Use message trace")
-
-  cmd.MarkFlagRequired("topic")
-  cmd.MarkFlagRequired("message")
-
-  return cmd
-}
-
-// setupRocketTransactionSendCommand 设置事务消息发送命令
-func (c *CLI) setupRocketTransactionSendCommand() *cobra.Command {
-  var groupName string
-  var topic string
-  var tags string
-  var keys string
-  var message string
-  var repeat int
-  var interval int
-  var printLog bool
-  var checkTimes int
-
-  cmd := &cobra.Command{
-    Use:   "transaction-send",
-    Short: "Send transaction messages to RocketMQ",
-    RunE: func(cmd *cobra.Command, args []string) error {
-      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
-      return c.handleRocketTransactionSend(config, groupName, topic, tags, keys, message, repeat, interval, printLog, checkTimes)
-    },
-  }
-
-  cmd.Flags().StringVar(&groupName, "group", "default_transaction_group", "Transaction producer group name")
-  cmd.Flags().StringVar(&topic, "topic", "", "Message topic")
-  cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
-  cmd.Flags().StringVar(&keys, "keys", "", "Message keys")
-  cmd.Flags().StringVar(&message, "message", "", "Message content")
-  cmd.Flags().IntVar(&repeat, "repeat", 1, "Number of times to repeat sending")
-  cmd.Flags().IntVar(&interval, "interval", 1000, "Interval between messages in milliseconds")
-  cmd.Flags().BoolVar(&printLog, "print-log", false, "Print detailed logs")
-  cmd.Flags().IntVar(&checkTimes, "check-times", 3, "Transaction check times")
 
   cmd.MarkFlagRequired("topic")
   cmd.MarkFlagRequired("message")
@@ -237,6 +122,44 @@ func (c *CLI) handleRocketSend(config *rocketmq.ServerConfig, groupName string, 
 
   fmt.Printf("Successfully sent %d messages to topic %s\n", repeat, topic)
   return nil
+}
+
+// setupRocketReceiveCommand 设置接收消息命令
+func (c *CLI) setupRocketReceiveCommand() *cobra.Command {
+  var groupName string
+  var topic string
+  var tags string
+  var timeout int
+  var startConsumePos string
+  var consumeTimestamp string
+  var consumeType string
+  var printLog bool
+  var retryCount int
+  var useMessageTrace bool
+
+  cmd := &cobra.Command{
+    Use:   "receive",
+    Short: "Receive messages from RocketMQ",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
+      return c.handleRocketReceive(config, groupName, topic, tags, timeout, startConsumePos, consumeTimestamp, consumeType, printLog, retryCount, useMessageTrace)
+    },
+  }
+
+  cmd.Flags().StringVarP(&groupName, "group", "g", "default_consumer_group", "Consumer group name")
+  cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic to subscribe")
+  cmd.Flags().StringVar(&tags, "tags", "*", "Message tags filter (use * for all)")
+  cmd.Flags().IntVar(&timeout, "timeout", 0, "Consumer timeout in seconds (0 for no timeout)")
+  cmd.Flags().StringVar(&startConsumePos, "start-pos", "LAST", "Start consume position: FIRST, LAST, TIMESTAMP")
+  cmd.Flags().StringVar(&consumeTimestamp, "timestamp", "", "Consume timestamp in format 20060102150405")
+  cmd.Flags().StringVar(&consumeType, "consume-type", "SYNC", "Consume type: SYNC or ASYNC")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
+  cmd.Flags().IntVar(&retryCount, "retry-count", 0, "Message retry count")
+  cmd.Flags().BoolVar(&useMessageTrace, "trace", false, "Use message trace")
+
+  cmd.MarkFlagRequired("topic")
+
+  return cmd
 }
 
 // handleRocketReceive 处理接收消息
@@ -289,6 +212,45 @@ func (c *CLI) handleRocketReceive(config *rocketmq.ServerConfig, groupName strin
   return nil
 }
 
+// setupRocketBatchSendCommand 设置批量发送消息命令
+func (c *CLI) setupRocketBatchSendCommand() *cobra.Command {
+  var groupName string
+  var topic string
+  var tags string
+  var keys string
+  var message string
+  var repeat int
+  var interval int
+  var batchSize int
+  var printLog bool
+  var useMessageTrace bool
+
+  cmd := &cobra.Command{
+    Use:   "batch-send",
+    Short: "Batch send messages to RocketMQ",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
+      return c.handleRocketBatchSend(config, groupName, topic, tags, keys, message, repeat, interval, batchSize, printLog, useMessageTrace)
+    },
+  }
+
+  cmd.Flags().StringVarP(&groupName, "group", "g", "default_group", "Producer group name")
+  cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic")
+  cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
+  cmd.Flags().StringVarP(&keys, "keys", "k", "", "Message keys")
+  cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat sending")
+  cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between batches in milliseconds")
+  cmd.Flags().IntVar(&batchSize, "batch-size", 10, "Batch size")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
+  cmd.Flags().BoolVar(&useMessageTrace, "trace", false, "Use message trace")
+
+  cmd.MarkFlagRequired("topic")
+  cmd.MarkFlagRequired("message")
+
+  return cmd
+}
+
 // handleRocketBatchSend 处理批量发送消息
 func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, batchSize int, printLog bool, useMessageTrace bool) error {
   // 创建客户端
@@ -321,6 +283,43 @@ func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName str
 
   fmt.Printf("Successfully sent %d batch messages to topic %s\n", repeat, topic)
   return nil
+}
+
+// setupRocketTransactionSendCommand 设置事务消息发送命令
+func (c *CLI) setupRocketTransactionSendCommand() *cobra.Command {
+  var groupName string
+  var topic string
+  var tags string
+  var keys string
+  var message string
+  var repeat int
+  var interval int
+  var printLog bool
+  var checkTimes int
+
+  cmd := &cobra.Command{
+    Use:   "transaction-send",
+    Short: "Send transaction messages to RocketMQ",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
+      return c.handleRocketTransactionSend(config, groupName, topic, tags, keys, message, repeat, interval, printLog, checkTimes)
+    },
+  }
+
+  cmd.Flags().StringVarP(&groupName, "group", "g", "default_transaction_group", "Transaction producer group name")
+  cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic")
+  cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
+  cmd.Flags().StringVarP(&keys, "keys", "k", "", "Message keys")
+  cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat sending")
+  cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between messages in milliseconds")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
+  cmd.Flags().IntVar(&checkTimes, "check-times", 3, "Transaction check times")
+
+  cmd.MarkFlagRequired("topic")
+  cmd.MarkFlagRequired("message")
+
+  return cmd
 }
 
 // handleRocketTransactionSend 处理事务消息发送

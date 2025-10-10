@@ -1,6 +1,7 @@
 package cli
 
 import (
+  "context"
   "fmt"
   "github.com/casuallc/vigil/mqtt"
   "github.com/spf13/cobra"
@@ -25,61 +26,47 @@ func (c *CLI) setupMqttCommands() *cobra.Command {
   mqttCmd.PersistentFlags().IntVar(&config.KeepAlive, "keep-alive", 60, "Keep alive interval in seconds")
   mqttCmd.PersistentFlags().IntVar(&config.Timeout, "timeout", 30, "Connection timeout in seconds")
 
+  // 存储配置到上下文
+  mqttCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+    cmd.SetContext(context.WithValue(cmd.Context(), "mqttConfig", &config))
+  }
+
+  // 将子命令添加到父命令
+  mqttCmd.AddCommand(c.setupMqttPublishCommand())
+  mqttCmd.AddCommand(c.setupMqttSubscribeCommand())
+
+  return mqttCmd
+}
+
+// setupMqttPublishCommand 设置发送消息命令
+func (c *CLI) setupMqttPublishCommand() *cobra.Command {
+  var topic string
+  var qos int
+  var message string
+  var repeat, interval int
+  var retained, printLog bool
+
   // 添加发布消息命令
-  publishCmd := &cobra.Command{
+  cmd := &cobra.Command{
     Use:   "publish",
     Short: "Publish a message to an MQTT topic",
     RunE: func(cmd *cobra.Command, args []string) error {
-      // 获取命令行参数
-      topic, _ := cmd.Flags().GetString("topic")
-      qos, _ := cmd.Flags().GetInt("qos")
-      message, _ := cmd.Flags().GetString("message")
-      repeat, _ := cmd.Flags().GetInt("repeat")
-      interval, _ := cmd.Flags().GetInt("interval")
-      retained, _ := cmd.Flags().GetBool("retained")
-      printLog, _ := cmd.Flags().GetBool("print-log")
-
-      return c.handleMqttPublish(&config, topic, qos, message, repeat, interval, retained, printLog)
+      config := cmd.Context().Value("mqttConfig").(*mqtt.ServerConfig)
+      return c.handleMqttPublish(config, topic, qos, message, repeat, interval, retained, printLog)
     },
   }
 
   // 添加发布命令的标志
-  publishCmd.Flags().StringP("topic", "t", "", "MQTT topic to publish to")
-  publishCmd.Flags().IntP("qos", "q", 0, "Quality of Service (0, 1, 2)")
-  publishCmd.Flags().StringP("message", "m", "Hello, MQTT!", "Message content")
-  publishCmd.Flags().IntP("repeat", "r", 1, "Number of times to repeat publishing")
-  publishCmd.Flags().IntP("interval", "i", 1000, "Interval between messages in milliseconds")
-  publishCmd.Flags().BoolP("retained", "R", false, "Retain message flag")
-  publishCmd.Flags().BoolP("print-log", "l", true, "Print log messages")
-  publishCmd.MarkFlagRequired("topic")
+  cmd.Flags().StringVarP(&topic, "topic", "t", "", "MQTT topic to publish to")
+  cmd.Flags().IntVarP(&qos, "qos", "q", 0, "Quality of Service (0, 1, 2)")
+  cmd.Flags().StringVarP(&message, "message", "m", "Hello, MQTT!", "Message content")
+  cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat publishing")
+  cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between messages in milliseconds")
+  cmd.Flags().BoolVarP(&retained, "retained", "R", false, "Retain message flag")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "Print log messages")
+  cmd.MarkFlagRequired("topic")
 
-  // 添加订阅消息命令
-  subscribeCmd := &cobra.Command{
-    Use:   "subscribe",
-    Short: "Subscribe to an MQTT topic",
-    RunE: func(cmd *cobra.Command, args []string) error {
-      // 获取命令行参数
-      topic, _ := cmd.Flags().GetString("topic")
-      qos, _ := cmd.Flags().GetInt("qos")
-      timeout, _ := cmd.Flags().GetInt("timeout")
-      printLog, _ := cmd.Flags().GetBool("print-log")
-
-      return c.handleMqttSubscribe(&config, topic, qos, timeout, printLog)
-    },
-  }
-
-  // 添加订阅命令的标志
-  subscribeCmd.Flags().StringP("topic", "t", "", "MQTT topic to subscribe to")
-  subscribeCmd.Flags().IntP("qos", "q", 0, "Quality of Service (0, 1, 2)")
-  subscribeCmd.Flags().IntP("timeout", "o", 0, "Timeout in seconds (0 for unlimited)")
-  subscribeCmd.Flags().BoolP("print-log", "l", true, "Print log messages")
-  subscribeCmd.MarkFlagRequired("topic")
-
-  // 将子命令添加到父命令
-  mqttCmd.AddCommand(publishCmd)
-  mqttCmd.AddCommand(subscribeCmd)
-
-  return mqttCmd
+  return cmd
 }
 
 // handleMqttPublish 处理发布消息
@@ -111,6 +98,31 @@ func (c *CLI) handleMqttPublish(config *mqtt.ServerConfig, topic string, qos int
 
   fmt.Printf("Successfully published %d messages to topic '%s'\n", repeat, topic)
   return nil
+}
+
+// setupMqttSubscribeCommand 设置发送消息命令
+func (c *CLI) setupMqttSubscribeCommand() *cobra.Command {
+  var topic string
+  var qos, timeout int
+  var printLog bool
+
+  // 添加订阅消息命令
+  cmd := &cobra.Command{
+    Use:   "subscribe",
+    Short: "Subscribe to an MQTT topic",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      config := cmd.Context().Value("mqttConfig").(*mqtt.ServerConfig)
+      return c.handleMqttSubscribe(config, topic, qos, timeout, printLog)
+    },
+  }
+
+  // 添加订阅命令的标志
+  cmd.Flags().StringVarP(&topic, "topic", "t", "", "MQTT topic to subscribe to")
+  cmd.Flags().IntVarP(&qos, "qos", "q", 0, "Quality of Service (0, 1, 2)")
+  cmd.Flags().IntVarP(&timeout, "timeout", "o", 0, "Timeout in seconds (0 for unlimited)")
+  cmd.Flags().BoolVar(&printLog, "print-log", true, "Print log messages")
+  cmd.MarkFlagRequired("topic")
+  return cmd
 }
 
 // handleMqttSubscribe 处理订阅消息

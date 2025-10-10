@@ -18,7 +18,6 @@ type ServerConfig struct {
   Server    string
   Port      int
   User      string
-  Password  string
   Namespace string // 命名空间
   AccessKey string // AK
   SecretKey string // SK
