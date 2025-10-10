@@ -368,6 +368,7 @@ func (c *CLI) handleRabbitQueueUnbind(queue, exchange, routingKey string, args m
 
 // setupRabbitPublishCommand 设置发布消息命令
 func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
+  var printLog bool
   var exchangeName, routingKey, message string
   var interval, repeat, rateLimit int
   var server string
@@ -382,11 +383,12 @@ func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
     },
   }
 
+  cmd.Flags().BoolVar(&printLog, "print", true, "Print log")
   cmd.Flags().StringVarP(&exchangeName, "exchange", "e", "", "Exchange name")
   cmd.Flags().StringVarP(&routingKey, "routing-key", "r", "", "Routing key")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
-  cmd.Flags().IntVarP(&interval, "interval", "i", 0, "Time interval in milliseconds between messages")
-  cmd.Flags().IntVarP(&repeat, "repeat", "t", 1, "Number of times to repeat sending the message")
+  cmd.Flags().IntVarP(&interval, "interval", "t", 1, "Time interval in seconds between messages")
+  cmd.Flags().IntVarP(&repeat, "repeat", "r", 10, "Number of times to repeat sending the message")
   cmd.Flags().IntVarP(&rateLimit, "rate-limit", "l", 0, "Send rate limit")
   cmd.MarkFlagRequired("message")
 

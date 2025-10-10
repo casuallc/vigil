@@ -162,7 +162,14 @@ func (r *RabbitClient) PublishMessage(publish *PublishConfig) error {
   r.mu.Lock()
   defer r.mu.Unlock()
 
-  ticker := time.NewTicker(time.Duration(publish.Interval) * time.Millisecond)
+  if publish.Interval == 0 {
+    publish.Interval = 1
+  }
+  if publish.Repeat == 0 {
+    publish.Repeat = 1
+  }
+
+  ticker := time.NewTicker(time.Duration(publish.Interval) * time.Second)
   defer ticker.Stop()
 
   for i := 0; i < publish.Repeat; i++ {
@@ -186,7 +193,9 @@ func (r *RabbitClient) PublishMessage(publish *PublishConfig) error {
       return fmt.Errorf("failed to publish message %w", err)
     }
 
-    log.Printf("Publish message %s", publish.Message)
+    if publish.Print {
+      log.Printf("Publish message: %s", publish.Message)
+    }
   }
 
   log.Printf("Publish message count: %d", publish.Repeat)
