@@ -336,6 +336,7 @@ func (c *Client) ReceiveMessage(config *ConsumerConfig) error {
 
   // 等待所有消费者完成
   wg.Wait()
+  log.Printf("Close consumer from topic '%s'", config.Topic)
   return nil
 }
 

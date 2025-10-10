@@ -20,7 +20,7 @@ func (c *CLI) setupCommands() *cobra.Command {
 
   // Global flags
   rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://localhost:8080", "API server host address")
-  
+
   // Override PreRun to create client with the provided host
   rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
     // Only create a new client if we're not in the root command
@@ -33,13 +33,13 @@ func (c *CLI) setupCommands() *cobra.Command {
   // Add subcommands
   procCmd := c.setupProcCommands()
   rootCmd.AddCommand(procCmd)
-  
+
   resourceCmd := c.setupResourceCommands()
   rootCmd.AddCommand(resourceCmd)
-  
+
   configCmd := c.setupConfigCommands()
   rootCmd.AddCommand(configCmd)
-  
+
   execCmd := c.setupExecCommand()
   rootCmd.AddCommand(execCmd)
 
@@ -55,9 +55,17 @@ func (c *CLI) setupCommands() *cobra.Command {
   zkCmd := c.setupZkCommands()
   rootCmd.AddCommand(zkCmd)
 
-  // 添加RocketMQ命令
+  // Add RocketMQ commands
   rocketCmd := c.setupRocketCommands()
   rootCmd.AddCommand(rocketCmd)
+
+  // Add Kafka commands
+  kafkaCmd := c.setupKafkaCommands()
+  rootCmd.AddCommand(kafkaCmd)
+
+  // Add MQTT commands
+  mqttCmd := c.setupMqttCommands()
+  rootCmd.AddCommand(mqttCmd)
 
   return rootCmd
 }
@@ -91,7 +99,7 @@ func (c *CLI) setupScanCommand() *cobra.Command {
   var query string
   var registerAfterScan bool
   var scanNamespace string
-  
+
   scanCmd := &cobra.Command{
     Use:   "scan",
     Short: "Scan processes",
@@ -105,7 +113,7 @@ func (c *CLI) setupScanCommand() *cobra.Command {
   scanCmd.Flags().BoolVarP(&registerAfterScan, "register", "r", false, "Register a process after scanning")
   scanCmd.Flags().StringVarP(&scanNamespace, "namespace", "n", "default", "Process namespace")
   scanCmd.MarkFlagRequired("query")
-  
+
   return scanCmd
 }
 
@@ -114,7 +122,7 @@ func (c *CLI) setupCreateCommand() *cobra.Command {
   var processName string
   var commandPath string
   var createNamespace string
-  
+
   createCmd := &cobra.Command{
     Use:   "create [name]",
     Short: "Create process",
@@ -132,14 +140,14 @@ func (c *CLI) setupCreateCommand() *cobra.Command {
   createCmd.Flags().StringVarP(&processName, "name", "N", "", "Process name (alternative to positional argument)")
   createCmd.Flags().StringVarP(&commandPath, "command", "c", "", "Command path")
   createCmd.Flags().StringVarP(&createNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return createCmd
 }
 
 // setupStartCommand 设置start命令
 func (c *CLI) setupStartCommand() *cobra.Command {
   var startNamespace string
-  
+
   startCmd := &cobra.Command{
     Use:   "start [name]",
     Short: "Start process",
@@ -157,14 +165,14 @@ func (c *CLI) setupStartCommand() *cobra.Command {
     },
   }
   startCmd.Flags().StringVarP(&startNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return startCmd
 }
 
 // setupStopCommand 设置stop命令
 func (c *CLI) setupStopCommand() *cobra.Command {
   var stopNamespace string
-  
+
   stopCmd := &cobra.Command{
     Use:   "stop [name]",
     Short: "Stop process",
@@ -182,14 +190,14 @@ func (c *CLI) setupStopCommand() *cobra.Command {
     },
   }
   stopCmd.Flags().StringVarP(&stopNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return stopCmd
 }
 
 // setupRestartCommand 设置restart命令
 func (c *CLI) setupRestartCommand() *cobra.Command {
   var restartNamespace string
-  
+
   restartCmd := &cobra.Command{
     Use:   "restart [name]",
     Short: "Restart process",
@@ -207,14 +215,14 @@ func (c *CLI) setupRestartCommand() *cobra.Command {
     },
   }
   restartCmd.Flags().StringVarP(&restartNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return restartCmd
 }
 
 // setupDeleteCommand 设置delete命令
 func (c *CLI) setupDeleteCommand() *cobra.Command {
   var deleteNamespace string
-  
+
   deleteCmd := &cobra.Command{
     Use:   "delete [name]",
     Short: "Delete a managed process",
@@ -232,14 +240,14 @@ func (c *CLI) setupDeleteCommand() *cobra.Command {
     },
   }
   deleteCmd.Flags().StringVarP(&deleteNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return deleteCmd
 }
 
 // setupListCommand 设置list命令
 func (c *CLI) setupListCommand() *cobra.Command {
   var listNamespace string
-  
+
   listCmd := &cobra.Command{
     Use:   "list",
     Short: "List processes",
@@ -250,14 +258,14 @@ func (c *CLI) setupListCommand() *cobra.Command {
     },
   }
   listCmd.Flags().StringVarP(&listNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return listCmd
 }
 
 // setupStatusCommand 设置status命令
 func (c *CLI) setupStatusCommand() *cobra.Command {
   var statusNamespace string
-  
+
   statusCmd := &cobra.Command{
     Use:   "status [name]",
     Short: "Check process status",
@@ -269,14 +277,14 @@ func (c *CLI) setupStatusCommand() *cobra.Command {
     },
   }
   statusCmd.Flags().StringVarP(&statusNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return statusCmd
 }
 
 // setupEditCommand 设置edit命令
 func (c *CLI) setupEditCommand() *cobra.Command {
   var editNamespace string
-  
+
   editCmd := &cobra.Command{
     Use:   "edit [name]",
     Short: "Edit process definition",
@@ -294,7 +302,7 @@ func (c *CLI) setupEditCommand() *cobra.Command {
     },
   }
   editCmd.Flags().StringVarP(&editNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return editCmd
 }
 
@@ -302,7 +310,7 @@ func (c *CLI) setupEditCommand() *cobra.Command {
 func (c *CLI) setupGetCommand() *cobra.Command {
   var getFormat string
   var getNamespace string
-  
+
   getCmd := &cobra.Command{
     Use:   "get [name]",
     Short: "Get process details",
@@ -322,7 +330,7 @@ func (c *CLI) setupGetCommand() *cobra.Command {
   }
   getCmd.Flags().StringVarP(&getFormat, "format", "f", "yaml", "Output format (yaml|text)")
   getCmd.Flags().StringVarP(&getNamespace, "namespace", "n", "default", "Process namespace")
-  
+
   return getCmd
 }
 
@@ -398,7 +406,7 @@ func (c *CLI) setupExecCommand() *cobra.Command {
   var isFile bool
   var envVars []string
   var outputFile string
-  
+
   execCmd := &cobra.Command{
     Use:   "exec [command/script]",
     Short: "Execute a command or script",
@@ -411,6 +419,6 @@ func (c *CLI) setupExecCommand() *cobra.Command {
   execCmd.Flags().BoolVarP(&isFile, "file", "f", false, "Treat the argument as a script file path")
   execCmd.Flags().StringArrayVarP(&envVars, "env", "e", []string{}, "Environment variables to set (format: KEY=VALUE)")
   execCmd.Flags().StringVarP(&outputFile, "result", "r", "", "Output result to file instead of console")
-  
+
   return execCmd
 }
