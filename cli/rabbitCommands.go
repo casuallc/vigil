@@ -58,8 +58,8 @@ func (c *CLI) setupRabbitDeclareExchangeCommand() *cobra.Command {
 
   cmd.Flags().StringVarP(&exchangeName, "name", "n", "", "Exchange name")
   cmd.Flags().StringVarP(&exchangeType, "type", "t", "direct", "Exchange type")
-  cmd.Flags().BoolVarP(&durable, "durable", "d", false, "Exchange will survive broker restart")
-  cmd.Flags().BoolVarP(&autoDelete, "auto-delete", "a", false, "Exchange will be deleted")
+  cmd.Flags().BoolVarP(&durable, "durable", "d", true, "Exchange will survive broker restart")
+  cmd.Flags().BoolVarP(&autoDelete, "auto-delete", "a", false, "Exchange will not be deleted")
   cmd.MarkFlagRequired("name")
 
   return cmd
@@ -144,7 +144,7 @@ func (c *CLI) setupRabbitDeclareQueueCommand() *cobra.Command {
   }
 
   cmd.Flags().StringVarP(&queueName, "name", "n", "", "Queue name")
-  cmd.Flags().BoolVarP(&durable, "durable", "d", false, "Queue will survive broker restart")
+  cmd.Flags().BoolVarP(&durable, "durable", "d", true, "Queue will survive broker restart")
   cmd.Flags().BoolVarP(&autoDelete, "auto-delete", "a", false, "Queue will be deleted when last consumer unsubscribes")
   cmd.Flags().BoolVarP(&exclusive, "exclusive", "e", false, "Queue can only be accessed by the current connection")
   cmd.MarkFlagRequired("name")
