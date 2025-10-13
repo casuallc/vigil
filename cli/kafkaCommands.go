@@ -62,7 +62,7 @@ func (c *CLI) setupKafkaSendCommand() *cobra.Command {
   cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
   cmd.Flags().StringVarP(&key, "key", "k", "", "Message key")
-  cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat sending")
+  cmd.Flags().IntVarP(&repeat, "repeat", "r", 10, "Number of times to repeat sending")
   cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between messages in milliseconds")
   cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
   cmd.Flags().StringVarP(&acks, "acks", "a", "1", "Acknowledgment level (0, 1, -1/all)")
@@ -133,7 +133,7 @@ func (c *CLI) setupKafkaReceiveCommand() *cobra.Command {
 
   cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic to subscribe")
   cmd.Flags().StringVarP(&groupID, "group-id", "g", "default_consumer_group", "Consumer group ID")
-  cmd.Flags().Int32VarP(&partition, "partition", "p", -1, "Partition number (-1 for all partitions)")
+  cmd.Flags().Int32Var(&partition, "partition", -1, "Partition number (-1 for all partitions)")
   cmd.Flags().Int64VarP(&offset, "offset", "o", 0, "Offset value (only valid if offset-type is 'specific')")
   cmd.Flags().StringVar(&offsetType, "offset-type", "latest", "Offset type (earliest, latest, specific)")
   cmd.Flags().IntVar(&timeout, "timeout", 0, "Consumer timeout in seconds (0 for no timeout)")

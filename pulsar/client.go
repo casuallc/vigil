@@ -35,8 +35,6 @@ func NewClient(config *ServerConfig) *Client {
 
 // Connect 连接到 Pulsar 服务器
 func (c *Client) Connect() error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.client != nil {
     return nil // 已经连接
@@ -94,8 +92,6 @@ func (c *Client) Connect() error {
 
 // Close 关闭客户端
 func (c *Client) Close() {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 关闭所有生产者
   for _, producer := range c.producers {
@@ -119,8 +115,6 @@ func (c *Client) Close() {
 
 // CreateProducer 创建一个生产者
 func (c *Client) CreateProducer(config ProducerConfig) (pulsar.Producer, error) {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 确保客户端已连接
   if c.client == nil {
@@ -174,8 +168,6 @@ func (c *Client) CreateProducer(config ProducerConfig) (pulsar.Producer, error) 
 
 // SendMessage 发送消息
 func (c *Client) SendMessage(config ProducerConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 获取或创建生产者
   producer, err := c.CreateProducer(config)
@@ -291,8 +283,6 @@ func parseProperties(propsStr string, props map[string]string) error {
 
 // CreateConsumer 创建一个消费者
 func (c *Client) CreateConsumer(config ConsumerConfig) (pulsar.Consumer, error) {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 确保客户端已连接
   if c.client == nil {
@@ -349,8 +339,6 @@ func (c *Client) CreateConsumer(config ConsumerConfig) (pulsar.Consumer, error) 
 
 // ReceiveMessage 接收消息
 func (c *Client) ReceiveMessage(config ConsumerConfig, handler func(*Message) bool) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 获取或创建消费者
   consumer, err := c.CreateConsumer(config)

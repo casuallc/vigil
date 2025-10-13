@@ -13,8 +13,6 @@ import (
 
 // CreateTransactionProducer 创建事务生产者
 func (c *Client) CreateTransactionProducer(groupName string, listener TransactionListener) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 关闭已存在的事务生产者
   if c.transactionProducer != nil {
@@ -78,8 +76,6 @@ func (w *transactionListenerWrapper) CheckLocalTransaction(msg *primitive.Messag
 
 // SendTransactionMessage 发送事务消息
 func (c *Client) SendTransactionMessage(config *ProducerConfig, listener TransactionListener) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.transactionProducer == nil {
     // 如果没有事务生产者，先创建一个

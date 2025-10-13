@@ -15,8 +15,6 @@ import (
 
 // CreateProducer 创建生产者
 func (c *Client) CreateProducer(groupName string) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 关闭已存在的生产者
   if c.producer != nil {
@@ -60,8 +58,6 @@ func (c *Client) CreateProducer(groupName string) error {
 
 // SendMessage 发送消息
 func (c *Client) SendMessage(config *ProducerConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.producer == nil {
     // 如果没有生产者，先创建一个

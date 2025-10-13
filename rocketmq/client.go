@@ -27,8 +27,6 @@ func NewClient(config *ServerConfig) *Client {
 
 // Connect 连接到RocketMQ服务器
 func (c *Client) Connect() error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 这里不需要实际连接，因为RocketMQ客户端在创建时才会连接
   log.Printf("RocketMQ client configured for server %s:%d", c.Config.Server, c.Config.Port)
@@ -37,8 +35,6 @@ func (c *Client) Connect() error {
 
 // Close 关闭客户端连接
 func (c *Client) Close() {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.producer != nil {
     _ = c.producer.Shutdown()

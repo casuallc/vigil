@@ -17,8 +17,6 @@ import (
 
 // CreateConsumer 创建消费者
 func (c *Client) CreateConsumer(consumeConfig *ConsumerConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 关闭已存在的消费者
   if c.consumer != nil {
@@ -80,8 +78,6 @@ func (c *Client) CreateConsumer(consumeConfig *ConsumerConfig) error {
 
 // ReceiveMessage 接收消息
 func (c *Client) ReceiveMessage(config *ConsumerConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.consumer == nil {
     // 如果没有消费者，先创建一个

@@ -32,8 +32,6 @@ func NewClient(config *ServerConfig) *Client {
 
 // Connect 连接到Kafka服务器
 func (c *Client) Connect() error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   config := sarama.NewConfig()
   config.Version = sarama.V2_0_0_0 // 使用兼容的Kafka版本
@@ -89,8 +87,6 @@ func (c *Client) Connect() error {
 
 // Close 关闭客户端连接
 func (c *Client) Close() {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.producer != nil {
     _ = c.producer.Close()
@@ -107,9 +103,6 @@ func (c *Client) Close() {
 
 // CreateProducer 创建生产者
 func (c *Client) CreateProducer(config *ProducerConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
-
   // 关闭已存在的生产者
   if c.producer != nil {
     _ = c.producer.Close()
@@ -117,6 +110,7 @@ func (c *Client) CreateProducer(config *ProducerConfig) error {
 
   // 获取当前客户端的配置副本
   producerConfig := c.client.Config()
+  producerConfig.Producer.Return.Successes = true
 
   // 设置acks
   if config.Acks != "" {
@@ -158,9 +152,6 @@ func (c *Client) CreateProducer(config *ProducerConfig) error {
 
 // SendMessage 发送消息
 func (c *Client) SendMessage(config *ProducerConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
-
   if c.producer == nil {
     // 如果没有生产者，先创建一个
     if err := c.CreateProducer(config); err != nil {
@@ -228,8 +219,6 @@ func (c *Client) SendMessage(config *ProducerConfig) error {
 
 // CreateConsumer 创建消费者
 func (c *Client) CreateConsumer() error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 关闭已存在的消费者
   if c.consumer != nil {
@@ -249,8 +238,6 @@ func (c *Client) CreateConsumer() error {
 
 // ReceiveMessage 接收消息
 func (c *Client) ReceiveMessage(config *ConsumerConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.consumer == nil {
     // 如果没有消费者，先创建一个

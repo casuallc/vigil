@@ -34,8 +34,6 @@ func NewClient(config *ServerConfig) *Client {
 
 // Connect 连接到MQTT服务器
 func (c *Client) Connect() error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   // 创建客户端选项
   opts := mqtt.NewClientOptions()
@@ -98,8 +96,6 @@ func (c *Client) Connect() error {
 
 // Close 关闭客户端连接
 func (c *Client) Close() {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   c.cancel()
   if c.client != nil && c.client.IsConnected() {
@@ -109,8 +105,6 @@ func (c *Client) Close() {
 
 // PublishMessage 发布消息
 func (c *Client) PublishMessage(config *PublishConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.client == nil || !c.client.IsConnected() {
     return fmt.Errorf("MQTT client is not connected")
@@ -165,8 +159,6 @@ func (c *Client) PublishMessage(config *PublishConfig) error {
 
 // SubscribeMessage 订阅消息
 func (c *Client) SubscribeMessage(config *SubscribeConfig) error {
-  c.mu.Lock()
-  defer c.mu.Unlock()
 
   if c.client == nil || !c.client.IsConnected() {
     return fmt.Errorf("MQTT client is not connected")
