@@ -1,6 +1,7 @@
 package kafka
 
 import (
+  "sync"
   "time"
 )
 
@@ -31,15 +32,13 @@ type ProducerConfig struct {
 
 // ConsumerConfig 定义消费者配置
 type ConsumerConfig struct {
-  Topic          string
-  GroupID        string
-  Partition      int32
-  Offset         int64
-  OffsetType     string
-  Timeout        int
-  PrintLog       bool
-  MaxMessages    int
-  CommitInterval int
+  Topic       string
+  GroupID     string
+  Offset      int64
+  OffsetType  string
+  Timeout     int
+  PrintLog    bool
+  MaxMessages int
 }
 
 // Message 定义消息结构
@@ -51,4 +50,10 @@ type Message struct {
   Offset    int64
   Timestamp time.Time
   Headers   map[string]string
+}
+
+type kafkaGroupHandler struct {
+  config       *ConsumerConfig
+  messageCount int
+  mu           sync.Mutex
 }

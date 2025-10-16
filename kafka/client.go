@@ -2,6 +2,7 @@ package kafka
 
 import (
   "context"
+  "errors"
   "fmt"
   "github.com/casuallc/vigil/common"
   "log"
@@ -14,12 +15,13 @@ import (
 
 // Client 定义Kafka客户端
 type Client struct {
-  producer sarama.SyncProducer
-  consumer sarama.Consumer
-  client   sarama.Client
-  config   *ServerConfig
-  mu       sync.Mutex
-  ctx      context.Context
+  producer      sarama.SyncProducer
+  consumer      sarama.Consumer
+  consumerGroup sarama.ConsumerGroup
+  client        sarama.Client
+  config        *ServerConfig
+  mu            sync.Mutex
+  ctx           context.Context
 }
 
 // NewClient 创建新的Kafka客户端
@@ -218,112 +220,115 @@ func (c *Client) SendMessage(config *ProducerConfig) error {
 }
 
 // CreateConsumer 创建消费者
-func (c *Client) CreateConsumer() error {
+func (c *Client) CreateConsumer(consumerConfig *ConsumerConfig) error {
 
   // 关闭已存在的消费者
   if c.consumer != nil {
     _ = c.consumer.Close()
   }
+  if c.consumerGroup != nil {
+    _ = c.consumerGroup.Close()
+  }
 
   // 创建消费者
+  config := sarama.NewConfig()
+  config.Consumer.Offsets.Initial = sarama.OffsetOldest
+
   consumer, err := sarama.NewConsumerFromClient(c.client)
   if err != nil {
     return fmt.Errorf("failed to create consumer: %w", err)
   }
 
+  // 创建 ConsumerGroup
+  consumerGroup, err := sarama.NewConsumerGroupFromClient(consumerConfig.GroupID, c.client)
+  if err != nil {
+    panic(err)
+  }
+
   c.consumer = consumer
+  c.consumerGroup = consumerGroup
   log.Printf("Kafka consumer created")
+  return nil
+}
+
+func (h *kafkaGroupHandler) Setup(session sarama.ConsumerGroupSession) error {
+  return nil
+}
+
+func (h *kafkaGroupHandler) Cleanup(session sarama.ConsumerGroupSession) error {
+  return nil
+}
+
+func (h *kafkaGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+  for msg := range claim.Messages() {
+    // 处理消息
+    if h.config.PrintLog {
+      log.Printf("Received message: topic=%s, partition=%d, offset=%d, key=%s, value=%s",
+        msg.Topic, msg.Partition, msg.Offset, string(msg.Key), string(msg.Value))
+    }
+
+    // 标记消息已处理
+    session.MarkMessage(msg, "")
+
+    // 增加消息计数
+    h.mu.Lock()
+    h.messageCount++
+    currentCount := h.messageCount
+    h.mu.Unlock()
+
+    // 检查是否已经达到最大消息数
+    if h.config.MaxMessages > 0 && currentCount >= h.config.MaxMessages {
+      return nil
+    }
+  }
   return nil
 }
 
 // ReceiveMessage 接收消息
 func (c *Client) ReceiveMessage(config *ConsumerConfig) error {
-
   if c.consumer == nil {
     // 如果没有消费者，先创建一个
-    if err := c.CreateConsumer(); err != nil {
+    if err := c.CreateConsumer(config); err != nil {
       return err
     }
   }
 
-  // 获取分区列表
-  partitions, err := c.client.Partitions(config.Topic)
-  if err != nil {
-    return fmt.Errorf("failed to get partitions: %w", err)
+  // 定义消费者组处理器
+  handler := &kafkaGroupHandler{
+    config:       config,
+    messageCount: 0,
   }
 
-  // 如果指定了分区，则只消费该分区
-  var targetPartitions []int32
-  if config.Partition >= 0 {
-    found := false
-    for _, p := range partitions {
-      if p == config.Partition {
-        found = true
-        targetPartitions = append(targetPartitions, p)
-        break
-      }
-    }
-    if !found {
-      return fmt.Errorf("partition %d not found", config.Partition)
-    }
-  } else {
-    targetPartitions = partitions
-  }
-
-  var wg sync.WaitGroup
+  // 设置上下文
   ctx, cancel := context.WithCancel(c.ctx)
+  if config.Timeout > 0 {
+    var cancelTimeout context.CancelFunc
+    ctx, cancelTimeout = context.WithTimeout(ctx, time.Duration(config.Timeout)*time.Second)
+    defer cancelTimeout()
+  }
   defer cancel()
 
-  messageCount := 0
-
-  // 为每个分区创建一个消费者
-  for _, partition := range targetPartitions {
-    wg.Add(1)
-    go func(p int32) {
-      defer wg.Done()
-
-      // 创建分区消费者
-      pc, err := c.consumer.ConsumePartition(config.Topic, p, config.getOffset())
-      if err != nil {
-        log.Printf("Failed to create partition consumer for partition %d: %v", p, err)
-        return
+  // 启动消费循环
+  for {
+    if err := c.consumerGroup.Consume(ctx, []string{config.Topic}, handler); err != nil {
+      if !errors.Is(err, sarama.ErrClosedConsumerGroup) && !errors.Is(err, context.Canceled) {
+        return fmt.Errorf("error from consumer: %w", err)
       }
-      defer pc.Close()
+      break
+    }
 
-      // 设置超时
-      timeoutCtx := ctx
-      if config.Timeout > 0 {
-        var cancelTimeout context.CancelFunc
-        timeoutCtx, cancelTimeout = context.WithTimeout(ctx, time.Duration(config.Timeout)*time.Second)
-        defer cancelTimeout()
-      }
+    // 检查是否已经达到最大消息数
+    if config.MaxMessages > 0 && handler.messageCount >= config.MaxMessages {
+      break
+    }
 
-      // 消费消息
-      for {
-        select {
-        case msg := <-pc.Messages():
-          // 处理消息
-          if config.PrintLog {
-            log.Printf("Received message: topic=%s, partition=%d, offset=%d, key=%s, value=%s",
-              msg.Topic, msg.Partition, msg.Offset, string(msg.Key), string(msg.Value))
-          }
-
-          messageCount++
-          if config.MaxMessages > 0 && messageCount >= config.MaxMessages {
-            cancel()
-            return
-          }
-
-        case <-timeoutCtx.Done():
-          return
-        }
-      }
-    }(partition)
+    // 检查上下文是否已取消
+    if ctx.Err() != nil {
+      break
+    }
   }
 
-  // 等待所有消费者完成
-  wg.Wait()
-  log.Printf("Close consumer from topic '%s'", config.Topic)
+  log.Printf("Close consumer group '%s' from topic '%s'", config.GroupID, config.Topic)
   return nil
 }
 

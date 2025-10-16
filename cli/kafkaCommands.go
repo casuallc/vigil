@@ -114,32 +114,28 @@ func (c *CLI) handleKafkaSend(config *kafka.ServerConfig, topic, message, key st
 func (c *CLI) setupKafkaReceiveCommand() *cobra.Command {
   var topic string
   var groupID string
-  var partition int32
   var offset int64
   var offsetType string
   var timeout int
   var printLog bool
   var maxMessages int
-  var commitInterval int
 
   cmd := &cobra.Command{
     Use:   "receive",
     Short: "Receive messages from Kafka",
     RunE: func(cmd *cobra.Command, args []string) error {
       config := cmd.Context().Value("kafkaConfig").(*kafka.ServerConfig)
-      return c.handleKafkaReceive(config, topic, groupID, partition, offset, offsetType, timeout, printLog, maxMessages, commitInterval)
+      return c.handleKafkaReceive(config, topic, groupID, offset, offsetType, timeout, printLog, maxMessages)
     },
   }
 
   cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic to subscribe")
   cmd.Flags().StringVarP(&groupID, "group-id", "g", "default_consumer_group", "Consumer group ID")
-  cmd.Flags().Int32Var(&partition, "partition", -1, "Partition number (-1 for all partitions)")
   cmd.Flags().Int64VarP(&offset, "offset", "o", 0, "Offset value (only valid if offset-type is 'specific')")
   cmd.Flags().StringVar(&offsetType, "offset-type", "latest", "Offset type (earliest, latest, specific)")
   cmd.Flags().IntVar(&timeout, "timeout", 0, "Consumer timeout in seconds (0 for no timeout)")
   cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
   cmd.Flags().IntVar(&maxMessages, "max-messages", 0, "Maximum number of messages to receive (0 for unlimited)")
-  cmd.Flags().IntVar(&commitInterval, "commit-interval", 0, "Commit interval in milliseconds")
 
   cmd.MarkFlagRequired("topic")
 
@@ -147,7 +143,7 @@ func (c *CLI) setupKafkaReceiveCommand() *cobra.Command {
 }
 
 // handleKafkaReceive 处理接收消息
-func (c *CLI) handleKafkaReceive(config *kafka.ServerConfig, topic, groupID string, partition int32, offset int64, offsetType string, timeout int, printLog bool, maxMessages, commitInterval int) error {
+func (c *CLI) handleKafkaReceive(config *kafka.ServerConfig, topic, groupID string, offset int64, offsetType string, timeout int, printLog bool, maxMessages int) error {
   // 创建Kafka客户端
   client := kafka.NewClient(config)
 
@@ -159,15 +155,13 @@ func (c *CLI) handleKafkaReceive(config *kafka.ServerConfig, topic, groupID stri
 
   // 设置消费者配置
   consumerConfig := &kafka.ConsumerConfig{
-    Topic:          topic,
-    GroupID:        groupID,
-    Partition:      partition,
-    Offset:         offset,
-    OffsetType:     offsetType,
-    Timeout:        timeout,
-    PrintLog:       printLog,
-    MaxMessages:    maxMessages,
-    CommitInterval: commitInterval,
+    Topic:       topic,
+    GroupID:     groupID,
+    Offset:      offset,
+    OffsetType:  offsetType,
+    Timeout:     timeout,
+    PrintLog:    printLog,
+    MaxMessages: maxMessages,
   }
 
   // 接收消息
