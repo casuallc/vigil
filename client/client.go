@@ -67,6 +67,24 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
   return c.httpClient.Do(req)
 }
 
+// 新增：从非 2xx 响应构造详细错误
+func (c *Client) errorFromResponse(resp *http.Response) error {
+  defer resp.Body.Close()
+  b, _ := io.ReadAll(resp.Body)
+  msg := string(b)
+
+  var obj map[string]interface{}
+  if len(b) > 0 && json.Unmarshal(b, &obj) == nil {
+    if s, ok := obj["error"].(string); ok && s != "" {
+      msg = s
+    } else if s, ok := obj["message"].(string); ok && s != "" {
+      msg = s
+    }
+  }
+
+  return fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
+}
+
 func (c *Client) getJSONResponse(resp *http.Response, v interface{}) error {
   defer resp.Body.Close()
   return json.NewDecoder(resp.Body).Decode(v)
@@ -80,7 +98,7 @@ func (c *Client) ScanProcesses(query string) ([]proc.ManagedProcess, error) {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return nil, c.errorFromResponse(resp)
   }
 
   var processes []proc.ManagedProcess
@@ -99,7 +117,7 @@ func (c *Client) CreateProcess(process proc.ManagedProcess) error {
   }
 
   if resp.StatusCode != http.StatusCreated {
-    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return c.errorFromResponse(resp)
   }
 
   return nil
@@ -116,7 +134,7 @@ func (c *Client) StartProcess(namespace, name string) error {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return c.errorFromResponse(resp)
   }
 
   return nil
@@ -133,7 +151,7 @@ func (c *Client) StopProcess(namespace, name string) error {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return c.errorFromResponse(resp)
   }
 
   return nil
@@ -150,7 +168,7 @@ func (c *Client) RestartProcess(namespace, name string) error {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return c.errorFromResponse(resp)
   }
 
   return nil
@@ -168,7 +186,7 @@ func (c *Client) GetProcess(namespace, name string) (proc.ManagedProcess, error)
   }
 
   if resp.StatusCode != http.StatusOK {
-    return process, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return process, c.errorFromResponse(resp)
   }
 
   if err := c.getJSONResponse(resp, &process); err != nil {
@@ -193,7 +211,7 @@ func (c *Client) ListProcesses(namespace string) ([]proc.ManagedProcess, error) 
   }
 
   if resp.StatusCode != http.StatusOK {
-    return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return nil, c.errorFromResponse(resp)
   }
 
   var processes []proc.ManagedProcess
@@ -215,7 +233,25 @@ func (c *Client) DeleteProcess(namespace, name string) error {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// UpdateProcess updates the configuration of a managed proc
+func (c *Client) UpdateProcess(process proc.ManagedProcess) error {
+  if process.Metadata.Namespace == "" {
+    process.Metadata.Namespace = "default"
+  }
+  resp, err := c.doRequest("PUT", fmt.Sprintf("/api/namespaces/%s/processes/%s",
+    process.Metadata.Namespace, process.Metadata.Name), process)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
   }
 
   return nil
@@ -229,7 +265,7 @@ func (c *Client) GetSystemResources() (proc.ResourceStats, error) {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return resources, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return resources, c.errorFromResponse(resp)
   }
 
   if err := c.getJSONResponse(resp, &resources); err != nil {
@@ -247,7 +283,7 @@ func (c *Client) GetProcessResources(pid int) (proc.ResourceStats, error) {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return resources, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return resources, c.errorFromResponse(resp)
   }
 
   if err := c.getJSONResponse(resp, &resources); err != nil {
@@ -265,7 +301,7 @@ func (c *Client) GetConfig() (config.Config, error) {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return config, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return config, c.errorFromResponse(resp)
   }
 
   if err := c.getJSONResponse(resp, &config); err != nil {
@@ -282,7 +318,7 @@ func (c *Client) UpdateConfig(config config.Config) error {
   }
 
   if resp.StatusCode != http.StatusOK {
-    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return c.errorFromResponse(resp)
   }
 
   return nil
@@ -310,7 +346,7 @@ func (c *Client) ExecuteCommand(command string, isFile bool, envVars []string) (
   }
 
   if resp.StatusCode != http.StatusOK {
-    return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    return "", c.errorFromResponse(resp)
   }
 
   // 读取响应内容
@@ -321,22 +357,4 @@ func (c *Client) ExecuteCommand(command string, isFile bool, envVars []string) (
   }
 
   return string(body), nil
-}
-
-// UpdateProcess updates the configuration of a managed proc
-func (c *Client) UpdateProcess(process proc.ManagedProcess) error {
-  if process.Metadata.Namespace == "" {
-    process.Metadata.Namespace = "default"
-  }
-  resp, err := c.doRequest("PUT", fmt.Sprintf("/api/namespaces/%s/processes/%s",
-    process.Metadata.Namespace, process.Metadata.Name), process)
-  if err != nil {
-    return err
-  }
-
-  if resp.StatusCode != http.StatusOK {
-    return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-  }
-
-  return nil
 }

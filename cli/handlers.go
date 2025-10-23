@@ -14,7 +14,8 @@ import (
 func (c *CLI) handleScan(query string, registerAfterScan bool, namespace string) error {
   processes, err := c.client.ScanProcesses(query)
   if err != nil {
-    return err
+    fmt.Println("ERROR ", err.Error())
+    return nil
   }
 
   fmt.Println("Scanned processes:")
@@ -141,11 +142,22 @@ func (c *CLI) handleCreate(name, command string, namespace string) error {
     },
   }
 
-  return c.client.CreateProcess(process)
+  // 修改：不返回错误给 Cobra，打印具体错误原因
+  if err := c.client.CreateProcess(process); err != nil {
+    fmt.Println("ERROR ", err.Error())
+    return nil
+  }
+  fmt.Printf("Process '%s' created (ns=%s)\n", process.Metadata.Name, process.Metadata.Namespace)
+  return nil
 }
 
 func (c *CLI) handleStart(name string, namespace string) error {
-  return c.client.StartProcess(namespace, name)
+  if err := c.client.StartProcess(namespace, name); err != nil {
+    fmt.Println("ERROR ", err.Error())
+    return nil
+  }
+  fmt.Printf("Process '%s' started (ns=%s)\n", name, namespace)
+  return nil
 }
 
 // handleStartInteractive 处理交互式选择要启动的进程
@@ -159,7 +171,12 @@ func (c *CLI) handleStartInteractive(namespace string) error {
 }
 
 func (c *CLI) handleStop(name string, namespace string) error {
-  return c.client.StopProcess(namespace, name)
+  if err := c.client.StopProcess(namespace, name); err != nil {
+    fmt.Println("ERROR ", err.Error())
+    return nil
+  }
+  fmt.Printf("Process '%s' stopped (ns=%s)\n", name, namespace)
+  return nil
 }
 
 // handleStopInteractive 处理交互式选择要停止的进程
@@ -173,7 +190,12 @@ func (c *CLI) handleStopInteractive(namespace string) error {
 }
 
 func (c *CLI) handleRestart(name string, namespace string) error {
-  return c.client.RestartProcess(namespace, name)
+  if err := c.client.RestartProcess(namespace, name); err != nil {
+    fmt.Println("ERROR ", err.Error())
+    return nil
+  }
+  fmt.Printf("Process '%s' restarted (ns=%s)\n", name, namespace)
+  return nil
 }
 
 // handleRestartInteractive 处理交互式选择要重启的进程
@@ -189,7 +211,8 @@ func (c *CLI) handleRestartInteractive(namespace string) error {
 func (c *CLI) handleList(namespace string) error {
   processes, err := c.client.ListProcesses(namespace)
   if err != nil {
-    return err
+    fmt.Println("ERROR ", err.Error())
+    return nil
   }
 
   fmt.Println("Managed processes:")
@@ -203,6 +226,7 @@ func (c *CLI) handleList(namespace string) error {
 func (c *CLI) handleStatus(name string, namespace string) error {
   process, err := c.client.GetProcess(namespace, name)
   if err != nil {
+    fmt.Println("ERROR ", err.Error())
     return err
   }
 
@@ -218,18 +242,19 @@ func (c *CLI) handleStatus(name string, namespace string) error {
   return nil
 }
 
-// handleGet 处理get命令，支持输出YAML格式
 func (c *CLI) handleGet(name string, format string, namespace string) error {
   process, err := c.client.GetProcess(namespace, name)
   if err != nil {
-    return err
+    fmt.Println("ERROR ", err.Error())
+    return nil
   }
 
   if format == "yaml" {
     // 以YAML格式输出进程信息
     yamlData, err := yaml.Marshal(process)
     if err != nil {
-      return fmt.Errorf("failed to marshal proc data to YAML: %v", err)
+      fmt.Println("ERROR failed to marshal proc data to YAML:", err.Error())
+      return nil
     }
     fmt.Println(string(yamlData))
   } else {
@@ -251,7 +276,7 @@ func (c *CLI) handleGet(name string, format string, namespace string) error {
       fmt.Printf("  User: %s\n", process.Spec.User)
     }
     if process.Spec.UserGroup != "" {
-      fmt.Printf("  User Group: %s\n", process.Spec.UserGroup)
+      fmt.Printf("  UserGroup: %s\n", process.Spec.UserGroup)
     }
     if process.Spec.Log.Dir != "" {
       fmt.Printf("  Log Directory: %s\n", process.Spec.Log.Dir)
@@ -281,40 +306,39 @@ func (c *CLI) handleGetInteractive(format string, namespace string) error {
 
 // handleEdit 处理编辑进程定义的命令
 func (c *CLI) handleEdit(name string, namespace string) error {
-  // 1. 获取进程信息
   process, err := c.client.GetProcess(namespace, name)
   if err != nil {
-    return fmt.Errorf("failed to get process: %v", err)
+    fmt.Println("ERROR failed to get process:", err.Error())
+    return nil
   }
 
-  // 2. 创建临时文件
   tmpDir, err := os.MkdirTemp("", "vigil-edit-")
   if err != nil {
-    return fmt.Errorf("failed to create temporary directory: %v", err)
+    fmt.Println("ERROR failed to create temporary directory:", err.Error())
+    return nil
   }
   defer func(path string) {
-    err := os.RemoveAll(path)
-    if err != nil {
-      fmt.Printf("failed to remove temporary directory: %v", err)
+    if rmErr := os.RemoveAll(path); rmErr != nil {
+      fmt.Printf("failed to remove temporary directory: %v\n", rmErr)
     }
-  }(tmpDir) // 确保清理临时文件
+  }(tmpDir)
 
   tmpFile := filepath.Join(tmpDir, fmt.Sprintf("%s-%s.yaml", namespace, name))
 
-  // 3. 将进程信息序列化为YAML并写入临时文件
   yamlData, err := yaml.Marshal(process)
   if err != nil {
-    return fmt.Errorf("failed to marshal process data: %v", err)
+    fmt.Println("ERROR failed to marshal process data:", err.Error())
+    return nil
   }
 
   if err := os.WriteFile(tmpFile, yamlData, 0644); err != nil {
-    return fmt.Errorf("failed to write temporary file: %v", err)
+    fmt.Println("ERROR failed to write temporary file:", err.Error())
+    return nil
   }
 
-  // 4. 打开vim编辑器
   editor := os.Getenv("EDITOR")
   if editor == "" {
-    editor = "vim" // 默认使用vim
+    editor = "vim"
   }
 
   cmd := exec.Command(editor, tmpFile)
@@ -323,28 +347,28 @@ func (c *CLI) handleEdit(name string, namespace string) error {
   cmd.Stderr = os.Stderr
 
   if err := cmd.Run(); err != nil {
-    return fmt.Errorf("editor exited with error: %v", err)
+    fmt.Println("ERROR editor exited with error:", err.Error())
+    return nil
   }
 
-  // 5. 读取编辑后的文件内容
   editedData, err := os.ReadFile(tmpFile)
   if err != nil {
-    return fmt.Errorf("failed to read edited file: %v", err)
+    fmt.Println("ERROR failed to read edited file:", err.Error())
+    return nil
   }
 
-  // 6. 解析编辑后的YAML数据
   var updatedProc proc.ManagedProcess
   if err := yaml.Unmarshal(editedData, &updatedProc); err != nil {
-    return fmt.Errorf("failed to parse edited data: %v", err)
+    fmt.Println("ERROR failed to parse edited data:", err.Error())
+    return nil
   }
 
-  // 7. 确保名称和命名空间不变
   updatedProc.Metadata.Name = name
   updatedProc.Metadata.Namespace = namespace
 
-  // 8. 发送更新请求
   if err := c.client.UpdateProcess(updatedProc); err != nil {
-    return fmt.Errorf("failed to update process: %v", err)
+    fmt.Println("ERROR failed to update process:", err.Error())
+    return nil
   }
 
   fmt.Printf("Successfully updated process '%s' in namespace '%s'\n", name, namespace)
@@ -361,13 +385,11 @@ func (c *CLI) handleEditInteractive(namespace string) error {
   return c.handleEdit(selectedProcess.Metadata.Name, namespace)
 }
 
-// handleDelete handles the delete command to remove a managed proc
 func (c *CLI) handleDelete(name string, namespace string) error {
-  err := c.client.DeleteProcess(namespace, name)
-  if err != nil {
-    return fmt.Errorf("删除进程失败: %w", err)
+  if err := c.client.DeleteProcess(namespace, name); err != nil {
+    fmt.Println("ERROR ", err.Error())
+    return nil
   }
-
   fmt.Printf("进程 %s (命名空间: %s) 删除成功\n", name, namespace)
   return nil
 }
@@ -385,7 +407,8 @@ func (c *CLI) handleDeleteInteractive(namespace string) error {
 func (c *CLI) handleSystemResources() error {
   resources, err := c.client.GetSystemResources()
   if err != nil {
-    return err
+    fmt.Println("ERROR ", err.Error())
+    return nil
   }
 
   fmt.Println("System Resource Usage:")
@@ -400,7 +423,8 @@ func (c *CLI) handleSystemResources() error {
 func (c *CLI) handleProcessResources(pid int) error {
   resources, err := c.client.GetProcessResources(pid)
   if err != nil {
-    return err
+    fmt.Println("ERROR ", err.Error())
+    return nil
   }
 
   fmt.Printf("Resource Usage for Process %d:\n", pid)
@@ -415,7 +439,8 @@ func (c *CLI) handleProcessResources(pid int) error {
 func (c *CLI) handleGetConfig() error {
   cfg, err := c.client.GetConfig()
   if err != nil {
-    return err
+    fmt.Println("ERROR ", err.Error())
+    return nil
   }
 
   fmt.Println("Current Configuration:")
@@ -427,37 +452,35 @@ func (c *CLI) handleGetConfig() error {
   return nil
 }
 
-// handleExec handles the exec command to execute a command or script
 func (c *CLI) handleExec(command string, isFile bool, envVars []string, outputFile string) error {
   // 如果是文件，读取本地文件内容
   if isFile {
     fileContent, err := os.ReadFile(command)
     if err != nil {
-      return fmt.Errorf("failed to read script file: %w", err)
+      fmt.Println("ERROR failed to read script file:", err.Error())
+      return nil
     }
     // 将文件内容作为命令发送，标记为非文件
     command = string(fileContent)
     isFile = false
   }
 
-  // 执行命令并获取输出
+  // 先执行命令
   output, err := c.client.ExecuteCommand(command, isFile, envVars)
+  if err != nil {
+    fmt.Println("ERROR ", err.Error())
+    return nil
+  }
 
-  // 根据outputFile参数决定输出目标
+  // 根据outputFile参数决定输出目标（仅在成功时执行）
   if outputFile != "" {
-    // 输出到文件
     if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
-      return fmt.Errorf("failed to write output to file: %w", err)
+      fmt.Println("ERROR failed to write output to file:", err.Error())
+      return nil
     }
     fmt.Printf("Command output written to %s\n", outputFile)
   } else {
-    // 输出到控制台
     fmt.Println(output)
-  }
-
-  // 如果有错误，返回错误信息
-  if err != nil {
-    return fmt.Errorf("command execution failed: %w", err)
   }
 
   return nil
@@ -554,7 +577,8 @@ func (c *CLI) handleProcMountRemove(name, namespace, target string, index int) e
 func (c *CLI) handleProcMountList(name, namespace string) error {
   p, err := c.client.GetProcess(namespace, name)
   if err != nil {
-    return fmt.Errorf("failed to get process: %w", err)
+    fmt.Println("ERROR failed to get process:", err.Error())
+    return nil
   }
 
   mounts := p.Spec.Mounts

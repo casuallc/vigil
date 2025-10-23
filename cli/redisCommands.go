@@ -58,18 +58,18 @@ func (c *CLI) setupRedisGetCommand() *cobra.Command {
 
 // 修改handleRedisGet函数签名
 func (c *CLI) handleRedisGet(key string, config *redis.ServerConfig) error {
-  client := &redis.Client{
-    Config: config,
-  }
+  client := &redis.Client{Config: config}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Redis: %w", err)
+    fmt.Println("ERROR failed to connect to Redis:", err.Error())
+    return nil
   }
   defer client.Disconnect()
 
   value, err := client.Get(key)
   if err != nil {
-    return fmt.Errorf("failed to get key: %w", err)
+    fmt.Println("ERROR failed to get key:", err.Error())
+    return nil
   }
 
   fmt.Printf("Key: %s, Value: %s\n", key, value)
@@ -102,22 +102,17 @@ func (c *CLI) setupRedisSetCommand() *cobra.Command {
 
 // handleRedisSet 处理设置Redis键值命令
 func (c *CLI) handleRedisSet(key, value, server string, port int, password string, db int) error {
-  client := &redis.Client{
-    Config: &redis.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Password: password,
-      DB:       db,
-    },
-  }
+  client := &redis.Client{Config: &redis.ServerConfig{Server: server, Port: port, Password: password, DB: db}}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Redis: %w", err)
+    fmt.Println("ERROR failed to connect to Redis:", err.Error())
+    return nil
   }
   defer client.Disconnect()
 
   if err := client.Set(key, value); err != nil {
-    return fmt.Errorf("failed to set key: %w", err)
+    fmt.Println("ERROR failed to set key:", err.Error())
+    return nil
   }
 
   fmt.Printf("Key: %s set successfully\n", key)
@@ -148,22 +143,17 @@ func (c *CLI) setupRedisDeleteCommand() *cobra.Command {
 
 // handleRedisDelete 处理删除Redis键命令
 func (c *CLI) handleRedisDelete(key, server string, port int, password string, db int) error {
-  client := &redis.Client{
-    Config: &redis.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Password: password,
-      DB:       db,
-    },
-  }
+  client := &redis.Client{Config: &redis.ServerConfig{Server: server, Port: port, Password: password, DB: db}}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Redis: %w", err)
+    fmt.Println("ERROR failed to connect to Redis:", err.Error())
+    return nil
   }
   defer client.Disconnect()
 
   if err := client.Delete(key); err != nil {
-    return fmt.Errorf("failed to delete key: %w", err)
+    fmt.Println("ERROR failed to delete key:", err.Error())
+    return nil
   }
 
   fmt.Printf("Key: %s deleted successfully\n", key)
@@ -190,23 +180,18 @@ func (c *CLI) setupRedisInfoCommand() *cobra.Command {
 
 // handleRedisInfo 处理获取Redis信息命令
 func (c *CLI) handleRedisInfo(server string, port int, password string, db int) error {
-  client := &redis.Client{
-    Config: &redis.ServerConfig{
-      Server:   server,
-      Port:     port,
-      Password: password,
-      DB:       db,
-    },
-  }
+  client := &redis.Client{Config: &redis.ServerConfig{Server: server, Port: port, Password: password, DB: db}}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Redis: %w", err)
+    fmt.Println("ERROR failed to connect to Redis:", err.Error())
+    return nil
   }
   defer client.Disconnect()
 
   info, err := client.Info()
   if err != nil {
-    return fmt.Errorf("failed to get Redis info: %w", err)
+    fmt.Println("ERROR failed to get Redis info:", err.Error())
+    return nil
   }
 
   fmt.Println("Redis Server Information:")

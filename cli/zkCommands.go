@@ -57,22 +57,21 @@ func (c *CLI) setupZkCreateCommand() *cobra.Command {
   return cmd
 }
 
-// 修改handleZkCreate函数签名
 func (c *CLI) handleZkCreate(path, data string, config *zookeeper.ServerConfig) error {
-  client := &zookeeper.Client{
-    Config: config,
-  }
+  client := &zookeeper.Client{Config: config}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Zookeeper: %w", err)
+    fmt.Println("ERROR failed to connect to Zookeeper:", err.Error())
+    return nil
   }
   defer client.Disconnect()
 
   if err := client.Create(path, []byte(data)); err != nil {
-    return fmt.Errorf("failed to create node: %w", err)
+    fmt.Println("ERROR failed to create node:", err.Error())
+    return nil
   }
 
-  fmt.Printf("Node created successfully at path: %s\n", path)
+  fmt.Printf("Node created at path: %s\n", path)
   return nil
 }
 
@@ -97,17 +96,17 @@ func (c *CLI) setupZkDeleteCommand() *cobra.Command {
 
 // handleZkDelete 处理删除节点命令
 func (c *CLI) handleZkDelete(path string, config *zookeeper.ServerConfig) error {
-  client := &zookeeper.Client{
-    Config: config,
-  }
+  client := &zookeeper.Client{Config: config}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Zookeeper: %w", err)
+    fmt.Println("ERROR failed to connect to Zookeeper:", err.Error())
+    return nil
   }
   defer client.Disconnect()
 
   if err := client.Delete(path); err != nil {
-    return fmt.Errorf("failed to delete node: %w", err)
+    fmt.Println("ERROR failed to delete node:", err.Error())
+    return nil
   }
 
   fmt.Printf("Node deleted successfully at path: %s\n", path)
@@ -135,18 +134,18 @@ func (c *CLI) setupZkExistsCommand() *cobra.Command {
 
 // handleZkExists 处理检查节点是否存在命令
 func (c *CLI) handleZkExists(path string, config *zookeeper.ServerConfig) error {
-  client := &zookeeper.Client{
-    Config: config,
-  }
+  client := &zookeeper.Client{Config: config}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Zookeeper: %w", err)
+    fmt.Println("ERROR failed to connect to Zookeeper:", err.Error())
+    return nil
   }
   defer client.Disconnect()
 
   exists, err := client.Exists(path)
   if err != nil {
-    return fmt.Errorf("failed to check node existence: %w", err)
+    fmt.Println("ERROR failed to check node existence:", err.Error())
+    return nil
   }
 
   if exists {
@@ -154,7 +153,6 @@ func (c *CLI) handleZkExists(path string, config *zookeeper.ServerConfig) error 
   } else {
     fmt.Printf("Node does not exist at path: %s\n", path)
   }
-
   return nil
 }
 
@@ -179,18 +177,18 @@ func (c *CLI) setupZkGetCommand() *cobra.Command {
 
 // handleZkGet 处理获取节点数据命令
 func (c *CLI) handleZkGet(path string, config *zookeeper.ServerConfig) error {
-  client := &zookeeper.Client{
-    Config: config,
-  }
+  client := &zookeeper.Client{Config: config}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Zookeeper: %w", err)
+    fmt.Println("ERROR failed to connect to Zookeeper:", err.Error())
+    return nil
   }
   defer client.Disconnect()
 
   data, err := client.Get(path)
   if err != nil {
-    return fmt.Errorf("failed to get node data: %w", err)
+    fmt.Println("ERROR failed to get node data:", err.Error())
+    return nil
   }
 
   fmt.Printf("Data at path %s:\n%s\n", path, string(data))

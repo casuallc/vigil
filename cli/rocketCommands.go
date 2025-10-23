@@ -84,13 +84,12 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
 
 // handleRocketSend 处理发送消息
 func (c *CLI) handleRocketSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, sendType string, delayLevel int, printLog bool, useMessageTrace bool, messageLength int) error {
-  // 创建客户端
   client := rocketmq.NewClient(config)
   defer client.Close()
 
-  // 连接到服务器
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to RocketMQ server: %w", err)
+    fmt.Println("ERROR failed to connect to RocketMQ server:", err.Error())
+    return nil
   }
 
   // 确定发送类型
@@ -117,7 +116,8 @@ func (c *CLI) handleRocketSend(config *rocketmq.ServerConfig, groupName string, 
 
   // 发送消息
   if err := client.SendMessage(producerConfig); err != nil {
-    return fmt.Errorf("failed to send message: %w", err)
+    fmt.Println("ERROR failed to send message:", err.Error())
+    return nil
   }
 
   fmt.Printf("Successfully sent %d messages to topic %s\n", repeat, topic)
@@ -164,13 +164,12 @@ func (c *CLI) setupRocketReceiveCommand() *cobra.Command {
 
 // handleRocketReceive 处理接收消息
 func (c *CLI) handleRocketReceive(config *rocketmq.ServerConfig, groupName string, topic string, tags string, timeout int, startConsumePos string, consumeTimestamp string, consumeType string, printLog bool, retryCount int, useMessageTrace bool) error {
-  // 创建客户端
   client := rocketmq.NewClient(config)
   defer client.Close()
 
-  // 连接到服务器
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to RocketMQ server: %w", err)
+    fmt.Println("ERROR failed to connect to RocketMQ server:", err.Error())
+    return nil
   }
 
   // 创建消费者配置
@@ -253,13 +252,12 @@ func (c *CLI) setupRocketBatchSendCommand() *cobra.Command {
 
 // handleRocketBatchSend 处理批量发送消息
 func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, batchSize int, printLog bool, useMessageTrace bool) error {
-  // 创建客户端
   client := rocketmq.NewClient(config)
   defer client.Close()
 
-  // 连接到服务器
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to RocketMQ server: %w", err)
+    fmt.Println("ERROR failed to connect to RocketMQ server:", err.Error())
+    return nil
   }
 
   // 创建生产者配置
@@ -278,7 +276,8 @@ func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName str
 
   // 发送消息
   if err := client.SendMessage(producerConfig); err != nil {
-    return fmt.Errorf("failed to send batch messages: %w", err)
+    fmt.Println("ERROR failed to send batch messages:", err.Error())
+    return nil
   }
 
   fmt.Printf("Successfully sent %d batch messages to topic %s\n", repeat, topic)
@@ -324,21 +323,15 @@ func (c *CLI) setupRocketTransactionSendCommand() *cobra.Command {
 
 // handleRocketTransactionSend 处理事务消息发送
 func (c *CLI) handleRocketTransactionSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, printLog bool, checkTimes int) error {
-  // 创建客户端
   client := rocketmq.NewClient(config)
   defer client.Close()
 
-  // 连接到服务器
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to RocketMQ server: %w", err)
+    fmt.Println("ERROR failed to connect to RocketMQ server:", err.Error())
+    return nil
   }
 
-  // 创建事务监听器
-  listener := &simpleTransactionListener{
-    printLog: printLog,
-  }
-
-  // 创建生产者配置
+  listener := &simpleTransactionListener{printLog: printLog}
   producerConfig := &rocketmq.ProducerConfig{
     GroupName:  groupName,
     Topic:      topic,
@@ -351,9 +344,9 @@ func (c *CLI) handleRocketTransactionSend(config *rocketmq.ServerConfig, groupNa
     CheckTimes: checkTimes,
   }
 
-  // 发送事务消息
   if err := client.SendTransactionMessage(producerConfig, listener); err != nil {
-    return fmt.Errorf("failed to send transaction message: %w", err)
+    fmt.Println("ERROR failed to send transaction message:", err.Error())
+    return nil
   }
 
   fmt.Printf("Successfully sent %d transaction messages to topic %s\n", repeat, topic)

@@ -78,12 +78,11 @@ func (c *CLI) setupKafkaSendCommand() *cobra.Command {
 
 // handleKafkaSend 处理发送消息
 func (c *CLI) handleKafkaSend(config *kafka.ServerConfig, topic, message, key string, repeat, interval int, printLog bool, acks string, messageLength int, compression, headers string) error {
-  // 创建Kafka客户端
   client := kafka.NewClient(config)
 
-  // 连接到Kafka服务器
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Kafka: %w", err)
+    fmt.Println("ERROR failed to connect to Kafka:", err.Error())
+    return nil
   }
   defer client.Close()
 
@@ -103,7 +102,8 @@ func (c *CLI) handleKafkaSend(config *kafka.ServerConfig, topic, message, key st
 
   // 发送消息
   if err := client.SendMessage(producerConfig); err != nil {
-    return fmt.Errorf("failed to send message: %w", err)
+    fmt.Println("ERROR failed to send message:", err.Error())
+    return nil
   }
 
   fmt.Printf("Successfully sent %d messages to Kafka topic '%s'\n", repeat, topic)
@@ -144,12 +144,11 @@ func (c *CLI) setupKafkaReceiveCommand() *cobra.Command {
 
 // handleKafkaReceive 处理接收消息
 func (c *CLI) handleKafkaReceive(config *kafka.ServerConfig, topic, groupID string, offset int64, offsetType string, timeout int, printLog bool, maxMessages int) error {
-  // 创建Kafka客户端
   client := kafka.NewClient(config)
 
-  // 连接到Kafka服务器
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Kafka: %w", err)
+    fmt.Println("ERROR failed to connect to Kafka:", err.Error())
+    return nil
   }
   defer client.Close()
 
@@ -166,7 +165,8 @@ func (c *CLI) handleKafkaReceive(config *kafka.ServerConfig, topic, groupID stri
 
   // 接收消息
   if err := client.ReceiveMessage(consumerConfig); err != nil {
-    return fmt.Errorf("failed to receive message: %w", err)
+    fmt.Println("ERROR failed to receive message:", err.Error())
+    return nil
   }
 
   fmt.Printf("Finished receiving messages from Kafka topic '%s'\n", topic)

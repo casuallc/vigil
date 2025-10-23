@@ -96,13 +96,12 @@ func (c *CLI) setupPulsarSendCommand() *cobra.Command {
 
 // handlePulsarSend 处理发送消息
 func (c *CLI) handlePulsarSend(config *pulsar.ServerConfig, topic string, message string, key string, sendTimeout int, enableBatching bool, batchingMaxDelay int, batchingMaxMessages int, messageLength int, repeat int, interval int, printLog bool, delayTime int, deliverTime *time.Time, enableCompression bool, properties string) error {
-  // 创建客户端
   client := pulsar.NewClient(config)
   defer client.Close()
 
-  // 连接到服务器
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Pulsar server: %w", err)
+    fmt.Println("ERROR failed to connect to Pulsar server:", err.Error())
+    return nil
   }
 
   // 创建生产者配置
@@ -126,7 +125,8 @@ func (c *CLI) handlePulsarSend(config *pulsar.ServerConfig, topic string, messag
 
   // 发送消息
   if err := client.SendMessage(producerConfig); err != nil {
-    return fmt.Errorf("failed to send message: %w", err)
+    fmt.Println("ERROR failed to send message:", err.Error())
+    return nil
   }
 
   fmt.Printf("Successfully sent %d messages to topic %s\n", repeat, topic)
@@ -169,13 +169,12 @@ func (c *CLI) setupPulsarReceiveCommand() *cobra.Command {
 
 // handlePulsarReceive 处理接收消息
 func (c *CLI) handlePulsarReceive(config *pulsar.ServerConfig, topic string, subscription string, subscriptionType string, receiveTimeout int, messageTimeout int, initialPosition string, autoAck bool, count int) error {
-  // 创建客户端
   client := pulsar.NewClient(config)
   defer client.Close()
 
-  // 连接到服务器
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to Pulsar server: %w", err)
+    fmt.Println("ERROR failed to connect to Pulsar server:", err.Error())
+    return nil
   }
 
   // 创建消费者配置
@@ -227,10 +226,11 @@ func (c *CLI) handlePulsarReceive(config *pulsar.ServerConfig, topic string, sub
 
     return true
   })
-
   if err != nil {
-    return fmt.Errorf("error receiving messages: %w", err)
+    fmt.Println("ERROR failed to receive message:", err.Error())
+    return nil
   }
 
+  fmt.Println("Receive completed.")
   return nil
 }

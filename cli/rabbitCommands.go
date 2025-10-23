@@ -199,17 +199,17 @@ func (c *CLI) setupRabbitDeleteQueueCommand() *cobra.Command {
 
 // handleRabbitDeleteQueue 处理删除队列命令
 func (c *CLI) handleRabbitDeleteQueue(name string, config *rabbitmq.ServerConfig) error {
-  client := &rabbitmq.RabbitClient{
-    Config: config,
-  }
+  client := &rabbitmq.RabbitClient{Config: config}
 
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+    fmt.Println("ERROR failed to connect to RabbitMQ:", err.Error())
+    return nil
   }
   defer client.Close()
 
   if err := client.DeleteQueue(name); err != nil {
-    return fmt.Errorf("failed to delete queue: %w", err)
+    fmt.Println("ERROR failed to delete queue:", err.Error())
+    return nil
   }
 
   fmt.Printf("Queue '%s' deleted successfully\n", name)
@@ -356,11 +356,11 @@ func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
 
 // handleRabbitPublish 处理发布消息命令
 func (c *CLI) handleRabbitPublish(printLog bool, exchangeName, routingKey, message string, interval, repeat, rateLimit int, config *rabbitmq.ServerConfig) error {
-  client := &rabbitmq.RabbitClient{
-    Config: config,
-  }
+  client := &rabbitmq.RabbitClient{Config: config}
+
   if err := client.Connect(); err != nil {
-    return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+    fmt.Println("ERROR failed to connect to RabbitMQ:", err.Error())
+    return nil
   }
   defer client.Close()
 
@@ -374,7 +374,8 @@ func (c *CLI) handleRabbitPublish(printLog bool, exchangeName, routingKey, messa
     RateLimit:  rateLimit,
   }
   if err := client.PublishMessage(publish); err != nil {
-    return fmt.Errorf("failed to publish message: %w", err)
+    fmt.Println("ERROR failed to publish message:", err.Error())
+    return nil
   }
 
   fmt.Printf("Message published to exchange '%s' with routing key '%s'\n", exchangeName, routingKey)
