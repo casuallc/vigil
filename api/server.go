@@ -3,13 +3,14 @@ package api
 import (
   "bytes"
   "encoding/json"
+  "github.com/casuallc/vigil/common"
+  "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/proc"
   "io"
   "log"
   "net/http"
+  "path/filepath"
   "time"
-
-  "github.com/casuallc/vigil/config"
 )
 
 // Server represents the HTTP API server
@@ -93,16 +94,17 @@ func LoggingMiddleware(next http.Handler) http.Handler {
   })
 }
 
-// Start starts the HTTP server
-func (s *Server) Start(addr string) error {
-  // 获取路由
-  r := s.Router()
-
-  // 应用日志中间件到所有路由
-  loggedRouter := LoggingMiddleware(r)
-
-  log.Printf("Starting API server on %s", addr)
-  return http.ListenAndServe(addr, loggedRouter)
+// BasicAuthMiddleware enforces HTTP Basic Auth.
+func BasicAuthMiddleware(username, password string, next http.Handler) http.Handler {
+  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    u, p, ok := r.BasicAuth()
+    if !ok || u != username || p != password {
+      w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
+      http.Error(w, "Unauthorized", http.StatusUnauthorized)
+      return
+    }
+    next.ServeHTTP(w, r)
+  })
 }
 
 // API response helpers
@@ -125,4 +127,33 @@ func getNamespace(vars map[string]string) string {
     namespace = "default"
   }
   return namespace
+}
+
+// Start starts the HTTP server
+func (s *Server) Start(addr string) error {
+  // 获取路由
+  r := s.Router()
+
+  // 应用日志中间件到所有路由
+  loggedRouter := LoggingMiddleware(r)
+
+  // 从 conf/app.conf 加载 Basic Auth 凭据
+  confPath := filepath.Join("conf", "app.conf")
+  kv, err := common.LoadKeyValues(confPath)
+  if err != nil {
+    log.Printf("warning: failed to load %s: %v", confPath, err)
+  }
+  user := kv["BASIC_AUTH_USER"]
+  pass := kv["BASIC_AUTH_PASS"]
+
+  var handler http.Handler = loggedRouter
+  if user != "" && pass != "" {
+    handler = BasicAuthMiddleware(user, pass, handler)
+    log.Printf("Basic Auth enabled for API")
+  } else {
+    log.Printf("Basic Auth not configured; API runs without authentication")
+  }
+
+  log.Printf("Starting API server on %s", addr)
+  return http.ListenAndServe(addr, handler)
 }

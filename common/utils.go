@@ -1,6 +1,8 @@
 package common
 
 import (
+  "bufio"
+  "os"
   "strconv"
   "strings"
   "time"
@@ -88,4 +90,35 @@ func ParsePropertyArray(str string) [][]string {
     result[i] = kv
   }
   return result
+}
+
+// LoadKeyValues loads simple key=value lines from a file.
+func LoadKeyValues(filePath string) (map[string]string, error) {
+  result := make(map[string]string)
+
+  f, err := os.Open(filePath)
+  if err != nil {
+    return result, err
+  }
+  defer f.Close()
+
+  scanner := bufio.NewScanner(f)
+  for scanner.Scan() {
+    line := strings.TrimSpace(scanner.Text())
+    if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+      continue
+    }
+    if strings.HasPrefix(line, "export ") {
+      line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+    }
+    kv := strings.SplitN(line, "=", 2)
+    if len(kv) != 2 {
+      continue
+    }
+    key := strings.TrimSpace(kv[0])
+    val := strings.TrimSpace(kv[1])
+    val = strings.Trim(val, `"'`)
+    result[key] = val
+  }
+  return result, scanner.Err()
 }

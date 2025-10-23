@@ -4,25 +4,37 @@ import (
   "bytes"
   "encoding/json"
   "fmt"
+  "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/proc"
   "io"
   "net/http"
+  "path/filepath"
 )
 
 // Client represents the HTTP client for the Vigil API
-
 type Client struct {
   httpClient *http.Client
   host       string
+  basicUser  string
+  basicPass  string
 }
 
 // NewClient creates a new API client
 func NewClient(host string) *Client {
-  return &Client{
+  c := &Client{
     httpClient: &http.Client{},
     host:       host,
   }
+
+  // 从 conf/app.conf 加载 Basic Auth 凭据
+  confPath := filepath.Join("conf", "app.conf")
+  if kv, err := common.LoadKeyValues(confPath); err == nil {
+    c.basicUser = kv["BASIC_AUTH_USER"]
+    c.basicPass = kv["BASIC_AUTH_PASS"]
+  }
+
+  return c
 }
 
 // Helper methods for HTTP requests
@@ -45,6 +57,11 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 
   if body != nil {
     req.Header.Set("Content-Type", "application/json")
+  }
+
+  // 如果已配置 Basic Auth，则附加到请求
+  if c.basicUser != "" && c.basicPass != "" {
+    req.SetBasicAuth(c.basicUser, c.basicPass)
   }
 
   return c.httpClient.Do(req)
