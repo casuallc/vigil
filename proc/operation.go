@@ -398,7 +398,7 @@ func applyMounts(mounts []Mount) error {
       }
       // 权限/所有者
       if m.Mode != "" {
-        if perm, err := parseFileMode(m.Mode); err == nil {
+        if perm, err := ParseFileMode(m.Mode); err == nil {
           _ = os.Chmod(m.Target, perm)
         }
       }
@@ -483,23 +483,4 @@ func cleanupMounts(mounts []Mount) {
     // umount -l target
     _ = exec.Command("umount", "-l", m.Target).Run()
   }
-}
-
-// 解析权限字符串（如 "0755"）
-func parseFileMode(s string) (os.FileMode, error) {
-  if s == "" {
-    return 0, fmt.Errorf("empty mode")
-  }
-  // 支持 0755 或 755 两种格式
-  var v uint64
-  var err error
-  if s[0] == '0' {
-    v, err = strconv.ParseUint(s, 8, 32)
-  } else {
-    v, err = strconv.ParseUint(s, 10, 32)
-  }
-  if err != nil {
-    return 0, err
-  }
-  return os.FileMode(v), nil
 }

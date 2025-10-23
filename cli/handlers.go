@@ -464,14 +464,15 @@ func (c *CLI) handleExec(command string, isFile bool, envVars []string, outputFi
 }
 
 // 新增：添加挂载
-func (c *CLI) handleProcMountAdd(name, namespace string, mountType string, target, source, volumeName string, readOnly bool, options []string) error {
+func (c *CLI) handleProcMountAdd(name, namespace string, mountID string, mountType string, target, source, volumeName string, readOnly bool, options []string) error {
   p, err := c.client.GetProcess(namespace, name)
   if err != nil {
     return fmt.Errorf("failed to get process: %w", err)
   }
 
   m := proc.Mount{
-    Type:     proc.MountType(mountType),
+    ID:       mountID,
+    Type:     mountType,
     Target:   target,
     ReadOnly: readOnly,
     Options:  options,
@@ -488,13 +489,21 @@ func (c *CLI) handleProcMountAdd(name, namespace string, mountType string, targe
     return fmt.Errorf("unsupported mount type: %s", mountType)
   }
 
+  // 若已存在同名(ID)挂载，则直接忽略（按名称判断重复）
+  for _, existing := range p.Spec.Mounts {
+    if existing.ID != "" && existing.ID == m.ID {
+      fmt.Printf("Mount '%s' already exists for process '%s' (ns=%s), no changes applied.\n", mountID, name, namespace)
+      return nil
+    }
+  }
+
   p.Spec.Mounts = append(p.Spec.Mounts, m)
 
   if err := c.client.UpdateProcess(p); err != nil {
     return fmt.Errorf("failed to update process mounts: %w", err)
   }
 
-  fmt.Printf("Added mount to process '%s' (ns=%s): type=%s target=%s\n", name, namespace, mountType, target)
+  fmt.Printf("Added mount '%s' to process '%s' (ns=%s): type=%s target=%s\n", mountID, name, namespace, mountType, target)
   return nil
 }
 
@@ -560,7 +569,7 @@ func (c *CLI) handleProcMountList(name, namespace string) error {
   fmt.Println("------------------------------------------------------------------------------------------")
   for i, m := range mounts {
     src := m.Source
-    if m.Type == proc.MountType("volume") {
+    if m.Type == "volume" {
       src = m.Name
     }
     fmt.Printf("%-5d %-8s %-25s %-35s %-8t %-20v\n", i, string(m.Type), src, m.Target, m.ReadOnly, m.Options)

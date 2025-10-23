@@ -105,6 +105,8 @@ type EnvVar struct {
 type Mount struct {
   // Type: bind|tmpfs|named，默认 bind
   Type string `json:"type,omitempty" yaml:"type,omitempty"`
+  // 唯一挂载标识（由用户指定）
+  ID string `json:"id,omitempty" yaml:"id,omitempty"`
   // 源目录（bind 必填；named 由 name 决定；tmpfs 不需要）
   Source string `json:"source,omitempty" yaml:"source,omitempty"`
   // 目标目录

@@ -3,6 +3,7 @@ package proc
 import (
   "fmt"
   "github.com/shirou/gopsutil/v3/process"
+  "os"
   "os/exec"
   "os/user"
   "strconv"
@@ -271,4 +272,23 @@ func GetProcessCpuAndMemory(pid int) (float64, uint64, error) {
   memoryUsage := rss * 1024
 
   return cpuUsage, memoryUsage, nil
+}
+
+// ParseFileMode 解析权限字符串（如 "0755"）
+func ParseFileMode(s string) (os.FileMode, error) {
+  if s == "" {
+    return 0, fmt.Errorf("empty mode")
+  }
+  // 支持 0755 或 755 两种格式
+  var v uint64
+  var err error
+  if s[0] == '0' {
+    v, err = strconv.ParseUint(s, 8, 32)
+  } else {
+    v, err = strconv.ParseUint(s, 10, 32)
+  }
+  if err != nil {
+    return 0, err
+  }
+  return os.FileMode(v), nil
 }

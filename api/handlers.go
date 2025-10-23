@@ -244,6 +244,9 @@ func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
   // 保留原始状态信息
   updatedProcess.Status = originalProcess.Status
 
+  // 在持久化前对挂载列表进行去重（优先按 ID）
+  updatedProcess.Spec.Mounts = dedupMounts(updatedProcess.Spec.Mounts)
+
   // 更新进程配置
   key := fmt.Sprintf("%s/%s", namespace, name)
   s.manager.GetProcesses()[key] = &updatedProcess
@@ -254,4 +257,31 @@ func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
   }
 
   writeJSON(w, http.StatusOK, map[string]string{"message": "Process updated successfully"})
+}
+
+// 对挂载列表执行去重：优先按 ID 唯一；若无 ID，则按 (Type|Target|Source|Name) 唯一
+func dedupMounts(mounts []proc.Mount) []proc.Mount {
+  if len(mounts) == 0 {
+    return mounts
+  }
+  seenID := make(map[string]struct{}, len(mounts))
+  seenKey := make(map[string]struct{}, len(mounts))
+  var uniq []proc.Mount
+  for _, m := range mounts {
+    if m.ID != "" {
+      if _, ok := seenID[m.ID]; ok {
+        continue
+      }
+      seenID[m.ID] = struct{}{}
+      uniq = append(uniq, m)
+      continue
+    }
+    key := fmt.Sprintf("%s|%s|%s|%s", m.Type, m.Target, m.Source, m.Name)
+    if _, ok := seenKey[key]; ok {
+      continue
+    }
+    seenKey[key] = struct{}{}
+    uniq = append(uniq, m)
+  }
+  return uniq
 }

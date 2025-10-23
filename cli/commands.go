@@ -454,6 +454,7 @@ func (c *CLI) setupMountAddCommand() *cobra.Command {
     var readOnly bool
     var options []string
     var ns string
+    var mountID string
 
     cmd := &cobra.Command{
         Use:   "add [name]",
@@ -472,6 +473,10 @@ func (c *CLI) setupMountAddCommand() *cobra.Command {
             }
             if name == "" {
                 return fmt.Errorf("process name is required")
+            }
+
+            if mountID == "" {
+                return fmt.Errorf("mount name (id) is required")
             }
 
             if target == "" {
@@ -493,17 +498,19 @@ func (c *CLI) setupMountAddCommand() *cobra.Command {
                 return fmt.Errorf("unsupported mount type: %s (use bind|tmpfs|volume)", mType)
             }
 
-            return c.handleProcMountAdd(name, namespaceFlag, mType, target, source, volumeName, readOnly, options)
+            return c.handleProcMountAdd(name, namespaceFlag, mountID, mType, target, source, volumeName, readOnly, options)
         },
     }
 
     cmd.Flags().StringVarP(&mType, "type", "t", "bind", "Mount type (bind|tmpfs|volume)")
+    cmd.Flags().StringVarP(&mountID, "name", "N", "", "Mount identifier (unique per process)")
     cmd.Flags().StringVarP(&target, "target", "T", "", "Target path inside process (required)")
     cmd.Flags().StringVarP(&source, "source", "s", "", "Source path for bind mount")
     cmd.Flags().StringVarP(&volumeName, "volume", "v", "", "Named volume name for volume mount")
     cmd.Flags().BoolVarP(&readOnly, "read-only", "r", false, "Mount as read-only")
     cmd.Flags().StringArrayVarP(&options, "option", "o", []string{}, "Additional mount options (can be repeated)")
     cmd.Flags().StringVarP(&ns, "namespace", "n", "default", "Process namespace")
+    cmd.MarkFlagRequired("name")
     cmd.MarkFlagRequired("target")
 
     return cmd
