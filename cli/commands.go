@@ -95,6 +95,9 @@ func (c *CLI) setupProcCommands() *cobra.Command {
   procCmd.AddCommand(c.setupEditCommand())
   procCmd.AddCommand(c.setupGetCommand())
 
+  // 新增挂载命令组
+  procCmd.AddCommand(c.setupMountCommands())
+
   return procCmd
 }
 
@@ -425,4 +428,145 @@ func (c *CLI) setupExecCommand() *cobra.Command {
   execCmd.Flags().StringVarP(&outputFile, "result", "r", "", "Output result to file instead of console")
 
   return execCmd
+}
+
+// setupMountCommands 设置挂载相关子命令 (add/remove/list)
+func (c *CLI) setupMountCommands() *cobra.Command {
+    mountCmd := &cobra.Command{
+        Use:   "mount",
+        Short: "Manage process mounts (bind/tmpfs/volume)",
+        Long:  "Manage mounts for a managed process: add/remove/list, similar to Docker volumes.",
+    }
+
+    mountCmd.AddCommand(c.setupMountAddCommand())
+    mountCmd.AddCommand(c.setupMountRemoveCommand())
+    mountCmd.AddCommand(c.setupMountListCommand())
+
+    return mountCmd
+}
+
+// setupMountAddCommand 设置挂载添加命令
+func (c *CLI) setupMountAddCommand() *cobra.Command {
+    var mType string
+    var target string
+    var source string
+    var volumeName string
+    var readOnly bool
+    var options []string
+    var ns string
+
+    cmd := &cobra.Command{
+        Use:   "add [name]",
+        Short: "Add a mount to a process",
+        Long:  "Add a mount to a managed process. Supports type=bind/tmpfs/volume.",
+        Args:  cobra.MaximumNArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            namespaceFlag, _ := cmd.Flags().GetString("namespace")
+            if ns != "" {
+                namespaceFlag = ns
+            }
+
+            var name string
+            if len(args) > 0 {
+                name = args[0]
+            }
+            if name == "" {
+                return fmt.Errorf("process name is required")
+            }
+
+            if target == "" {
+                return fmt.Errorf("target is required")
+            }
+
+            switch mType {
+            case "bind":
+                if source == "" {
+                    return fmt.Errorf("source is required for bind mount")
+                }
+            case "volume":
+                if volumeName == "" {
+                    return fmt.Errorf("volume name is required for volume mount")
+                }
+            case "tmpfs":
+                // no additional required fields
+            default:
+                return fmt.Errorf("unsupported mount type: %s (use bind|tmpfs|volume)", mType)
+            }
+
+            return c.handleProcMountAdd(name, namespaceFlag, mType, target, source, volumeName, readOnly, options)
+        },
+    }
+
+    cmd.Flags().StringVarP(&mType, "type", "t", "bind", "Mount type (bind|tmpfs|volume)")
+    cmd.Flags().StringVarP(&target, "target", "T", "", "Target path inside process (required)")
+    cmd.Flags().StringVarP(&source, "source", "s", "", "Source path for bind mount")
+    cmd.Flags().StringVarP(&volumeName, "volume", "v", "", "Named volume name for volume mount")
+    cmd.Flags().BoolVarP(&readOnly, "read-only", "r", false, "Mount as read-only")
+    cmd.Flags().StringArrayVarP(&options, "option", "o", []string{}, "Additional mount options (can be repeated)")
+    cmd.Flags().StringVarP(&ns, "namespace", "n", "default", "Process namespace")
+    cmd.MarkFlagRequired("target")
+
+    return cmd
+}
+
+// setupMountRemoveCommand 设置挂载移除命令
+func (c *CLI) setupMountRemoveCommand() *cobra.Command {
+    var ns string
+    var target string
+    var index int
+
+    cmd := &cobra.Command{
+        Use:   "remove [name]",
+        Short: "Remove mount(s) from a process",
+        Long:  "Remove a mount from a process by target or index.",
+        Args:  cobra.MaximumNArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            namespaceFlag, _ := cmd.Flags().GetString("namespace")
+            if ns != "" {
+                namespaceFlag = ns
+            }
+
+            var name string
+            if len(args) > 0 {
+                name = args[0]
+            }
+            if name == "" {
+                return fmt.Errorf("process name is required")
+            }
+
+            if target == "" && index < 0 {
+                return fmt.Errorf("either --target or --index must be specified")
+            }
+
+            return c.handleProcMountRemove(name, namespaceFlag, target, index)
+        },
+    }
+
+    cmd.Flags().StringVarP(&ns, "namespace", "n", "default", "Process namespace")
+    cmd.Flags().StringVarP(&target, "target", "T", "", "Target path to remove")
+    cmd.Flags().IntVarP(&index, "index", "i", -1, "Mount index to remove")
+    return cmd
+}
+
+// setupMountListCommand 设置挂载列表命令
+func (c *CLI) setupMountListCommand() *cobra.Command {
+    var ns string
+
+    cmd := &cobra.Command{
+        Use:   "list [name]",
+        Short: "List mounts of a process",
+        Long:  "List all mounts configured for a managed process.",
+        Args:  cobra.ExactArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            namespaceFlag, _ := cmd.Flags().GetString("namespace")
+            if ns != "" {
+                namespaceFlag = ns
+            }
+
+            return c.handleProcMountList(args[0], namespaceFlag)
+        },
+    }
+
+    cmd.Flags().StringVarP(&ns, "namespace", "n", "default", "Process namespace")
+    return cmd
 }

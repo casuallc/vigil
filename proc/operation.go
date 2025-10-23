@@ -81,6 +81,12 @@ func (m *Manager) StartProcess(namespace, name string) error {
   // Set proc status to pending
   process.Status.Phase = PhasePending
 
+  // 在 Linux 下应用目录挂载（bind/tmpfs/named）
+  if err := applyMounts(process.Spec.Mounts); err != nil {
+    process.Status.Phase = PhaseFailed
+    return fmt.Errorf("failed to apply mounts: %w", err)
+  }
+
   // 构建命令 - 使用 CommandConfig
   cmd := exec.Command(process.Spec.Exec.Command, process.Spec.Exec.Args...)
 
@@ -121,6 +127,8 @@ func (m *Manager) StartProcess(namespace, name string) error {
   stdout, err := os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%s.stdout.log", name)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
   if err != nil {
     process.Status.Phase = PhaseFailed
+    // 启动失败时清理挂载
+    cleanupMounts(process.Spec.Mounts)
     return err
   }
   defer stdout.Close()
@@ -128,6 +136,8 @@ func (m *Manager) StartProcess(namespace, name string) error {
   stderr, err := os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%s.stderr.log", name)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
   if err != nil {
     process.Status.Phase = PhaseFailed
+    // 启动失败时清理挂载
+    cleanupMounts(process.Spec.Mounts)
     return err
   }
   defer stderr.Close()
@@ -149,6 +159,8 @@ func (m *Manager) StartProcess(namespace, name string) error {
   case err := <-done:
     if err != nil {
       process.Status.Phase = PhaseFailed
+      // 启动失败时清理挂载
+      cleanupMounts(process.Spec.Mounts)
       return err
     }
   case <-time.After(timeout):
@@ -157,6 +169,8 @@ func (m *Manager) StartProcess(namespace, name string) error {
     if cmd.Process != nil {
       cmd.Process.Kill()
     }
+    // 超时也清理挂载
+    cleanupMounts(process.Spec.Mounts)
     return fmt.Errorf("proc start timed out after %v", timeout)
   }
 
@@ -185,6 +199,9 @@ func (m *Manager) StartProcess(namespace, name string) error {
 
     process.Status.Phase = PhaseStopped
     process.Status.PID = 0
+
+    // 进程退出后清理挂载（Linux）
+    cleanupMounts(process.Spec.Mounts)
 
     // 应用重启策略
     shouldRestart := false
@@ -262,19 +279,31 @@ func (m *Manager) StopProcess(namespace, name string) error {
     case err := <-done:
       if err != nil {
         // 停止命令失败，尝试强制终止
-        return m.forceStopProcess(process)
+        if err := m.forceStopProcess(process); err != nil {
+          return err
+        }
       }
     case <-time.After(timeout):
       // 超时，尝试强制终止
-      return m.forceStopProcess(process)
+      if err := m.forceStopProcess(process); err != nil {
+        return err
+      }
     }
 
     process.Status.Phase = PhaseStopped
     process.Status.PID = 0
+
+    // 停止后清理挂载
+    cleanupMounts(process.Spec.Mounts)
     return nil
   } else {
     // 没有自定义停止命令，使用强制终止
-    return m.forceStopProcess(process)
+    if err := m.forceStopProcess(process); err != nil {
+      return err
+    }
+    // 停止后清理挂载
+    cleanupMounts(process.Spec.Mounts)
+    return nil
   }
 }
 
@@ -344,4 +373,133 @@ func (m *Manager) RestartProcess(namespace, name string) error {
 
   // 然后启动进程
   return m.StartProcess(namespace, name)
+}
+
+// Linux 下应用挂载（bind/tmpfs/named）
+func applyMounts(mounts []Mount) error {
+  if len(mounts) == 0 || runtime.GOOS != "linux" {
+    return nil
+  }
+
+  for _, m := range mounts {
+    // 解析类型，默认 bind
+    t := m.Type
+    if t == "" {
+      t = "bind"
+    }
+    if m.Target == "" {
+      return fmt.Errorf("invalid mount: target is required")
+    }
+
+    // 目标目录准备
+    if m.CreateTarget {
+      if err := os.MkdirAll(m.Target, 0755); err != nil {
+        return fmt.Errorf("failed to create target dir %s: %w", m.Target, err)
+      }
+      // 权限/所有者
+      if m.Mode != "" {
+        if perm, err := parseFileMode(m.Mode); err == nil {
+          _ = os.Chmod(m.Target, perm)
+        }
+      }
+      if m.UID != 0 || m.GID != 0 {
+        _ = os.Chown(m.Target, m.UID, m.GID)
+      }
+    }
+
+    switch t {
+    case "bind":
+      if m.Source == "" {
+        return fmt.Errorf("bind mount requires source")
+      }
+      // 递归绑定
+      args := []string{"--bind"}
+      if m.Recursive {
+        args = []string{"--rbind"}
+      }
+      cmd := exec.Command("mount", append(args, m.Source, m.Target)...)
+      if err := cmd.Run(); err != nil {
+        return fmt.Errorf("failed to bind mount %s -> %s: %w", m.Source, m.Target, err)
+      }
+      // 只读 remount
+      if m.ReadOnly {
+        ro := exec.Command("mount", "-o", "remount,ro", m.Target)
+        if err := ro.Run(); err != nil {
+          return fmt.Errorf("failed to remount ro for %s: %w", m.Target, err)
+        }
+      }
+      // 传播选项
+      if m.Propagation != "" {
+        make := exec.Command("mount", "--make-"+m.Propagation, m.Target)
+        _ = make.Run() // 非致命
+      }
+
+    case "tmpfs":
+      // tmpfs: mount -t tmpfs -o size=NNM target
+      opts := "size=64M"
+      if m.TmpfsSizeMB > 0 {
+        opts = fmt.Sprintf("size=%dM", m.TmpfsSizeMB)
+      }
+      cmd := exec.Command("mount", "-t", "tmpfs", "-o", opts, "tmpfs", m.Target)
+      if err := cmd.Run(); err != nil {
+        return fmt.Errorf("failed to mount tmpfs on %s: %w", m.Target, err)
+      }
+
+    case "named":
+      if m.Name == "" {
+        return fmt.Errorf("named volume requires name")
+      }
+      // 简化的命名卷目录：./volumes/<name>
+      volDir := filepath.Join(".", "volumes", m.Name)
+      if err := os.MkdirAll(volDir, 0755); err != nil {
+        return fmt.Errorf("failed to create volume dir %s: %w", volDir, err)
+      }
+      cmd := exec.Command("mount", "--bind", volDir, m.Target)
+      if err := cmd.Run(); err != nil {
+        return fmt.Errorf("failed to bind named volume %s -> %s: %w", volDir, m.Target, err)
+      }
+      if m.ReadOnly {
+        ro := exec.Command("mount", "-o", "remount,ro", m.Target)
+        _ = ro.Run()
+      }
+
+    default:
+      return fmt.Errorf("unsupported mount type: %s", t)
+    }
+  }
+
+  return nil
+}
+
+// Linux 下卸载挂载（使用懒卸载以尽量避免繁忙状态）
+func cleanupMounts(mounts []Mount) {
+  if len(mounts) == 0 || runtime.GOOS != "linux" {
+    return
+  }
+  for _, m := range mounts {
+    if m.Target == "" {
+      continue
+    }
+    // umount -l target
+    _ = exec.Command("umount", "-l", m.Target).Run()
+  }
+}
+
+// 解析权限字符串（如 "0755"）
+func parseFileMode(s string) (os.FileMode, error) {
+  if s == "" {
+    return 0, fmt.Errorf("empty mode")
+  }
+  // 支持 0755 或 755 两种格式
+  var v uint64
+  var err error
+  if s[0] == '0' {
+    v, err = strconv.ParseUint(s, 8, 32)
+  } else {
+    v, err = strconv.ParseUint(s, 10, 32)
+  }
+  if err != nil {
+    return 0, err
+  }
+  return os.FileMode(v), nil
 }

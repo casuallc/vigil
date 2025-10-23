@@ -462,3 +462,108 @@ func (c *CLI) handleExec(command string, isFile bool, envVars []string, outputFi
 
   return nil
 }
+
+// 新增：添加挂载
+func (c *CLI) handleProcMountAdd(name, namespace string, mountType string, target, source, volumeName string, readOnly bool, options []string) error {
+  p, err := c.client.GetProcess(namespace, name)
+  if err != nil {
+    return fmt.Errorf("failed to get process: %w", err)
+  }
+
+  m := proc.Mount{
+    Type:     proc.MountType(mountType),
+    Target:   target,
+    ReadOnly: readOnly,
+    Options:  options,
+  }
+
+  switch mountType {
+  case "bind":
+    m.Source = source
+  case "volume":
+    m.Name = volumeName
+  case "tmpfs":
+    // no extra fields
+  default:
+    return fmt.Errorf("unsupported mount type: %s", mountType)
+  }
+
+  p.Spec.Mounts = append(p.Spec.Mounts, m)
+
+  if err := c.client.UpdateProcess(p); err != nil {
+    return fmt.Errorf("failed to update process mounts: %w", err)
+  }
+
+  fmt.Printf("Added mount to process '%s' (ns=%s): type=%s target=%s\n", name, namespace, mountType, target)
+  return nil
+}
+
+// 新增：移除挂载（支持按target或按index）
+func (c *CLI) handleProcMountRemove(name, namespace, target string, index int) error {
+  p, err := c.client.GetProcess(namespace, name)
+  if err != nil {
+    return fmt.Errorf("failed to get process: %w", err)
+  }
+
+  mounts := p.Spec.Mounts
+  if len(mounts) == 0 {
+    fmt.Println("No mounts configured.")
+    return nil
+  }
+
+  var newMounts []proc.Mount
+
+  if target != "" {
+    for i := range mounts {
+      if mounts[i].Target != target {
+        newMounts = append(newMounts, mounts[i])
+      }
+    }
+    if len(newMounts) == len(mounts) {
+      return fmt.Errorf("no mount found with target: %s", target)
+    }
+  } else if index >= 0 {
+    if index < 0 || index >= len(mounts) {
+      return fmt.Errorf("index out of range: %d", index)
+    }
+    newMounts = append(newMounts, mounts[:index]...)
+    newMounts = append(newMounts, mounts[index+1:]...)
+  } else {
+    return fmt.Errorf("either target or index must be specified")
+  }
+
+  p.Spec.Mounts = newMounts
+  if err := c.client.UpdateProcess(p); err != nil {
+    return fmt.Errorf("failed to update process mounts: %w", err)
+  }
+
+  fmt.Printf("Removed mount from process '%s' (ns=%s)\n", name, namespace)
+  return nil
+}
+
+// 新增：列出挂载
+func (c *CLI) handleProcMountList(name, namespace string) error {
+  p, err := c.client.GetProcess(namespace, name)
+  if err != nil {
+    return fmt.Errorf("failed to get process: %w", err)
+  }
+
+  mounts := p.Spec.Mounts
+  if len(mounts) == 0 {
+    fmt.Println("No mounts configured.")
+    return nil
+  }
+
+  fmt.Printf("Mounts for process '%s' (ns=%s):\n", name, namespace)
+  fmt.Println("------------------------------------------------------------------------------------------")
+  fmt.Printf("%-5s %-8s %-25s %-35s %-8s %-20s\n", "#", "Type", "Source/Name", "Target", "RO", "Options")
+  fmt.Println("------------------------------------------------------------------------------------------")
+  for i, m := range mounts {
+    src := m.Source
+    if m.Type == proc.MountType("volume") {
+      src = m.Name
+    }
+    fmt.Printf("%-5d %-8s %-25s %-35s %-8t %-20v\n", i, string(m.Type), src, m.Target, m.ReadOnly, m.Options)
+  }
+  return nil
+}

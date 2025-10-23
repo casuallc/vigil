@@ -48,6 +48,9 @@ type Spec struct {
   // WorkingDir 是进程的工作目录
   WorkingDir string `json:"working_dir,omitempty" yaml:"working_dir,omitempty"`
 
+  // 目录挂载配置（仅在 Linux 下有效，类似 docker volume）
+  Mounts []Mount `json:"mounts,omitempty" yaml:"mounts,omitempty"`
+
   // User 和 UserGroup 指定运行用户
   User      string `json:"user,omitempty" yaml:"user,omitempty"`
   UserGroup string `json:"user_group,omitempty" yaml:"user_group,omitempty"`
@@ -96,6 +99,35 @@ type Exec struct {
 type EnvVar struct {
   Name  string `json:"name" yaml:"name"`
   Value string `json:"value" yaml:"value"`
+}
+
+// Mount 定义目录挂载映射（Linux 绑定挂载、tmpfs、命名卷）
+type Mount struct {
+  // Type: bind|tmpfs|named，默认 bind
+  Type string `json:"type,omitempty" yaml:"type,omitempty"`
+  // 源目录（bind 必填；named 由 name 决定；tmpfs 不需要）
+  Source string `json:"source,omitempty" yaml:"source,omitempty"`
+  // 目标目录
+  Target string `json:"target" yaml:"target"`
+  // 命名卷名称（Type=named 时使用）
+  Name string `json:"name,omitempty" yaml:"name,omitempty"`
+  // 只读
+  ReadOnly bool `json:"read_only,omitempty" yaml:"read_only,omitempty"`
+  // 递归绑定（--rbind）
+  Recursive bool `json:"recursive,omitempty" yaml:"recursive,omitempty"`
+  // 传播选项：如 rshared、rprivate、rslave
+  Propagation string `json:"propagation,omitempty" yaml:"propagation,omitempty"`
+  // 若目标不存在是否创建
+  CreateTarget bool `json:"create_target,omitempty" yaml:"create_target,omitempty"`
+  // 目标目录权限（创建时应用，如 0755；字符串形式以便 YAML 表示）
+  Mode string `json:"mode,omitempty" yaml:"mode,omitempty"`
+  // 所有者 UID/GID（创建目标时应用）
+  UID int `json:"uid,omitempty" yaml:"uid,omitempty"`
+  GID int `json:"gid,omitempty" yaml:"gid,omitempty"`
+  // tmpfs 大小（MB），Type=tmpfs 时可用
+  TmpfsSizeMB int `json:"tmpfs_size_mb,omitempty" yaml:"tmpfs_size_mb,omitempty"`
+  // 额外选项（保留）
+  Options []string `json:"options,omitempty" yaml:"options,omitempty"`
 }
 
 // LogConfig 日志配置
