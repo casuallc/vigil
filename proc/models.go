@@ -277,31 +277,91 @@ type TerminationInfo struct {
 
 // ResourceStats 表示资源使用情况
 type ResourceStats struct {
-  CPUUsage         float64    `json:"cpu_usage" yaml:"cpu_usage"`
-  CPUUsageHuman    string     `json:"cpu_usage_human,omitempty" yaml:"cpu_usage_human,omitempty"`
-  MemoryUsage      uint64     `json:"memory_usage" yaml:"memory_usage"`
-  MemoryUsageHuman string     `json:"memory_usage_human,omitempty" yaml:"memory_usage_human,omitempty"`
-  // 新增：内存总量与使用百分比
+  CPUUsage         float64 `json:"cpu_usage" yaml:"cpu_usage"`
+  CPUUsageHuman    string  `json:"cpu_usage_human,omitempty" yaml:"cpu_usage_human,omitempty"`
+  MemoryUsage      uint64  `json:"memory_usage" yaml:"memory_usage"`
+  MemoryUsageHuman string  `json:"memory_usage_human,omitempty" yaml:"memory_usage_human,omitempty"`
+
+  // 系统内存补充
   MemoryTotal       uint64  `json:"memory_total,omitempty" yaml:"memory_total,omitempty"`
   MemoryUsedPercent float64 `json:"memory_used_percent,omitempty" yaml:"memory_used_percent,omitempty"`
 
-  // 保留总体磁盘IO
-  DiskIO      uint64 `json:"disk_io" yaml:"disk_io"`
-  DiskIOHuman string `json:"disk_io_human,omitempty" yaml:"disk_io_human,omitempty"`
+  // 新增：可用内存
+  MemoryAvailable uint64 `json:"memory_available,omitempty" yaml:"memory_available,omitempty"`
+  // 新增：Swap 使用统计
+  SwapTotal uint64 `json:"swap_total,omitempty" yaml:"swap_total,omitempty"`
+  SwapUsed  uint64 `json:"swap_used,omitempty" yaml:"swap_used,omitempty"`
+  SwapFree  uint64 `json:"swap_free,omitempty" yaml:"swap_free,omitempty"`
+  // 新增：内存压力（PSI）
+  MemoryPressure PressureStallInfo `json:"memory_pressure,omitempty" yaml:"memory_pressure,omitempty"`
+
+  // 系统磁盘/网络（保留）
+  DiskIO         uint64     `json:"disk_io" yaml:"disk_io"`
+  DiskIOHuman    string     `json:"disk_io_human,omitempty" yaml:"disk_io_human,omitempty"`
   NetworkIO      uint64     `json:"network_io" yaml:"network_io"`
   NetworkIOHuman string     `json:"network_io_human,omitempty" yaml:"network_io_human,omitempty"`
   ListeningPorts []PortInfo `json:"listening_ports,omitempty" yaml:"listening_ports,omitempty"`
 
-  // 新增：磁盘使用（每个设备/挂载点）
+  // 系统磁盘使用与设备IO（保留）
   DiskUsages    []DiskUsageInfo `json:"disk_usages,omitempty" yaml:"disk_usages,omitempty"`
-  // 新增：磁盘IO（每个设备）
   DiskIODevices []DiskIOInfo    `json:"disk_io_devices,omitempty" yaml:"disk_io_devices,omitempty"`
-  // 新增：系统负载
-  Load LoadAvg `json:"load,omitempty" yaml:"load,omitempty"`
-  // 新增：文件描述符检查（Linux）
-  FD FDCheck `json:"fd,omitempty" yaml:"fd,omitempty"`
-  // 新增：内核参数检查（Linux）
-  KernelParams []KernelParam `json:"kernel_params,omitempty" yaml:"kernel_params,omitempty"`
+  Load          LoadAvg         `json:"load,omitempty" yaml:"load,omitempty"`
+  FD            FDCheck         `json:"fd,omitempty" yaml:"fd,omitempty"`
+  KernelParams  []KernelParam   `json:"kernel_params,omitempty" yaml:"kernel_params,omitempty"`
+
+  // CPU 相关指标
+  CPUAffinity   []int   `json:"cpu_affinity,omitempty" yaml:"cpu_affinity,omitempty"`
+  CPUUserTime   float64 `json:"cpu_user_time,omitempty" yaml:"cpu_user_time,omitempty"`     // 秒
+  CPUSystemTime float64 `json:"cpu_system_time,omitempty" yaml:"cpu_system_time,omitempty"` // 秒
+  CPUTotalTime  float64 `json:"cpu_total_time,omitempty" yaml:"cpu_total_time,omitempty"`   // 秒
+
+  // 内存相关指标
+  MemoryVMS    uint64 `json:"memory_vms,omitempty" yaml:"memory_vms,omitempty"`       // 虚拟内存
+  MemoryRSS    uint64 `json:"memory_rss,omitempty" yaml:"memory_rss,omitempty"`       // 常驻内存
+  MemoryShared uint64 `json:"memory_shared,omitempty" yaml:"memory_shared,omitempty"` // 共享内存
+  MemoryHeap   uint64 `json:"memory_heap,omitempty" yaml:"memory_heap,omitempty"`     // 堆内存（smaps）
+
+  // I/O 相关指标（进程级）
+  IOReadBytes   uint64 `json:"io_read_bytes,omitempty" yaml:"io_read_bytes,omitempty"`
+  IOWriteBytes  uint64 `json:"io_write_bytes,omitempty" yaml:"io_write_bytes,omitempty"`
+  IOReadCount   uint64 `json:"io_read_count,omitempty" yaml:"io_read_count,omitempty"`
+  IOWriteCount  uint64 `json:"io_write_count,omitempty" yaml:"io_write_count,omitempty"`
+  IOReadTimeMS  uint64 `json:"io_read_time_ms,omitempty" yaml:"io_read_time_ms,omitempty"`
+  IOWriteTimeMS uint64 `json:"io_write_time_ms,omitempty" yaml:"io_write_time_ms,omitempty"`
+  OpenFDs       int32  `json:"open_fds,omitempty" yaml:"open_fds,omitempty"`
+
+  // 进程状态与调度
+  ProcessStatus          string `json:"process_status,omitempty" yaml:"process_status,omitempty"`
+  ThreadCount            int32  `json:"thread_count,omitempty" yaml:"thread_count,omitempty"`
+  CtxSwitchesVoluntary   int64  `json:"ctx_switches_voluntary,omitempty" yaml:"ctx_switches_voluntary,omitempty"`
+  CtxSwitchesInvoluntary int64  `json:"ctx_switches_involuntary,omitempty" yaml:"ctx_switches_involuntary,omitempty"`
+  SchedulerPolicy        string `json:"scheduler_policy,omitempty" yaml:"scheduler_policy,omitempty"`
+  SchedulerPriority      int32  `json:"scheduler_priority,omitempty" yaml:"scheduler_priority,omitempty"`
+  Nice                   int32  `json:"nice,omitempty" yaml:"nice,omitempty"`
+
+  // 文件与网络资源（进程聚合）
+  OpenFilesCount          int `json:"open_files_count,omitempty" yaml:"open_files_count,omitempty"`
+  NetworkConnectionsCount int `json:"network_connections_count,omitempty" yaml:"network_connections_count,omitempty"`
+
+  // 新增：网络（系统级聚合）
+  NetRxBytesPerSec float64 `json:"net_rx_bytes_per_sec,omitempty" yaml:"net_rx_bytes_per_sec,omitempty"`
+  NetTxBytesPerSec float64 `json:"net_tx_bytes_per_sec,omitempty" yaml:"net_tx_bytes_per_sec,omitempty"`
+  NetRxPackets     uint64  `json:"net_rx_packets,omitempty" yaml:"net_rx_packets,omitempty"`
+  NetTxPackets     uint64  `json:"net_tx_packets,omitempty" yaml:"net_tx_packets,omitempty"`
+  NetRxErrors      uint64  `json:"net_rx_errors,omitempty" yaml:"net_rx_errors,omitempty"`
+  NetTxErrors      uint64  `json:"net_tx_errors,omitempty" yaml:"net_tx_errors,omitempty"`
+  NetRxDropped     uint64  `json:"net_rx_dropped,omitempty" yaml:"net_rx_dropped,omitempty"`
+  NetTxDropped     uint64  `json:"net_tx_dropped,omitempty" yaml:"net_tx_dropped,omitempty"`
+  // TCP 状态计数
+  TCPStateCounts map[string]int `json:"tcp_state_counts,omitempty" yaml:"tcp_state_counts,omitempty"`
+
+  // 稳定性与生命周期
+  StartTime *time.Time `json:"start_time,omitempty" yaml:"start_time,omitempty"`
+  ParentPID int        `json:"parent_pid,omitempty" yaml:"parent_pid,omitempty"`
+  ExitCode  int        `json:"exit_code,omitempty" yaml:"exit_code,omitempty"`
+
+  // 新增：系统运行时间（秒）
+  SystemUptimeSeconds float64 `json:"system_uptime_seconds,omitempty" yaml:"system_uptime_seconds,omitempty"`
 }
 
 // SetFormattedValues 设置所有格式化的字段值
@@ -319,8 +379,13 @@ type DiskUsageInfo struct {
   Fstype      string  `json:"fstype,omitempty" yaml:"fstype,omitempty"`
   Total       uint64  `json:"total" yaml:"total"`
   Used        uint64  `json:"used" yaml:"used"`
-  Free        uint64  `json:"free" yaml:"free"` // 精准可用容量
+  Free        uint64  `json:"free" yaml:"free"`
   UsedPercent float64 `json:"used_percent" yaml:"used_percent"`
+  // 新增：Inode 使用
+  InodesTotal       uint64  `json:"inodes_total,omitempty" yaml:"inodes_total,omitempty"`
+  InodesUsed        uint64  `json:"inodes_used,omitempty" yaml:"inodes_used,omitempty"`
+  InodesFree        uint64  `json:"inodes_free,omitempty" yaml:"inodes_free,omitempty"`
+  InodesUsedPercent float64 `json:"inodes_used_percent,omitempty" yaml:"inodes_used_percent,omitempty"`
 }
 
 // 新增：磁盘IO（每设备）
@@ -330,16 +395,28 @@ type DiskIOInfo struct {
   WriteBytes uint64 `json:"write_bytes" yaml:"write_bytes"`
   ReadCount  uint64 `json:"read_count,omitempty" yaml:"read_count,omitempty"`
   WriteCount uint64 `json:"write_count,omitempty" yaml:"write_count,omitempty"`
+  // 新增：读写耗时（ms）
+  ReadTimeMS  uint64 `json:"read_time_ms,omitempty" yaml:"read_time_ms,omitempty"`
+  WriteTimeMS uint64 `json:"write_time_ms,omitempty" yaml:"write_time_ms,omitempty"`
+  // 新增：设备忙碌时间（ms）与利用率（百分比）
+  BusyTimeMS         uint64  `json:"busy_time_ms,omitempty" yaml:"busy_time_ms,omitempty"`
+  UtilizationPercent float64 `json:"utilization_percent,omitempty" yaml:"utilization_percent,omitempty"`
+  // 新增：平均延迟（ms）
+  AvgReadLatencyMS  float64 `json:"avg_read_latency_ms,omitempty" yaml:"avg_read_latency_ms,omitempty"`
+  AvgWriteLatencyMS float64 `json:"avg_write_latency_ms,omitempty" yaml:"avg_write_latency_ms,omitempty"`
+  // 新增：吞吐（估值，B/s）
+  ReadThroughputBps  float64 `json:"read_throughput_bps,omitempty" yaml:"read_throughput_bps,omitempty"`
+  WriteThroughputBps float64 `json:"write_throughput_bps,omitempty" yaml:"write_throughput_bps,omitempty"`
 }
 
-// 新增：系统负载
+// LoadAvg 新增：系统负载
 type LoadAvg struct {
   Load1  float64 `json:"load1" yaml:"load1"`
   Load5  float64 `json:"load5" yaml:"load5"`
   Load15 float64 `json:"load15" yaml:"load15"`
 }
 
-// 新增：文件描述符检查
+// FDCheck 新增：文件描述符检查
 type FDCheck struct {
   CurrentAllocated uint64  `json:"current_allocated,omitempty" yaml:"current_allocated,omitempty"`
   InUse            uint64  `json:"in_use,omitempty" yaml:"in_use,omitempty"`
@@ -347,10 +424,18 @@ type FDCheck struct {
   UsagePercent     float64 `json:"usage_percent,omitempty" yaml:"usage_percent,omitempty"`
 }
 
-// 新增：内核参数
+// KernelParam 新增：内核参数
 type KernelParam struct {
   Key   string `json:"key" yaml:"key"`
   Value string `json:"value" yaml:"value"`
+}
+
+// PressureStallInfo 新增：压力阻塞信息（PSI）
+type PressureStallInfo struct {
+  Avg10  float64 `json:"avg10,omitempty" yaml:"avg10,omitempty"`
+  Avg60  float64 `json:"avg60,omitempty" yaml:"avg60,omitempty"`
+  Avg300 float64 `json:"avg300,omitempty" yaml:"avg300,omitempty"`
+  Total  uint64  `json:"total,omitempty" yaml:"total,omitempty"`
 }
 
 // PortInfo 端口监听信息

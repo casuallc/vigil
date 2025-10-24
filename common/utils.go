@@ -122,3 +122,29 @@ func LoadKeyValues(filePath string) (map[string]string, error) {
   }
   return result, scanner.Err()
 }
+
+// FormatSecondsAdaptive 将秒数按 s/m/h/d 自适应格式化，保留两位小数
+func FormatSecondsAdaptive(seconds float64) string {
+  sign := ""
+  if seconds < 0 {
+    sign = "-"
+    seconds = -seconds
+  }
+
+  const (
+    minute = 60
+    hour   = 60 * minute
+    day    = 24 * hour
+  )
+
+  switch {
+  case seconds < minute:
+    return sign + strconv.FormatFloat(seconds, 'f', 2, 64) + "s"
+  case seconds < hour:
+    return sign + strconv.FormatFloat(seconds/minute, 'f', 2, 64) + "m"
+  case seconds < day:
+    return sign + strconv.FormatFloat(seconds/hour, 'f', 2, 64) + "h"
+  default:
+    return sign + strconv.FormatFloat(seconds/day, 'f', 2, 64) + "d"
+  }
+}

@@ -2,6 +2,8 @@ package proc
 
 import (
   "fmt"
+  "github.com/shirou/gopsutil/v3/host"
+  gnet "github.com/shirou/gopsutil/v3/net"
   "os"
   "os/exec"
   "regexp"
@@ -14,7 +16,6 @@ import (
   "github.com/shirou/gopsutil/v3/disk"
   "github.com/shirou/gopsutil/v3/load"
   "github.com/shirou/gopsutil/v3/mem"
-  "github.com/shirou/gopsutil/v3/process"
 )
 
 // Monitor provides resource monitoring functionality
@@ -236,7 +237,38 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
     stats.MemoryUsageHuman = FormatBytes(vm.Used)
     stats.MemoryTotal = vm.Total
     stats.MemoryUsedPercent = vm.UsedPercent
+    // 新增：可用内存
+    stats.MemoryAvailable = vm.Available
   }
+  // 新增：Swap 使用统计
+  if sm, err := mem.SwapMemory(); err == nil {
+    stats.SwapTotal = sm.Total
+    stats.SwapUsed = sm.Used
+    stats.SwapFree = sm.Free
+  }
+  // 新增：内存压力（PSI，仅 Linux）
+  if runtime.GOOS == "linux" {
+    if psi, err := readPressureStallInfo("memory"); err == nil {
+      stats.MemoryPressure = psi
+    }
+  }
+
+  // 预采样：网络与磁盘IO（用于速率/利用率估算）
+  var (
+    netSample1  map[string]gnet.IOCountersStat
+    diskSample1 map[string]disk.IOCountersStat
+    tSample1    time.Time
+  )
+  if ns, err := gnet.IOCounters(true); err == nil {
+    netSample1 = make(map[string]gnet.IOCountersStat, len(ns))
+    for _, v := range ns {
+      netSample1[v.Name] = v
+    }
+  }
+  if dm, err := disk.IOCounters(); err == nil {
+    diskSample1 = dm
+  }
+  tSample1 = time.Now()
 
   // Disk usage per partition（过滤虚拟FS与容器相关挂载）
   excludeFSTypes := map[string]bool{
@@ -271,7 +303,7 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
       }
 
       if du, err := disk.Usage(p.Mountpoint); err == nil {
-        stats.DiskUsages = append(stats.DiskUsages, DiskUsageInfo{
+        info := DiskUsageInfo{
           Device:      p.Device,
           Mountpoint:  p.Mountpoint,
           Fstype:      p.Fstype,
@@ -279,22 +311,43 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
           Used:        du.Used,
           Free:        du.Free,
           UsedPercent: du.UsedPercent,
-        })
+        }
+        // 新增：Inode 统计（gopsutil 提供）
+        info.InodesTotal = du.InodesTotal
+        info.InodesUsed = du.InodesUsed
+        info.InodesFree = du.InodesFree
+        info.InodesUsedPercent = du.InodesUsedPercent
+
+        stats.DiskUsages = append(stats.DiskUsages, info)
       }
     }
   }
 
-  // Disk IO per device
+  // Disk IO per device（首样）
   if ioMap, err := disk.IOCounters(); err == nil {
     var totalIO uint64
+    stats.DiskIODevices = stats.DiskIODevices[:0]
     for dev, v := range ioMap {
-      stats.DiskIODevices = append(stats.DiskIODevices, DiskIOInfo{
+      d := DiskIOInfo{
         Device:     dev,
         ReadBytes:  v.ReadBytes,
         WriteBytes: v.WriteBytes,
         ReadCount:  v.ReadCount,
         WriteCount: v.WriteCount,
-      })
+        // 新增：读写耗时/设备忙碌时间（毫秒）
+        ReadTimeMS:  v.ReadTime,
+        WriteTimeMS: v.WriteTime,
+        BusyTimeMS:  v.IoTime,
+      }
+      // 新增：平均读写延迟（毫秒）
+      if v.ReadCount > 0 {
+        d.AvgReadLatencyMS = float64(v.ReadTime) / float64(v.ReadCount)
+      }
+      if v.WriteCount > 0 {
+        d.AvgWriteLatencyMS = float64(v.WriteTime) / float64(v.WriteCount)
+      }
+
+      stats.DiskIODevices = append(stats.DiskIODevices, d)
       totalIO += v.ReadBytes + v.WriteBytes
     }
     stats.DiskIO = totalIO
@@ -327,19 +380,90 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
     }
   }
 
-  // Kernel parameter check
-  params := []string{
-    "/proc/sys/vm/max_map_count",
-    "/proc/sys/fs/file-max",
-    "/proc/sys/net/core/somaxconn",
-    "/proc/sys/net/ipv4/tcp_tw_reuse",
-    "/proc/sys/net/ipv4/ip_local_port_range",
-    "/proc/sys/net/core/netdev_max_backlog",
-    "/proc/sys/vm/swappiness",
+  // 新增：系统运行时间（秒）
+  if up, err := host.Uptime(); err == nil {
+    stats.SystemUptimeSeconds = float64(up)
   }
-  for _, p := range params {
-    if val, err := readSysParam(p); err == nil {
-      stats.KernelParams = append(stats.KernelParams, KernelParam{Key: p, Value: val})
+
+  // 二次采样：网络与磁盘IO（估算速率/利用率）
+  time.Sleep(1 * time.Second)
+  tSample2 := time.Now()
+  intervalSec := tSample2.Sub(tSample1).Seconds()
+  if intervalSec <= 0 {
+    intervalSec = 1.0
+  }
+
+  // 网络速率与错误/丢包（系统聚合）
+  if ns2, err := gnet.IOCounters(true); err == nil {
+    var rx1, tx1, rx2, tx2 uint64
+    var rxPkts, txPkts, rxErrs, txErrs, rxDrop, txDrop uint64
+    // 聚合所有接口
+    for _, v := range ns2 {
+      rx2 += v.BytesRecv
+      tx2 += v.BytesSent
+      rxPkts += v.PacketsRecv
+      txPkts += v.PacketsSent
+      rxErrs += v.Errin
+      txErrs += v.Errout
+      rxDrop += v.Dropin
+      txDrop += v.Dropout
+    }
+    for _, v := range netSample1 {
+      rx1 += v.BytesRecv
+      tx1 += v.BytesSent
+    }
+
+    if rx2 >= rx1 {
+      stats.NetRxBytesPerSec = float64(rx2-rx1) / intervalSec
+    }
+    if tx2 >= tx1 {
+      stats.NetTxBytesPerSec = float64(tx2-tx1) / intervalSec
+    }
+    stats.NetRxPackets = rxPkts
+    stats.NetTxPackets = txPkts
+    stats.NetRxErrors = rxErrs
+    stats.NetTxErrors = txErrs
+    stats.NetRxDropped = rxDrop
+    stats.NetTxDropped = txDrop
+  }
+
+  // 磁盘 I/O 利用率与吞吐（按设备，基于 delta）
+  if dm2, err := disk.IOCounters(); err == nil && diskSample1 != nil {
+    // 构建索引以便填充 stats.DiskIODevices
+    idx := make(map[string]int, len(stats.DiskIODevices))
+    for i, d := range stats.DiskIODevices {
+      idx[d.Device] = i
+    }
+    intervalMS := intervalSec * 1000.0
+    for dev, v2 := range dm2 {
+      v1, ok := diskSample1[dev]
+      if !ok {
+        continue
+      }
+      // 吞吐（B/s）
+      readBps := float64Delta(v2.ReadBytes, v1.ReadBytes) / intervalSec
+      writeBps := float64Delta(v2.WriteBytes, v1.WriteBytes) / intervalSec
+      // 利用率（%）：IoTime 的增量相对采样间隔
+      util := float64Delta(v2.IoTime, v1.IoTime) / intervalMS * 100.0
+      if util < 0 {
+        util = 0
+      } else if util > 100 {
+        util = 100
+      }
+
+      // 写回对应设备项
+      if i, ok := idx[dev]; ok {
+        stats.DiskIODevices[i].ReadThroughputBps = readBps
+        stats.DiskIODevices[i].WriteThroughputBps = writeBps
+        stats.DiskIODevices[i].UtilizationPercent = util
+      }
+    }
+  }
+
+  // 新增：TCP 连接状态计数（Linux）
+  if runtime.GOOS == "linux" {
+    if m, err := readTCPStateCounts(); err == nil {
+      stats.TCPStateCounts = m
     }
   }
 
@@ -354,46 +478,191 @@ func readSysParam(path string) (string, error) {
   return strings.TrimSpace(string(b)), nil
 }
 
-// GetUnixProcessResourceUsage gets Unix/Linux/macOS proc resource usage
-func GetUnixProcessResourceUsage(pid int) (*ResourceStats, error) {
-  var stats ResourceStats
-
-  // Get proc resource usage on Unix/Linux/macOS
-  newProc, err := process.NewProcess(int32(pid))
+// 新增：读取 PSI（/proc/pressure/<kind>），kind=memory/cpu/io
+func readPressureStallInfo(kind string) (PressureStallInfo, error) {
+  var psi PressureStallInfo
+  // 仅 Linux 支持
+  if runtime.GOOS != "linux" {
+    return psi, fmt.Errorf("PSI not supported on %s", runtime.GOOS)
+  }
+  path := fmt.Sprintf("/proc/pressure/%s", kind)
+  data, err := os.ReadFile(path)
   if err != nil {
-    return &stats, err
+    return psi, err
   }
-
-  // Get CPU usage
-  cpuPercent, err := newProc.CPUPercent()
-  if err == nil {
-    stats.CPUUsage = cpuPercent
+  // 解析 "some avg10=0.00 avg60=0.00 avg300=0.00 total=0" 行
+  lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+  for _, line := range lines {
+    if strings.HasPrefix(line, "some ") {
+      psi = parsePSILine(line)
+      break
+    }
   }
+  return psi, nil
+}
 
-  // Get memory usage
-  memInfo, err := newProc.MemoryInfo()
-  if err == nil {
-    stats.MemoryUsage = memInfo.RSS
+// 新增：解析 PSI 行
+func parsePSILine(line string) PressureStallInfo {
+  var psi PressureStallInfo
+  // 去掉前导 "some "
+  parts := strings.Fields(strings.TrimPrefix(line, "some "))
+  for _, p := range parts {
+    kv := strings.SplitN(p, "=", 2)
+    if len(kv) != 2 {
+      continue
+    }
+    key, val := kv[0], kv[1]
+    switch key {
+    case "avg10":
+      psi.Avg10 = parseFloat(val)
+    case "avg60":
+      psi.Avg60 = parseFloat(val)
+    case "avg300":
+      psi.Avg300 = parseFloat(val)
+    case "total":
+      psi.Total = parseUint(val)
+    }
   }
+  return psi
+}
 
-  // Get disk IO for the process
-  diskIO, err := GetProcessDiskIO(pid)
-  if err == nil {
-    stats.DiskIO = diskIO
+// 新增：读取 TCP 状态计数（/proc/net/tcp*）
+func readTCPStateCounts() (map[string]int, error) {
+  paths := []string{"/proc/net/tcp", "/proc/net/tcp6"}
+  counts := map[string]int{}
+  for _, p := range paths {
+    b, err := os.ReadFile(p)
+    if err != nil {
+      // 某些系统不存在 tcp6，无需报错
+      continue
+    }
+    // 按行解析，跳过首行表头
+    lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+    for i := 1; i < len(lines); i++ {
+      fields := strings.Fields(lines[i])
+      if len(fields) < 4 {
+        continue
+      }
+      // 第4列为 state 的十六进制码
+      code := fields[3]
+      name := tcpStateName(code)
+      counts[name]++
+    }
   }
+  return counts, nil
+}
 
-  // Get network IO for the process
-  networkIO, err := GetProcessNetworkIO(pid)
-  if err == nil {
-    stats.NetworkIO = networkIO
-    stats.NetworkIOHuman = FormatBytes(networkIO)
+// 新增：十六进制 TCP 状态码转名称
+func tcpStateName(hex string) string {
+  switch strings.ToUpper(hex) {
+  case "01":
+    return "ESTABLISHED"
+  case "02":
+    return "SYN_SENT"
+  case "03":
+    return "SYN_RECV"
+  case "04":
+    return "FIN_WAIT1"
+  case "05":
+    return "FIN_WAIT2"
+  case "06":
+    return "TIME_WAIT"
+  case "07":
+    return "CLOSE"
+  case "08":
+    return "CLOSE_WAIT"
+  case "09":
+    return "LAST_ACK"
+  case "0A":
+    return "LISTEN"
+  case "0B":
+    return "CLOSING"
+  case "0C":
+    return "NEW_SYN_RECV"
+  default:
+    return "UNKNOWN"
   }
+}
 
-  // Get listening ports for the process
-  listeningPorts, err := GetProcessListeningPorts(pid)
-  if err == nil {
-    stats.ListeningPorts = listeningPorts
+// 新增：安全的 uint64 差计算转为浮点
+func float64Delta(a, b uint64) float64 {
+  if a >= b {
+    return float64(a - b)
   }
+  return 0
+}
 
-  return &stats, nil
+// 新增：Parse helpers
+func parseFloat(s string) float64 {
+  f, _ := strconv.ParseFloat(s, 64)
+  return f
+}
+func parseUint(s string) uint64 {
+  u, _ := strconv.ParseUint(s, 10, 64)
+  return u
+}
+
+func readHeapFromSmaps(pid int) (uint64, error) {
+  b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/smaps")
+  if err != nil {
+    return 0, err
+  }
+  lines := strings.Split(string(b), "\n")
+  reHeader := regexp.MustCompile(`^[0-9a-fA-F]+-[0-9a-fA-F]+\s`)
+  inHeap := false
+  var sumKB uint64 = 0
+  for _, line := range lines {
+    if reHeader.MatchString(line) {
+      inHeap = strings.Contains(line, "[heap]")
+      continue
+    }
+    if inHeap && strings.HasPrefix(line, "Rss:") {
+      f := strings.Fields(line)
+      if len(f) >= 2 {
+        v, _ := strconv.ParseUint(f[1], 10, 64)
+        sumKB += v
+      }
+    }
+  }
+  return sumKB * 1024, nil
+}
+
+func readPriorityAndPolicy(pid int) (int32, string, error) {
+  b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+  if err != nil {
+    return 0, "", err
+  }
+  s := string(b)
+  l := strings.Index(s, "(")
+  r := strings.LastIndex(s, ")")
+  if l < 0 || r < 0 || r <= l {
+    return 0, "", fmt.Errorf("invalid stat format")
+  }
+  part1 := strings.Fields(s[:l])
+  part2 := strings.Fields(s[r+1:])
+  tokens := append(part1, part2...)
+
+  // field indices (1-based): priority=18, policy=41
+  getInt := func(idx int) int64 {
+    if idx < len(tokens) {
+      v, _ := strconv.ParseInt(tokens[idx], 10, 64)
+      return v
+    }
+    return 0
+  }
+  priority := int32(getInt(17))
+  policyNum := getInt(40)
+
+  policy := map[int64]string{
+    0: "SCHED_NORMAL",
+    1: "SCHED_FIFO",
+    2: "SCHED_RR",
+    3: "SCHED_BATCH",
+    5: "SCHED_IDLE",
+    6: "SCHED_DEADLINE",
+  }[policyNum]
+  if policy == "" {
+    policy = "UNKNOWN"
+  }
+  return priority, policy, nil
 }
