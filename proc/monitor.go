@@ -2,6 +2,7 @@ package proc
 
 import (
   "fmt"
+  "os"
   "os/exec"
   "regexp"
   "runtime"
@@ -10,6 +11,9 @@ import (
   "time"
 
   "github.com/shirou/gopsutil/v3/cpu"
+  "github.com/shirou/gopsutil/v3/disk"
+  "github.com/shirou/gopsutil/v3/load"
+  "github.com/shirou/gopsutil/v3/mem"
   "github.com/shirou/gopsutil/v3/process"
 )
 
@@ -165,14 +169,53 @@ func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
 func getWindowsSystemResourceUsage() (ResourceStats, error) {
   var stats ResourceStats
 
-  // Get CPU usage
-  cpuPercent, err := cpu.Percent(time.Second, false)
-  if err == nil && len(cpuPercent) > 0 {
+  // CPU
+  if cpuPercent, err := cpu.Percent(time.Second, false); err == nil && len(cpuPercent) > 0 {
     stats.CPUUsage = cpuPercent[0]
   }
 
-  // Get memory usage
-  // 这里简化实现，实际项目中可以使用更复杂的方法
+  // Memory
+  if vm, err := mem.VirtualMemory(); err == nil {
+    stats.MemoryUsage = vm.Used
+    stats.MemoryTotal = vm.Total
+    stats.MemoryUsedPercent = vm.UsedPercent
+  }
+
+  // Disk usage per partition
+  if parts, err := disk.Partitions(true); err == nil {
+    for _, p := range parts {
+      if du, err := disk.Usage(p.Mountpoint); err == nil {
+        stats.DiskUsages = append(stats.DiskUsages, DiskUsageInfo{
+          Device:      p.Device,
+          Mountpoint:  p.Mountpoint,
+          Fstype:      p.Fstype,
+          Total:       du.Total,
+          Used:        du.Used,
+          Free:        du.Free,
+          UsedPercent: du.UsedPercent,
+        })
+      }
+    }
+  }
+
+  // Disk IO per device
+  if ioMap, err := disk.IOCounters(); err == nil {
+    var totalIO uint64
+    for dev, v := range ioMap {
+      stats.DiskIODevices = append(stats.DiskIODevices, DiskIOInfo{
+        Device:     dev,
+        ReadBytes:  v.ReadBytes,
+        WriteBytes: v.WriteBytes,
+        ReadCount:  v.ReadCount,
+        WriteCount: v.WriteCount,
+      })
+      totalIO += v.ReadBytes + v.WriteBytes
+    }
+    stats.DiskIO = totalIO
+  }
+
+  // Load avg: Windows不可用（留空）
+  // FD、Kernel params: Windows不适用
 
   return stats, nil
 }
@@ -181,75 +224,131 @@ func getWindowsSystemResourceUsage() (ResourceStats, error) {
 func getUnixSystemResourceUsage() (ResourceStats, error) {
   var stats ResourceStats
 
-  // Get CPU usage
-  cpuPercent, err := cpu.Percent(time.Second, false)
-  if err == nil && len(cpuPercent) > 0 {
+  // CPU
+  if cpuPercent, err := cpu.Percent(time.Second, false); err == nil && len(cpuPercent) > 0 {
     stats.CPUUsage = cpuPercent[0]
   }
 
-  // Get memory usage using gopsutil
-  _, err = process.NewProcess(0) // 使用0表示获取系统内存信息
-  if err == nil {
-    // 使用系统级别的内存信息
-    // 注意：这里使用一个简化的方式获取系统内存使用情况
-    // 在实际项目中，应该使用专门的内存信息获取方法
-    // 由于gopsutil库没有直接的系统内存信息获取函数，我们可以使用exec.Command来获取
-    cmd := exec.Command("free", "-b")
-    output, err := cmd.CombinedOutput()
-    if err == nil {
-      lines := strings.Split(string(output), "\n")
-      for _, line := range lines {
-        if strings.HasPrefix(line, "Mem:") {
-          fields := strings.Fields(line)
-          if len(fields) >= 3 {
-            // 提取已使用内存（第二列是总量，第三列是已使用量）
-            usedMem, err := strconv.ParseUint(fields[2], 10, 64)
-            if err == nil {
-              stats.MemoryUsage = usedMem
-            }
-          }
+  // Memory
+  if vm, err := mem.VirtualMemory(); err == nil {
+    stats.MemoryUsage = vm.Used
+    stats.MemoryTotal = vm.Total
+    stats.MemoryUsedPercent = vm.UsedPercent
+  }
+
+  // Disk usage per partition（过滤虚拟FS与容器相关挂载）
+  excludeFSTypes := map[string]bool{
+    "tmpfs": true, "devtmpfs": true, "overlay": true, "proc": true, "sysfs": true,
+    "cgroup": true, "aufs": true, "nsfs": true, "squashfs": true, "ramfs": true,
+    "debugfs": true, "fusectl": true, "fuse.lxcfs": true,
+  }
+  excludeMountContains := []string{
+    "/proc", "/sys", "/dev", "/run", "/snap", "/docker", "/containerd", "/var/lib/docker", "/var/lib/containerd",
+  }
+
+  if parts, err := disk.Partitions(true); err == nil {
+    for _, p := range parts {
+      fst := strings.ToLower(p.Fstype)
+      if excludeFSTypes[fst] {
+        continue
+      }
+      mpLower := strings.ToLower(p.Mountpoint)
+      skip := false
+      for _, m := range excludeMountContains {
+        if strings.Contains(mpLower, m) {
+          skip = true
           break
         }
       }
-    }
-  }
-
-  // Get disk IO usage
-  // 在Linux系统上，我们可以使用iostat命令获取磁盘IO统计信息
-  cmd := exec.Command("iostat", "-d", "-k", "1", "1")
-  output, err := cmd.CombinedOutput()
-  if err == nil {
-    // 解析iostat输出，提取磁盘IO信息
-    // 这里使用一个简化的实现，实际应用中可能需要根据不同系统进行适配
-    // 注意：完整的实现需要累加所有磁盘的IO数据
-    lines := strings.Split(string(output), "\n")
-    var totalRead, totalWrite uint64
-
-    // 标记是否开始读取数据行
-    dataStarted := false
-    for _, line := range lines {
-      if strings.Contains(line, "Device") {
-        dataStarted = true
+      devLower := strings.ToLower(p.Device)
+      if strings.HasPrefix(devLower, "overlay") || strings.Contains(devLower, "docker") || strings.Contains(devLower, "containerd") {
+        skip = true
+      }
+      if skip {
         continue
       }
 
-      if dataStarted && strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "\t") {
-        fields := strings.Fields(line)
-        if len(fields) >= 5 {
-          // 读取和写入的KB数（假设第3和第4列是读写数据）
-          readKB, _ := strconv.ParseUint(fields[2], 10, 64)
-          writeKB, _ := strconv.ParseUint(fields[3], 10, 64)
-          totalRead += readKB * 1024   // 转换为字节
-          totalWrite += writeKB * 1024 // 转换为字节
-        }
+      if du, err := disk.Usage(p.Mountpoint); err == nil {
+        stats.DiskUsages = append(stats.DiskUsages, DiskUsageInfo{
+          Device:      p.Device,
+          Mountpoint:  p.Mountpoint,
+          Fstype:      p.Fstype,
+          Total:       du.Total,
+          Used:        du.Used,
+          Free:        du.Free,
+          UsedPercent: du.UsedPercent,
+        })
       }
     }
+  }
 
-    // 累加读写IO总量
-    stats.DiskIO = totalRead + totalWrite
+  // Disk IO per device
+  if ioMap, err := disk.IOCounters(); err == nil {
+    var totalIO uint64
+    for dev, v := range ioMap {
+      stats.DiskIODevices = append(stats.DiskIODevices, DiskIOInfo{
+        Device:     dev,
+        ReadBytes:  v.ReadBytes,
+        WriteBytes: v.WriteBytes,
+        ReadCount:  v.ReadCount,
+        WriteCount: v.WriteCount,
+      })
+      totalIO += v.ReadBytes + v.WriteBytes
+    }
+    stats.DiskIO = totalIO
+  }
+
+  // System Load
+  if la, err := load.Avg(); err == nil {
+    stats.Load = LoadAvg{Load1: la.Load1, Load5: la.Load5, Load15: la.Load15}
+  }
+
+  // File Descriptor Check (/proc/sys/fs/file-nr)
+  if data, err := os.ReadFile("/proc/sys/fs/file-nr"); err == nil {
+    fields := strings.Fields(strings.TrimSpace(string(data)))
+    if len(fields) >= 3 {
+      allocated, _ := strconv.ParseUint(fields[0], 10, 64)
+      unused, _ := strconv.ParseUint(fields[1], 10, 64)
+      max, _ := strconv.ParseUint(fields[2], 10, 64)
+      inUse := allocated - unused
+      var pct float64
+      if max > 0 {
+        pct = float64(inUse) / float64(max) * 100
+      }
+      stats.FD = FDCheck{
+        CurrentAllocated: allocated,
+        InUse:            inUse,
+        Max:              max,
+        UsagePercent:     pct,
+      }
+    }
+  }
+
+  // Kernel parameter check
+  params := []string{
+    "/proc/sys/vm/max_map_count",
+    "/proc/sys/fs/file-max",
+    "/proc/sys/net/core/somaxconn",
+    "/proc/sys/net/ipv4/tcp_tw_reuse",
+    "/proc/sys/net/ipv4/ip_local_port_range",
+    "/proc/sys/net/core/netdev_max_backlog",
+    "/proc/sys/vm/swappiness",
+  }
+  for _, p := range params {
+    if val, err := readSysParam(p); err == nil {
+      stats.KernelParams = append(stats.KernelParams, KernelParam{Key: p, Value: val})
+    }
   }
 
   return stats, nil
+}
+
+func readSysParam(path string) (string, error) {
+  b, err := os.ReadFile(path)
+  if err != nil {
+    return "", err
+  }
+  return strings.TrimSpace(string(b)), nil
 }
 
 // GetUnixProcessResourceUsage gets Unix/Linux/macOS proc resource usage

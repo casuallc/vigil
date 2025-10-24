@@ -277,15 +277,31 @@ type TerminationInfo struct {
 
 // ResourceStats 表示资源使用情况
 type ResourceStats struct {
-  CPUUsage         float64    `json:"cpu_usage" yaml:"cpu_usage"`                                       // 百分比
-  CPUUsageHuman    string     `json:"cpu_usage_human,omitempty" yaml:"cpu_usage_human,omitempty"`       // e.g. "1.2%"
-  MemoryUsage      uint64     `json:"memory_usage" yaml:"memory_usage"`                                 // 字节
-  MemoryUsageHuman string     `json:"memory_usage_human,omitempty" yaml:"memory_usage_human,omitempty"` // e.g. "1.5GiB"
-  DiskIO           uint64     `json:"disk_io" yaml:"disk_io"`                                           // 字节
-  DiskIOHuman      string     `json:"disk_io_human,omitempty" yaml:"disk_io_human,omitempty"`           // e.g. "128MiB"
-  NetworkIO        uint64     `json:"network_io" yaml:"network_io"`                                     // 字节
-  NetworkIOHuman   string     `json:"network_io_human,omitempty" yaml:"network_io_human,omitempty"`     // e.g. "64KiB"
-  ListeningPorts   []PortInfo `json:"listening_ports,omitempty" yaml:"listening_ports,omitempty"`
+  CPUUsage         float64    `json:"cpu_usage" yaml:"cpu_usage"`
+  CPUUsageHuman    string     `json:"cpu_usage_human,omitempty" yaml:"cpu_usage_human,omitempty"`
+  MemoryUsage      uint64     `json:"memory_usage" yaml:"memory_usage"`
+  MemoryUsageHuman string     `json:"memory_usage_human,omitempty" yaml:"memory_usage_human,omitempty"`
+  // 新增：内存总量与使用百分比
+  MemoryTotal       uint64  `json:"memory_total,omitempty" yaml:"memory_total,omitempty"`
+  MemoryUsedPercent float64 `json:"memory_used_percent,omitempty" yaml:"memory_used_percent,omitempty"`
+
+  // 保留总体磁盘IO
+  DiskIO      uint64 `json:"disk_io" yaml:"disk_io"`
+  DiskIOHuman string `json:"disk_io_human,omitempty" yaml:"disk_io_human,omitempty"`
+  NetworkIO      uint64     `json:"network_io" yaml:"network_io"`
+  NetworkIOHuman string     `json:"network_io_human,omitempty" yaml:"network_io_human,omitempty"`
+  ListeningPorts []PortInfo `json:"listening_ports,omitempty" yaml:"listening_ports,omitempty"`
+
+  // 新增：磁盘使用（每个设备/挂载点）
+  DiskUsages    []DiskUsageInfo `json:"disk_usages,omitempty" yaml:"disk_usages,omitempty"`
+  // 新增：磁盘IO（每个设备）
+  DiskIODevices []DiskIOInfo    `json:"disk_io_devices,omitempty" yaml:"disk_io_devices,omitempty"`
+  // 新增：系统负载
+  Load LoadAvg `json:"load,omitempty" yaml:"load,omitempty"`
+  // 新增：文件描述符检查（Linux）
+  FD FDCheck `json:"fd,omitempty" yaml:"fd,omitempty"`
+  // 新增：内核参数检查（Linux）
+  KernelParams []KernelParam `json:"kernel_params,omitempty" yaml:"kernel_params,omitempty"`
 }
 
 // SetFormattedValues 设置所有格式化的字段值
@@ -294,6 +310,47 @@ func (rs *ResourceStats) SetFormattedValues() {
   rs.MemoryUsageHuman = FormatBytes(rs.MemoryUsage)
   rs.DiskIOHuman = FormatBytes(rs.DiskIO)
   rs.NetworkIOHuman = FormatBytes(rs.NetworkIO)
+}
+
+// 新增：磁盘使用
+type DiskUsageInfo struct {
+  Device      string  `json:"device" yaml:"device"`
+  Mountpoint  string  `json:"mountpoint" yaml:"mountpoint"`
+  Fstype      string  `json:"fstype,omitempty" yaml:"fstype,omitempty"`
+  Total       uint64  `json:"total" yaml:"total"`
+  Used        uint64  `json:"used" yaml:"used"`
+  Free        uint64  `json:"free" yaml:"free"` // 精准可用容量
+  UsedPercent float64 `json:"used_percent" yaml:"used_percent"`
+}
+
+// 新增：磁盘IO（每设备）
+type DiskIOInfo struct {
+  Device     string `json:"device" yaml:"device"`
+  ReadBytes  uint64 `json:"read_bytes" yaml:"read_bytes"`
+  WriteBytes uint64 `json:"write_bytes" yaml:"write_bytes"`
+  ReadCount  uint64 `json:"read_count,omitempty" yaml:"read_count,omitempty"`
+  WriteCount uint64 `json:"write_count,omitempty" yaml:"write_count,omitempty"`
+}
+
+// 新增：系统负载
+type LoadAvg struct {
+  Load1  float64 `json:"load1" yaml:"load1"`
+  Load5  float64 `json:"load5" yaml:"load5"`
+  Load15 float64 `json:"load15" yaml:"load15"`
+}
+
+// 新增：文件描述符检查
+type FDCheck struct {
+  CurrentAllocated uint64  `json:"current_allocated,omitempty" yaml:"current_allocated,omitempty"`
+  InUse            uint64  `json:"in_use,omitempty" yaml:"in_use,omitempty"`
+  Max              uint64  `json:"max,omitempty" yaml:"max,omitempty"`
+  UsagePercent     float64 `json:"usage_percent,omitempty" yaml:"usage_percent,omitempty"`
+}
+
+// 新增：内核参数
+type KernelParam struct {
+  Key   string `json:"key" yaml:"key"`
+  Value string `json:"value" yaml:"value"`
 }
 
 // PortInfo 端口监听信息
