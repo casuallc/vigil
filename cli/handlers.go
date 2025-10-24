@@ -7,7 +7,6 @@ import (
   "os"
   "os/exec"
   "path/filepath"
-  "strings"
   "time"
 )
 
@@ -413,99 +412,83 @@ func (c *CLI) handleSystemResources() error {
   }
 
   fmt.Println("System Resource Usage:")
-  // CPU
-  fmt.Printf("  CPU Usage: %.2f%%\n", resources.CPUUsage)
-
-  // Memory Usage
-  if resources.MemoryTotal > 0 {
-    fmt.Printf("  Memory Usage: %s / %s (%.2f%%)\n",
-      proc.FormatBytes(resources.MemoryUsage),
-      proc.FormatBytes(resources.MemoryTotal),
-      resources.MemoryUsedPercent)
-  } else {
-    fmt.Printf("  Memory Usage: %s\n", proc.FormatBytes(resources.MemoryUsage))
-  }
-
-  // Disk Usage (df-style, aligned)
-  if len(resources.DiskUsages) > 0 {
-      excludeFSTypes := map[string]bool{
-          "tmpfs": true, "devtmpfs": true, "overlay": true, "proc": true, "sysfs": true,
-          "cgroup": true, "aufs": true, "nsfs": true, "squashfs": true, "ramfs": true,
-          "debugfs": true, "fusectl": true, "fuse.lxcfs": true,
-      }
-      excludeMountContains := []string{
-          "/proc", "/sys", "/dev", "/run", "/snap", "/docker", "/containerd", "/var/lib/docker", "/var/lib/containerd",
-      }
-  
-      type row struct {
-          dev       string
-          sizeStr   string
-          usedStr   string
-          availStr  string
-          useStr    string
-          mount     string
-      }
-  
-      rows := make([]row, 0, len(resources.DiskUsages))
-      devW, sizeW, usedW, availW, useW := len("Filesystem"), len("Size"), len("Used"), len("Avail"), len("Use%")
-  
-      for _, du := range resources.DiskUsages {
-          if du.Total == 0 {
-              continue
-          }
-          if excludeFSTypes[strings.ToLower(du.Fstype)] {
-              continue
-          }
-          mpLower := strings.ToLower(du.Mountpoint)
-          skip := false
-          for _, p := range excludeMountContains {
-              if strings.Contains(mpLower, p) {
-                  skip = true
-                  break
-              }
-          }
-          devLower := strings.ToLower(du.Device)
-          if strings.HasPrefix(devLower, "overlay") || strings.Contains(devLower, "docker") || strings.Contains(devLower, "containerd") {
-              skip = true
-          }
-          if skip {
-              continue
-          }
-  
-          sizeStr := proc.FormatBytes(du.Total)
-          usedStr := proc.FormatBytes(du.Used)
-          // 使用服务端提供的 Free 作为 Avail
-          availVal := du.Free
-          if availVal == 0 && du.Total >= du.Used {
-              availVal = du.Total - du.Used
-          }
-          availStr := proc.FormatBytes(availVal)
-          useStr := fmt.Sprintf("%d%%", int(du.UsedPercent+0.5))
-  
-          r := row{dev: du.Device, sizeStr: sizeStr, usedStr: usedStr, availStr: availStr, useStr: useStr, mount: du.Mountpoint}
-          rows = append(rows, r)
-          if len(r.dev) > devW { devW = len(r.dev) }
-          if len(r.sizeStr) > sizeW { sizeW = len(r.sizeStr) }
-          if len(r.usedStr) > usedW { usedW = len(r.usedStr) }
-          if len(r.availStr) > availW { availW = len(r.availStr) }
-          if len(r.useStr) > useW { useW = len(r.useStr) }
-      }
-  
-      if len(rows) > 0 {
-          fmt.Println("  Disk Usage:")
-          fmt.Printf("    %-*s %*s %*s %*s %*s %s\n",
-              devW, "Filesystem", sizeW, "Size", usedW, "Used", availW, "Avail", useW, "Use%", "Mounted on")
-          for _, r := range rows {
-              fmt.Printf("    %-*s %*s %*s %*s %*s %s\n",
-                  devW, r.dev, sizeW, r.sizeStr, usedW, r.usedStr, availW, r.availStr, useW, r.useStr, r.mount)
-          }
-      }
-  }
-
   // System Load
   if resources.Load.Load1 != 0 || resources.Load.Load5 != 0 || resources.Load.Load15 != 0 {
     fmt.Printf("  System Load: 1m=%.2f, 5m=%.2f, 15m=%.2f\n",
       resources.Load.Load1, resources.Load.Load5, resources.Load.Load15)
+  }
+
+  // CPU
+  fmt.Printf("  CPU Usage: %s\n", resources.CPUUsageHuman)
+
+  // Memory Usage
+  if resources.MemoryTotal > 0 {
+    fmt.Printf("  Memory Usage: %s / %s (%.2f%%)\n",
+      resources.MemoryUsageHuman,
+      proc.FormatBytes(resources.MemoryTotal),
+      resources.MemoryUsedPercent)
+  } else {
+    fmt.Printf("  Memory Usage: %s\n", resources.MemoryUsageHuman)
+  }
+
+  // Disk Usage (df-style, aligned)
+  if len(resources.DiskUsages) > 0 {
+
+    type row struct {
+      dev      string
+      sizeStr  string
+      usedStr  string
+      availStr string
+      useStr   string
+      mount    string
+    }
+
+    rows := make([]row, 0, len(resources.DiskUsages))
+    devW, sizeW, usedW, availW, useW := len("Filesystem"), len("Size"), len("Used"), len("Avail"), len("Use%")
+
+    for _, du := range resources.DiskUsages {
+      if du.Total == 0 {
+        continue
+      }
+
+      sizeStr := proc.FormatBytes(du.Total)
+      usedStr := proc.FormatBytes(du.Used)
+      // 使用服务端提供的 Free 作为 Avail
+      availVal := du.Free
+      if availVal == 0 && du.Total >= du.Used {
+        availVal = du.Total - du.Used
+      }
+      availStr := proc.FormatBytes(availVal)
+      useStr := fmt.Sprintf("%d%%", int(du.UsedPercent+0.5))
+
+      r := row{dev: du.Device, sizeStr: sizeStr, usedStr: usedStr, availStr: availStr, useStr: useStr, mount: du.Mountpoint}
+      rows = append(rows, r)
+      if len(r.dev) > devW {
+        devW = len(r.dev)
+      }
+      if len(r.sizeStr) > sizeW {
+        sizeW = len(r.sizeStr)
+      }
+      if len(r.usedStr) > usedW {
+        usedW = len(r.usedStr)
+      }
+      if len(r.availStr) > availW {
+        availW = len(r.availStr)
+      }
+      if len(r.useStr) > useW {
+        useW = len(r.useStr)
+      }
+    }
+
+    if len(rows) > 0 {
+      fmt.Println("  Disk Usage:")
+      fmt.Printf("    %-*s %*s %*s %*s %*s %s\n",
+        devW, "Filesystem", sizeW, "Size", usedW, "Used", availW, "Avail", useW, "Use%", "Mounted on")
+      for _, r := range rows {
+        fmt.Printf("    %-*s %*s %*s %*s %*s %s\n",
+          devW, r.dev, sizeW, r.sizeStr, usedW, r.usedStr, availW, r.availStr, useW, r.useStr, r.mount)
+      }
+    }
   }
 
   // Disk IO (per device)

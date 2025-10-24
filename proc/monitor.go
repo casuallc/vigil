@@ -227,11 +227,13 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
   // CPU
   if cpuPercent, err := cpu.Percent(time.Second, false); err == nil && len(cpuPercent) > 0 {
     stats.CPUUsage = cpuPercent[0]
+    stats.CPUUsageHuman = FormatCPUUsage(cpuPercent[0])
   }
 
   // Memory
   if vm, err := mem.VirtualMemory(); err == nil {
     stats.MemoryUsage = vm.Used
+    stats.MemoryUsageHuman = FormatBytes(vm.Used)
     stats.MemoryTotal = vm.Total
     stats.MemoryUsedPercent = vm.UsedPercent
   }
@@ -296,6 +298,7 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
       totalIO += v.ReadBytes + v.WriteBytes
     }
     stats.DiskIO = totalIO
+    stats.DiskIOHuman = FormatBytes(totalIO)
   }
 
   // System Load
@@ -383,6 +386,7 @@ func GetUnixProcessResourceUsage(pid int) (*ResourceStats, error) {
   networkIO, err := GetProcessNetworkIO(pid)
   if err == nil {
     stats.NetworkIO = networkIO
+    stats.NetworkIOHuman = FormatBytes(networkIO)
   }
 
   // Get listening ports for the process
