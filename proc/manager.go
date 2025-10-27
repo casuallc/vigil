@@ -16,7 +16,8 @@ import (
 // NewManager 创建一个新的进程管理器
 func NewManager() *Manager {
   return &Manager{
-    Processes: make(map[string]*ManagedProcess),
+    Processes:         make(map[string]*ManagedProcess),
+    monitoringStarted: make(map[string]bool),
   }
 }
 
@@ -24,6 +25,8 @@ func NewManager() *Manager {
 // 它实现了 ProcessScanner, ProcessLifecycle, ProcessInfo, ProcessConfig 和 ProcessMonitor 接口
 type Manager struct {
   Processes map[string]*ManagedProcess
+  // 新增：监控协程启动标记，避免重复启动
+  monitoringStarted map[string]bool
 }
 
 // GetProcesses 获取所有进程的映射
@@ -135,6 +138,16 @@ func (m *Manager) UpdateProcessConfig(namespace, name string, config config.AppC
   return nil
 }
 
+// StartMonitoring 启动进程监控
+func (m *Manager) StartMonitoring(namespace, name string) {
+  key := fmt.Sprintf("%s/%s", namespace, name)
+  if m.monitoringStarted[key] {
+    return
+  }
+  m.monitoringStarted[key] = true
+  go m.startMonitoring(namespace, name)
+}
+
 // startMonitoring 开始监控进程
 func (m *Manager) startMonitoring(namespace, name string) {
   key := fmt.Sprintf("%s/%s", namespace, name)
@@ -163,32 +176,39 @@ func (m *Manager) startMonitoring(namespace, name string) {
       }
 
     case <-checkTicker.C:
-      // 检查进程是否还在运行
+      // 扩展：运行态与非运行态都做重关联检查
       if managedProcess.Status.Phase == PhaseRunning {
-        sysProcess, err := os.FindProcess(managedProcess.Status.PID)
-        if err != nil {
-          // 进程不存在了，标记为已停止
-          managedProcess.Status.Phase = PhaseStopped
-          managedProcess.Status.PID = 0
+        // 运行态：校验当前 PID 是否仍对应同一逻辑进程（防 PID 复用）
+        currentPID := managedProcess.Status.PID
+        valid := false
 
-          // 尝试重新关联进程
-          if managedProcess.Spec.RestartPolicy == RestartPolicyAlways ||
-            managedProcess.Spec.RestartPolicy == RestartPolicyOnFailure {
-            go m.tryCheckProcess(managedProcess)
-          }
-        } else {
-          // 在Unix系统上，我们可以发送0信号来检查进程是否存在
-          if err := sysProcess.Signal(syscall.Signal(0)); err != nil {
-            // 进程不存在了
-            managedProcess.Status.Phase = PhaseStopped
-            managedProcess.Status.PID = 0
-
-            // 尝试重新关联进程
-            if managedProcess.Spec.RestartPolicy == RestartPolicyAlways ||
-              managedProcess.Spec.RestartPolicy == RestartPolicyOnFailure {
-              go m.tryCheckProcess(managedProcess)
+        if currentPID > 0 {
+          if pidExists, err := process.PidExists(int32(currentPID)); err == nil && pidExists {
+            if p, err := process.NewProcess(int32(currentPID)); err == nil {
+              if m.matchProcess(managedProcess, p) {
+                valid = true
+              }
             }
           }
+        }
+
+        if !valid {
+          // 尝试重关联到新的 PID
+          reAssociated, _ := m.tryCheckProcess(managedProcess)
+          if !reAssociated {
+            // 重关联失败，标记停止并按策略后续处理
+            managedProcess.Status.Phase = PhaseStopped
+            managedProcess.Status.PID = 0
+          }
+        }
+      } else {
+        // 非运行态（Failed/Stopped/Pending）：尝试发现进程是否已重新起来并重关联
+        reAssociated, _ := m.tryCheckProcess(managedProcess)
+        if reAssociated {
+          // 已自动重新关联到新 PID，状态在 tryCheckProcess 中置为 Running
+          // 可选：此处无需额外处理
+        } else {
+          // 保持原状态（Failed/Stopped/Pending），等待下次检查或人工启动
         }
       }
     }
@@ -246,7 +266,8 @@ func (m *Manager) matchProcessByScript(managedProc *ManagedProcess, sysProcess *
       return true
     }
     // 检查退出码
-    if exitErr, ok := err.(*exec.ExitError); ok {
+    var exitErr *exec.ExitError
+    if errors.As(err, &exitErr) {
       if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
         return status.ExitStatus() == 0
       }

@@ -3,9 +3,10 @@ package proc
 import (
   "fmt"
   "github.com/casuallc/vigil/common"
-  "gopkg.in/yaml.v3"
   "os"
   "time"
+
+  "gopkg.in/yaml.v3"
 )
 
 // SaveManagedProcesses 保存所有已管理的进程到文件
@@ -65,6 +66,9 @@ func (m *Manager) LoadManagedProcesses(filePath string) error {
     // 使用 namespace/name 作为键
     key := fmt.Sprintf("%s/%s", process.Metadata.Namespace, process.Metadata.Name)
     m.Processes[key] = &processCopy
+
+    // 启动监控协程（避免重复）
+    m.StartMonitoring(process.Metadata.Namespace, process.Metadata.Name)
 
     // 自动启动标记为需要重启的进程
     if process.Spec.RestartPolicy == RestartPolicyAlways ||

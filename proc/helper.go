@@ -96,6 +96,9 @@ func FillBasicInfo(mp *ManagedProcess, process *process.Process) error {
   createTime := time.UnixMilli(createTimeMs)
   mp.Status.StartTime = &createTime
 
+  mp.Spec.RestartPolicy = RestartPolicyAlways
+  mp.Spec.RestartInterval = 10 * time.Second
+
   // 退出码（对于正在运行的进程，这个通常是0或未设置）
   // gopsutil 不直接提供最后退出码，这里保持默认值0
 
