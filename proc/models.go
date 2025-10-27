@@ -310,7 +310,7 @@ type ResourceStats struct {
   KernelParams  []KernelParam   `json:"kernel_params,omitempty" yaml:"kernel_params,omitempty"`
 
   // CPU 相关指标
-  CPUAffinity   []int   `json:"cpu_affinity,omitempty" yaml:"cpu_affinity,omitempty"`
+  CPUAffinity   []int32 `json:"cpu_affinity,omitempty" yaml:"cpu_affinity,omitempty"`
   CPUUserTime   float64 `json:"cpu_user_time,omitempty" yaml:"cpu_user_time,omitempty"`     // 秒
   CPUSystemTime float64 `json:"cpu_system_time,omitempty" yaml:"cpu_system_time,omitempty"` // 秒
   CPUTotalTime  float64 `json:"cpu_total_time,omitempty" yaml:"cpu_total_time,omitempty"`   // 秒

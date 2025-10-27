@@ -16,6 +16,7 @@ import (
   "github.com/shirou/gopsutil/v3/disk"
   "github.com/shirou/gopsutil/v3/load"
   "github.com/shirou/gopsutil/v3/mem"
+  "github.com/shirou/gopsutil/v3/process"
 )
 
 // Monitor provides resource monitoring functionality
@@ -665,4 +666,143 @@ func readPriorityAndPolicy(pid int) (int32, string, error) {
     policy = "UNKNOWN"
   }
   return priority, policy, nil
+}
+
+func GetUnixProcessResourceUsage(pid int) (*ResourceStats, error) {
+  p, err := process.NewProcess(int32(pid))
+  if err != nil {
+    return nil, err
+  }
+
+  stats := &ResourceStats{}
+
+  // CPU 使用率（采样1s）
+  if cpuPercent, err := p.Percent(time.Second); err == nil {
+    stats.CPUUsage = cpuPercent
+  }
+  // CPU 时间（user/system/total）
+  if times, err := p.Times(); err == nil {
+    stats.CPUUserTime = times.User
+    stats.CPUSystemTime = times.System
+    stats.CPUTotalTime = times.User + times.System
+  }
+
+  // 内存信息（RSS/VMS/Shared/Heap）
+  if mi, err := p.MemoryInfo(); err == nil {
+    stats.MemoryUsage = mi.RSS
+    stats.MemoryRSS = mi.RSS
+    stats.MemoryVMS = mi.VMS
+    //stats.MemoryShared = mi.Shared
+  }
+  if runtime.GOOS == "linux" {
+    if heap, err := readHeapFromSmaps(pid); err == nil {
+      stats.MemoryHeap = heap
+    }
+  }
+
+  // 进程级 IO 统计
+  if ioc, err := p.IOCounters(); err == nil && ioc != nil {
+    stats.IOReadBytes = ioc.ReadBytes
+    stats.IOWriteBytes = ioc.WriteBytes
+    stats.IOReadCount = ioc.ReadCount
+    stats.IOWriteCount = ioc.WriteCount
+    stats.DiskIO = ioc.ReadBytes + ioc.WriteBytes
+  } else {
+    if v, err2 := GetProcessDiskIO(pid); err2 == nil {
+      stats.DiskIO = v
+    }
+  }
+
+  // 打开文件描述符数
+  if n, err := p.NumFDs(); err == nil {
+    stats.OpenFDs = n
+  }
+
+  // 线程数与状态
+  if t, err := p.NumThreads(); err == nil {
+    stats.ThreadCount = t
+  }
+  if st, err := p.Status(); err == nil {
+    stats.ProcessStatus = strings.Join(st, ",")
+  }
+
+  // 上下文切换次数
+  if cs, err := p.NumCtxSwitches(); err == nil && cs != nil {
+    stats.CtxSwitchesVoluntary = cs.Voluntary
+    stats.CtxSwitchesInvoluntary = cs.Involuntary
+  }
+
+  // nice 值
+  if n, err := p.Nice(); err == nil {
+    stats.Nice = n
+  }
+
+  // 调度策略与优先级（仅 Linux）
+  if runtime.GOOS == "linux" {
+    if prio, policy, err := readPriorityAndPolicy(pid); err == nil {
+      stats.SchedulerPriority = prio
+      stats.SchedulerPolicy = policy
+    }
+  }
+
+  // CPU 亲和性
+  if aff, err := p.CPUAffinity(); err == nil {
+    stats.CPUAffinity = aff
+  }
+
+  // 打开文件与网络连接数量；同时填充监听端口
+  if files, err := p.OpenFiles(); err == nil {
+    stats.OpenFilesCount = len(files)
+  }
+  if conns, err := p.Connections(); err == nil {
+    stats.NetworkConnectionsCount = len(conns)
+    var ports []PortInfo
+    for _, c := range conns {
+      if c.Status == "LISTEN" {
+        ports = append(ports, PortInfo{
+          Port:     int(c.Laddr.Port),
+          Protocol: socketTypeToProtocol(c.Type),
+          Address:  c.Laddr.IP,
+        })
+      }
+    }
+    stats.ListeningPorts = ports
+  } else {
+    if ports, err2 := GetProcessListeningPorts(pid); err2 == nil {
+      stats.ListeningPorts = ports
+    }
+  }
+
+  // 系统内存与 PSI（用于补充展示）
+  if vm, err := mem.VirtualMemory(); err == nil {
+    stats.MemoryTotal = vm.Total
+    stats.MemoryUsedPercent = vm.UsedPercent
+    stats.MemoryAvailable = vm.Available
+  }
+  if sm, err := mem.SwapMemory(); err == nil {
+    stats.SwapTotal = sm.Total
+    stats.SwapUsed = sm.Used
+    stats.SwapFree = sm.Free
+  }
+  if runtime.GOOS == "linux" {
+    if psi, err := readPressureStallInfo("memory"); err == nil {
+      stats.MemoryPressure = psi
+    }
+  }
+
+  // 父进程与启动时间
+  if ppid, err := p.Ppid(); err == nil {
+    stats.ParentPID = int(ppid)
+  }
+  if ct, err := p.CreateTime(); err == nil {
+    ts := time.UnixMilli(ct)
+    stats.StartTime = &ts
+  }
+
+  // 系统运行时间（秒）
+  if up, err := host.Uptime(); err == nil {
+    stats.SystemUptimeSeconds = float64(up)
+  }
+
+  return stats, nil
 }
