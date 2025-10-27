@@ -2,6 +2,7 @@ package proc
 
 import (
   "fmt"
+  "github.com/casuallc/vigil/common"
   "gopkg.in/yaml.v3"
   "os"
   "time"
@@ -24,7 +25,7 @@ func (m *Manager) SaveManagedProcesses(filePath string) error {
   }
 
   // 将进程信息转换为YAML
-  data, err := yaml.Marshal(processesList)
+  data, err := common.ToYamlString(processesList)
   if err != nil {
     return fmt.Errorf("failed to marshal processes: %v", err)
   }
@@ -36,7 +37,7 @@ func (m *Manager) SaveManagedProcesses(filePath string) error {
   }
 
   // 保存到文件
-  return os.WriteFile(filePath, data, 0644)
+  return os.WriteFile(filePath, []byte(data), 0644)
 }
 
 // LoadManagedProcesses 从文件加载已管理的进程

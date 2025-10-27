@@ -1,6 +1,7 @@
 package config
 
 import (
+  "github.com/casuallc/vigil/common"
   "log"
   "os"
 
@@ -66,11 +67,11 @@ func LoadConfig(filePath string) (*Config, error) {
 // SaveConfig saves configuration to file
 func SaveConfig(filePath string, config *Config) error {
   // Convert to YAML
-  data, err := yaml.Marshal(config)
+  data, err := common.ToYamlString(config)
   if err != nil {
     return err
   }
 
   // Write to file
-  return os.WriteFile(filePath, data, 0644)
+  return os.WriteFile(filePath, []byte(data), 0644)
 }

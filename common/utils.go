@@ -2,6 +2,8 @@ package common
 
 import (
   "bufio"
+  "bytes"
+  "gopkg.in/yaml.v3"
   "os"
   "strconv"
   "strings"
@@ -147,4 +149,18 @@ func FormatSecondsAdaptive(seconds float64) string {
   default:
     return sign + strconv.FormatFloat(seconds/day, 'f', 2, 64) + "d"
   }
+}
+
+// ToYamlString 将任意结构体（或支持 YAML 序列化的类型）转换为格式化的 YAML 字符串
+func ToYamlString(obj interface{}) (string, error) {
+  var buf bytes.Buffer
+  encoder := yaml.NewEncoder(&buf)
+  defer encoder.Close()
+  encoder.SetIndent(2)
+  err := encoder.Encode(obj)
+  if err != nil {
+    return "", err
+  }
+  // Encode 会在末尾添加换行符，如果不需要可以 Trim
+  return buf.String(), nil
 }
