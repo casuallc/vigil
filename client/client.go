@@ -9,6 +9,7 @@ import (
   "github.com/casuallc/vigil/proc"
   "io"
   "net/http"
+  "net/url"
   "path/filepath"
 )
 
@@ -92,7 +93,9 @@ func (c *Client) getJSONResponse(resp *http.Response, v interface{}) error {
 
 // ScanProcesses Process management methods
 func (c *Client) ScanProcesses(query string) ([]proc.ManagedProcess, error) {
-  resp, err := c.doRequest("GET", fmt.Sprintf("/api/processes/scan?query=%s", query), nil)
+  // 对 query 参数进行 URL 编码，避免空格等特殊字符导致请求错误
+  encodedQuery := url.QueryEscape(query)
+  resp, err := c.doRequest("GET", fmt.Sprintf("/api/processes/scan?query=%s", encodedQuery), nil)
   if err != nil {
     return nil, err
   }
@@ -128,7 +131,10 @@ func (c *Client) StartProcess(namespace, name string) error {
   if namespace == "" {
     namespace = "default"
   }
-  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/start", namespace, name), nil)
+  // 对路径参数进行 URL 编码
+  encodedNamespace := url.QueryEscape(namespace)
+  encodedName := url.QueryEscape(name)
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/start", encodedNamespace, encodedName), nil)
   if err != nil {
     return err
   }
@@ -145,7 +151,10 @@ func (c *Client) StopProcess(namespace, name string) error {
   if namespace == "" {
     namespace = "default"
   }
-  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/stop", namespace, name), nil)
+  // 对路径参数进行 URL 编码
+  encodedNamespace := url.QueryEscape(namespace)
+  encodedName := url.QueryEscape(name)
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/stop", encodedNamespace, encodedName), nil)
   if err != nil {
     return err
   }
@@ -162,7 +171,10 @@ func (c *Client) RestartProcess(namespace, name string) error {
   if namespace == "" {
     namespace = "default"
   }
-  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/restart", namespace, name), nil)
+  // 对路径参数进行 URL 编码
+  encodedNamespace := url.QueryEscape(namespace)
+  encodedName := url.QueryEscape(name)
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/restart", encodedNamespace, encodedName), nil)
   if err != nil {
     return err
   }
@@ -180,7 +192,10 @@ func (c *Client) GetProcess(namespace, name string) (proc.ManagedProcess, error)
   if namespace == "" {
     namespace = "default"
   }
-  resp, err := c.doRequest("GET", fmt.Sprintf("/api/namespaces/%s/processes/%s", namespace, name), nil)
+  // 对路径参数进行 URL 编码
+  encodedNamespace := url.QueryEscape(namespace)
+  encodedName := url.QueryEscape(name)
+  resp, err := c.doRequest("GET", fmt.Sprintf("/api/namespaces/%s/processes/%s", encodedNamespace, encodedName), nil)
   if err != nil {
     return process, err
   }
@@ -227,7 +242,10 @@ func (c *Client) DeleteProcess(namespace, name string) error {
   if namespace == "" {
     namespace = "default"
   }
-  resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/namespaces/%s/processes/%s", namespace, name), nil)
+  // 对路径参数进行 URL 编码
+  encodedNamespace := url.QueryEscape(namespace)
+  encodedName := url.QueryEscape(name)
+  resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/namespaces/%s/processes/%s", encodedNamespace, encodedName), nil)
   if err != nil {
     return err
   }
