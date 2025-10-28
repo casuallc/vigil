@@ -7,7 +7,6 @@ import (
   "github.com/shirou/gopsutil/v3/process"
   "os"
   "os/exec"
-  "strconv"
   "strings"
   "syscall"
   "time"
@@ -176,6 +175,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
       }
 
     case <-checkTicker.C:
+      fmt.Printf("checking process %s status, current: %s\n", managedProcess.Metadata.Name, managedProcess.Status.Phase)
       // 扩展：运行态与非运行态都做重关联检查
       if managedProcess.Status.Phase == PhaseRunning {
         // 运行态：校验当前 PID 是否仍对应同一逻辑进程（防 PID 复用）
@@ -207,6 +207,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
         if reAssociated {
           // 已自动重新关联到新 PID，状态在 tryCheckProcess 中置为 Running
           // 可选：此处无需额外处理
+          fmt.Printf("re associated process %s status, current: %s\n", managedProcess.Metadata.Name, managedProcess.Status.Phase)
         } else {
           // 保持原状态（Failed/Stopped/Pending），等待下次检查或人工启动
         }
@@ -231,9 +232,12 @@ func (m *Manager) matchProcessByScript(managedProc *ManagedProcess, sysProcess *
   // 获取进程的PID
   pid := int(sysProcess.Pid)
 
-  // 构建识别脚本命令，将PID作为参数传递
-  cmd := exec.Command(managedProc.Spec.CheckAlive.Command,
-    append(managedProc.Spec.CheckAlive.Args, strconv.Itoa(pid))...)
+  fullCmd := fmt.Sprintf("%s %s %d",
+    managedProc.Spec.CheckAlive.Command,
+    strings.Join(managedProc.Spec.CheckAlive.Args, " "),
+    pid)
+  fmt.Printf("fullCmd: %s\n", fullCmd)
+  cmd := exec.Command("/bin/bash", "-c", fullCmd)
 
   // 设置环境变量
   cmd.Env = os.Environ()
@@ -262,11 +266,13 @@ func (m *Manager) matchProcessByScript(managedProc *ManagedProcess, sysProcess *
   select {
   case err := <-done:
     // 脚本返回0表示匹配成功
+    fmt.Printf("matchProcessByScript pid: %d, %v \n", pid, err)
     if err == nil {
       return true
     }
     // 检查退出码
     var exitErr *exec.ExitError
+    fmt.Printf("matchProcessByScript pid code: %d, %d \n", pid, exitErr)
     if errors.As(err, &exitErr) {
       if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
         return status.ExitStatus() == 0

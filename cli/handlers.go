@@ -237,9 +237,15 @@ func (c *CLI) handleStatus(name string, namespace string) error {
   fmt.Printf("  PID: %d\n", process.Status.PID)
   fmt.Printf("  Command: %s\n", process.Spec.Exec.Command)
   fmt.Printf("  Working Directory: %s\n", process.Spec.WorkingDir)
-  fmt.Printf("  Start Time: %s\n", process.Status.StartTime.Format("2006-01-02 15:04:05"))
+  if process.Status.StartTime == nil {
+    fmt.Printf("  Start Time: N/A\n")
+  } else {
+    fmt.Printf("  Start Time: %s\n", process.Status.StartTime.Format("2006-01-02 15:04:05"))
+  }
   fmt.Printf("  Restart Count: %d\n", process.Status.RestartCount)
-  fmt.Printf("  Last Exit Code: %d\n", process.Status.LastTerminationInfo.ExitCode)
+  if process.Status.LastTerminationInfo != nil {
+    fmt.Printf("  Last Exit Code: %d\n", process.Status.LastTerminationInfo.ExitCode)
+  }
 
   return nil
 }
