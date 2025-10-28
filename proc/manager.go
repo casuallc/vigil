@@ -1,14 +1,15 @@
 package proc
 
 import (
+  "bytes"
   "errors"
   "fmt"
   "github.com/casuallc/vigil/config"
   "github.com/shirou/gopsutil/v3/process"
   "os"
   "os/exec"
+  "strconv"
   "strings"
-  "syscall"
   "time"
 )
 
@@ -219,7 +220,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
 // matchProcess 根据多个特征匹配进程，优先使用用户定义的识别脚本
 func (m *Manager) matchProcess(managedProc *ManagedProcess, sysProcess *process.Process) bool {
   // 如果用户定义了识别脚本，优先使用它
-  if managedProc.Spec.CheckAlive != nil {
+  if managedProc.Spec.ProcessMatcher != nil {
     return m.matchProcessByScript(managedProc, sysProcess)
   }
 
@@ -232,60 +233,14 @@ func (m *Manager) matchProcessByScript(managedProc *ManagedProcess, sysProcess *
   // 获取进程的PID
   pid := int(sysProcess.Pid)
 
-  fullCmd := fmt.Sprintf("%s %s %d",
-    managedProc.Spec.CheckAlive.Command,
-    strings.Join(managedProc.Spec.CheckAlive.Args, " "),
-    pid)
-  fmt.Printf("fullCmd: %s\n", fullCmd)
-  cmd := exec.Command("/bin/bash", "-c", fullCmd)
-
-  // 设置环境变量
-  cmd.Env = os.Environ()
-  for _, envVar := range managedProc.Spec.Env {
-    cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
-  }
-
-  // 设置工作目录
-  if managedProc.Spec.WorkingDir != "" {
-    cmd.Dir = managedProc.Spec.WorkingDir
-  }
-
-  // 设置超时
-  timeout := managedProc.Spec.CheckAlive.Timeout
-  if timeout == 0 {
-    timeout = 5 * time.Second // 默认5秒超时
-  }
-
-  // 执行脚本并等待结果
-  done := make(chan error, 1)
-  go func() {
-    done <- cmd.Run()
-  }()
-
-  // 等待命令完成或超时
-  select {
-  case err := <-done:
-    // 脚本返回0表示匹配成功
-    fmt.Printf("matchProcessByScript pid: %d, %v \n", pid, err)
-    if err == nil {
-      return true
-    }
-    // 检查退出码
-    var exitErr *exec.ExitError
-    fmt.Printf("matchProcessByScript pid code: %d, %d \n", pid, exitErr)
-    if errors.As(err, &exitErr) {
-      if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-        return status.ExitStatus() == 0
-      }
-    }
-    return false
-  case <-time.After(timeout):
-    // 超时，强制终止命令
-    if cmd.Process != nil {
-      cmd.Process.Kill()
-    }
+  // 检查该PID是否与脚本匹配到的PID相同
+  matchedPID, err := m.getMatchedPIDByScript(managedProc)
+  if err != nil {
+    fmt.Printf("Error getting matched PID: %v\n", err)
     return false
   }
+
+  return matchedPID == pid
 }
 
 // matchProcessByAttributes 使用进程属性匹配进程
@@ -318,37 +273,99 @@ func (m *Manager) matchProcessByAttributes(managedProc *ManagedProcess, sysProce
   return true
 }
 
-// TryMatchProcessByScript 尝试使用用户定义的脚本匹配系统中的进程
-func (m *Manager) TryMatchProcessByScript(managedProc *ManagedProcess) (*ManagedProcess, error) {
-  if managedProc.Spec.CheckAlive == nil {
-    return nil, fmt.Errorf("no identify script defined for proc")
+// getMatchedPIDByScript 直接通过脚本获取匹配的进程ID
+func (m *Manager) getMatchedPIDByScript(managedProc *ManagedProcess) (int, error) {
+  if managedProc.Spec.ProcessMatcher == nil {
+    return 0, fmt.Errorf("no process matcher script defined")
   }
 
-  // 获取所有系统进程
-  allProcesses, err := process.Processes()
-  if err != nil {
-    return nil, fmt.Errorf("failed to get all processes: %w", err)
+  fullCmd := fmt.Sprintf("%s %s",
+    managedProc.Spec.ProcessMatcher.Command,
+    strings.Join(managedProc.Spec.ProcessMatcher.Args, " "))
+  fmt.Printf("Running process matcher: %s\n", fullCmd)
+  cmd := exec.Command("/bin/bash", "-c", fullCmd)
+
+  // 设置环境变量
+  cmd.Env = os.Environ()
+  for _, envVar := range managedProc.Spec.Env {
+    cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
   }
 
-  // 遍历所有进程，使用脚本进行匹配
-  for _, sysProcess := range allProcesses {
-    if m.matchProcessByScript(managedProc, sysProcess) {
-      // 找到匹配的进程，更新信息
-      matchedProcess := *managedProc
-      matchedProcess.Status.PID = int(sysProcess.Pid)
-      matchedProcess.Status.Phase = PhaseRunning
+  // 设置工作目录
+  if managedProc.Spec.WorkingDir != "" {
+    cmd.Dir = managedProc.Spec.WorkingDir
+  }
 
-      // 获取并更新进程的其他信息
-      if err := m.updateProcessInfoFromSystem(&matchedProcess); err != nil {
-        // 更新失败不影响匹配结果，但记录警告
-        fmt.Printf("Warning: failed to update proc info: %v\n", err)
-      }
+  // 设置超时
+  timeout := managedProc.Spec.ProcessMatcher.Timeout
+  if timeout == 0 {
+    timeout = 5 * time.Second // 默认5秒超时
+  }
 
-      return &matchedProcess, nil
+  // 捕获输出
+  var stdout bytes.Buffer
+  cmd.Stdout = &stdout
+
+  // 执行脚本并等待结果
+  done := make(chan error, 1)
+  go func() {
+    done <- cmd.Run()
+  }()
+
+  // 等待命令完成或超时
+  select {
+  case err := <-done:
+    if err != nil {
+      return 0, fmt.Errorf("process matcher script failed: %w", err)
     }
+    // 解析输出获取PID
+    pidStr := strings.TrimSpace(stdout.String())
+    if pidStr == "" {
+      return 0, fmt.Errorf("process matcher script returned empty output")
+    }
+    pid, err := strconv.Atoi(pidStr)
+    if err != nil {
+      return 0, fmt.Errorf("invalid PID returned by process matcher script: %s, error: %w", pidStr, err)
+    }
+    return pid, nil
+  case <-time.After(timeout):
+    // 超时，强制终止命令
+    if cmd.Process != nil {
+      cmd.Process.Kill()
+    }
+    return 0, fmt.Errorf("process matcher script timed out after %v", timeout)
+  }
+}
+
+// TryMatchProcessByScript 尝试使用用户定义的脚本直接匹配进程ID
+func (m *Manager) TryMatchProcessByScript(managedProc *ManagedProcess) (*ManagedProcess, error) {
+  if managedProc.Spec.ProcessMatcher == nil {
+    return nil, fmt.Errorf("no process matcher script defined for proc")
   }
 
-  return nil, fmt.Errorf("no matching proc found")
+  // 直接通过脚本获取匹配的进程ID
+  pid, err := m.getMatchedPIDByScript(managedProc)
+  if err != nil {
+    return nil, fmt.Errorf("failed to get matched process ID: %w", err)
+  }
+
+  // 检查进程是否存在
+  if pidExists, err := process.PidExists(int32(pid)); err != nil || !pidExists {
+    return nil, fmt.Errorf("matched process ID %d does not exist or cannot be accessed", pid)
+  }
+
+  // 找到匹配的进程，更新信息
+  matchedProcess := *managedProc
+  matchedProcess.Status.PID = pid
+  matchedProcess.Status.Phase = PhaseRunning
+
+  // 获取并更新进程的其他信息
+  if err := m.updateProcessInfoFromSystem(&matchedProcess); err != nil {
+    // 更新失败不影响匹配结果，但记录警告
+    fmt.Printf("Warning: failed to update proc info: %v\n", err)
+  }
+
+  return &matchedProcess, nil
 }
 
 // updateProcessInfoFromSystem 从系统中更新进程的详细信息
@@ -395,29 +412,56 @@ func (m *Manager) CheckProcesses() {
 
 // tryCheckProcess 尝试通过进程特征检查进程状态
 func (m *Manager) tryCheckProcess(managedProc *ManagedProcess) (bool, error) {
-  // 获取当前系统中的所有进程
-  allProcesses, err := process.Processes()
-  if err != nil {
-    return false, fmt.Errorf("failed to get all processes: %w", err)
-  }
+  // 如果定义了进程匹配脚本，直接使用脚本获取进程ID
+  if managedProc.Spec.ProcessMatcher != nil {
+    pid, err := m.getMatchedPIDByScript(managedProc)
+    if err != nil {
+      return false, fmt.Errorf("failed to get matched process ID: %w", err)
+    }
 
-  // 遍历所有进程，寻找匹配的进程
-  for _, sysProcess := range allProcesses {
-    // 尝试匹配进程特征
-    if m.matchProcess(managedProc, sysProcess) {
-      // 找到匹配的进程，更新状态
-      managedProc.Status.PID = int(sysProcess.Pid)
-      managedProc.Status.Phase = PhaseRunning
-      now := time.Now()
-      managedProc.Status.StartTime = &now
+    // 检查进程是否存在
+    if pidExists, err := process.PidExists(int32(pid)); err != nil || !pidExists {
+      return false, nil // 进程不存在，返回false但不报错
+    }
 
-      // 更新资源监控信息
-      stats, err := m.MonitorProcess(managedProc.Metadata.Namespace, managedProc.Metadata.Name)
-      if err == nil {
-        managedProc.Status.ResourceStats = stats
+    // 找到匹配的进程，更新状态
+    managedProc.Status.PID = pid
+    managedProc.Status.Phase = PhaseRunning
+    now := time.Now()
+    managedProc.Status.StartTime = &now
+
+    // 更新资源监控信息
+    stats, err := m.MonitorProcess(managedProc.Metadata.Namespace, managedProc.Metadata.Name)
+    if err == nil {
+      managedProc.Status.ResourceStats = stats
+    }
+
+    return true, nil
+  } else {
+    // 如果没有定义进程匹配脚本，使用传统方式遍历所有进程
+    allProcesses, err := process.Processes()
+    if err != nil {
+      return false, fmt.Errorf("failed to get all processes: %w", err)
+    }
+
+    // 遍历所有进程，寻找匹配的进程
+    for _, sysProcess := range allProcesses {
+      // 尝试匹配进程特征
+      if m.matchProcessByAttributes(managedProc, sysProcess) {
+        // 找到匹配的进程，更新状态
+        managedProc.Status.PID = int(sysProcess.Pid)
+        managedProc.Status.Phase = PhaseRunning
+        now := time.Now()
+        managedProc.Status.StartTime = &now
+
+        // 更新资源监控信息
+        stats, err := m.MonitorProcess(managedProc.Metadata.Namespace, managedProc.Metadata.Name)
+        if err == nil {
+          managedProc.Status.ResourceStats = stats
+        }
+
+        return true, nil
       }
-
-      return true, nil
     }
   }
 

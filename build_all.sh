@@ -102,12 +102,12 @@ main() {
 
     # ========== Target Platforms ==========
     TARGETS=(
-        "windows amd64 1"
-        "windows arm64 1"
+        # "windows amd64 1"
+        # "windows arm64 1"
         "linux   amd64 0"
         "linux   arm64 0"
-        "darwin  amd64 0"
-        "darwin  arm64 0"
+        # "darwin  amd64 0"
+        # "darwin  arm64 0"
     )
 
     # ========== Build Each Command ==========
