@@ -18,29 +18,58 @@ func (c *CLI) handleBatchScan(configFile string, register bool, namespace string
   fmt.Println("Loading scan configuration from:", configFile)
 
   // 加载配置文件
-  config, err := config.LoadScanConfig(configFile)
+  scanConfig, err := config.LoadScanConfig(configFile)
   if err != nil {
     return fmt.Errorf("failed to load scan configuration: %v", err)
   }
 
-  fmt.Printf("Found %d processes to scan\n", len(config.Process))
+  fmt.Printf("Found %d processes to scan\n", len(scanConfig.Process))
 
   // 遍历所有进程配置并执行扫描
-  for _, proc := range config.Process {
-    fmt.Printf("Scanning for process: %s\n", proc.Name)
+  for _, procConfig := range scanConfig.Process {
+    fmt.Printf("Scanning for process: %s\n", procConfig.Name)
 
-    // 执行PID命令获取进程
-    err := c.handleScan(proc.PidCmd, register, namespace)
+    // 直接扫描进程
+    processes, err := c.client.ScanProcesses(procConfig.Query)
     if err != nil {
-      fmt.Printf("Error scanning process %s: %v\n", proc.Name, err)
+      fmt.Printf("Error scanning process %s: %v\n", procConfig.Name, err)
       continue
     }
 
-    // 如果需要注册并且有标签，则添加标签
-    if register && len(proc.Labels) > 0 {
-      // 这里可以添加标签处理逻辑
-      fmt.Printf("Adding %d labels to process %s\n", len(proc.Labels), proc.Name)
-      // TODO: 实现标签添加功能
+    // 显示扫描结果
+    fmt.Printf("Found %d matching processes for '%s'\n", len(processes), procConfig.Name)
+
+    // 如果需要注册且找到了进程
+    if register && len(processes) > 0 {
+      // 自动选择第一个匹配的进程并使用配置文件中的名称注册
+      selectedProcess := processes[0]
+      processName := procConfig.Name // 直接使用配置文件中的名称
+
+      // 创建要注册的进程
+      managedProc := proc.ManagedProcess{
+        Metadata: selectedProcess.Metadata,
+        Spec:     selectedProcess.Spec,
+        Status:   selectedProcess.Status,
+      }
+      managedProc.Metadata.Name = processName
+      managedProc.Metadata.Namespace = namespace
+
+      // 添加标签（如果有）
+      if len(procConfig.Labels) > 0 {
+        fmt.Printf("Adding %d labels to process %s\n", len(procConfig.Labels), processName)
+        managedProc.Metadata.Labels = make(map[string]string)
+        for _, label := range procConfig.Labels {
+          managedProc.Metadata.Labels[label.Name] = label.Value
+        }
+      }
+
+      // 调用client进行注册
+      err = c.client.CreateProcess(managedProc)
+      if err != nil {
+        fmt.Printf("Failed to register process '%s': %v\n", processName, err)
+      } else {
+        fmt.Printf("Successfully registered process '%s' in namespace '%s'\n", processName, namespace)
+      }
     }
   }
 
