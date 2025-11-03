@@ -2,6 +2,7 @@ package cli
 
 import (
   "fmt"
+  "github.com/casuallc/vigil/config"
   "os"
   "os/exec"
   "path/filepath"
@@ -11,6 +12,41 @@ import (
   "github.com/casuallc/vigil/proc"
   "gopkg.in/yaml.v3" // 导入yaml包用于YAML格式输出
 )
+
+// handleBatchScan 处理批量扫描命令
+func (c *CLI) handleBatchScan(configFile string, register bool, namespace string) error {
+  fmt.Println("Loading scan configuration from:", configFile)
+
+  // 加载配置文件
+  config, err := config.LoadScanConfig(configFile)
+  if err != nil {
+    return fmt.Errorf("failed to load scan configuration: %v", err)
+  }
+
+  fmt.Printf("Found %d processes to scan\n", len(config.Process))
+
+  // 遍历所有进程配置并执行扫描
+  for _, proc := range config.Process {
+    fmt.Printf("Scanning for process: %s\n", proc.Name)
+
+    // 执行PID命令获取进程
+    err := c.handleScan(proc.PidCmd, register, namespace)
+    if err != nil {
+      fmt.Printf("Error scanning process %s: %v\n", proc.Name, err)
+      continue
+    }
+
+    // 如果需要注册并且有标签，则添加标签
+    if register && len(proc.Labels) > 0 {
+      // 这里可以添加标签处理逻辑
+      fmt.Printf("Adding %d labels to process %s\n", len(proc.Labels), proc.Name)
+      // TODO: 实现标签添加功能
+    }
+  }
+
+  fmt.Println("Batch scan completed")
+  return nil
+}
 
 // 修改handleScan函数，显示更多进程信息并支持注册
 func (c *CLI) handleScan(query string, registerAfterScan bool, namespace string) error {
