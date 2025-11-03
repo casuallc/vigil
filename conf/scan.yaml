@@ -1,0 +1,16 @@
+process:
+  - name: "MQBroker"
+    query: "script://ps -ef |grep MQBroker |grep -v grep |awk '{print $2}'"
+    labels:
+      - name: "type"
+        value: "ADMQ"
+  - name: "MQStorage"
+    query: "script://ps -ef |grep MQStorage |grep -v grep |awk '{print $2}'"
+    labels:
+      - name: "type"
+        value: "ADMQ"
+  - name: "MQZookeeper"
+    query: "script://ps -ef |grep MQZookeeper |grep -v grep |awk '{print $2}'"
+    labels:
+      - name: "type"
+        value: "ADMQ"
