@@ -375,6 +375,18 @@ func (m *Manager) RestartProcess(namespace, name string) error {
   return m.StartProcess(namespace, name)
 }
 
+// InspectProcess 实现ProcessManager接口，巡检一个进程
+func (m *Manager) InspectProcess(namespace, name string) (string, error) {
+  key := fmt.Sprintf("%s/%s", namespace, name)
+  process, exists := m.Processes[key]
+  if !exists {
+    return "", fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
+  }
+
+  // TODO
+  return process.Metadata.Name, nil
+}
+
 // Linux 下应用挂载（bind/tmpfs/named）
 func applyMounts(mounts []Mount) error {
   if len(mounts) == 0 || runtime.GOOS != "linux" {

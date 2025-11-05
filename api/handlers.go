@@ -73,6 +73,20 @@ func (s *Server) handleRestartProcess(w http.ResponseWriter, r *http.Request) {
   writeJSON(w, http.StatusOK, map[string]string{"message": "Process restarted successfully"})
 }
 
+func (s *Server) handleInspectProcess(w http.ResponseWriter, r *http.Request) {
+  vars := mux.Vars(r)
+  namespace := getNamespace(vars)
+  name := vars["name"]
+
+  msg, err := s.manager.InspectProcess(namespace, name)
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": msg})
+}
+
 // 处理函数更新示例
 func (s *Server) handleGetProcess(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)

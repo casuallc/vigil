@@ -1,0 +1,157 @@
+version: 1
+meta:
+  system: ailp
+  env: prod
+  owner: log-platform-team
+  tags: [elk, elasticsearch, kafka, logstash, logging]
+
+checks:
+  # === 服务进程状态检查 ===
+  - id: ailp-es-process
+    name: "AILP Elasticsearch 服务状态"
+    type: script
+    command: "systemctl is-active ailp-es"
+    expect: "active"
+    severity: critical
+    remediation: "systemctl start ailp-es"
+
+  - id: ailp-zk-process
+    name: "AILP ZooKeeper 服务状态"
+    type: script
+    command: "systemctl is-active ailp-zk"
+    expect: "active"
+    severity: critical
+    remediation: "systemctl start ailp-zk"
+
+  - id: ailp-kafka-process
+    name: "AILP Kafka 服务状态"
+    type: script
+    command: "systemctl is-active ailp-kafka"
+    expect: "active"
+    severity: critical
+    remediation: "systemctl start ailp-kafka"
+
+  - id: ailp-logstash-process
+    name: "AILP Logstash 服务状态"
+    type: script
+    command: "systemctl is-active ailp-logstash"
+    expect: "active"
+    severity: critical
+    remediation: "systemctl start ailp-logstash"
+
+
+  # === 磁盘使用量（AILP 数据目录）===
+  - id: ailp-disk-usage
+    name: "AILP 数据目录磁盘使用量"
+    type: script
+    command: "du -sb ${APUSIC_AILP_DATA_DIR:-${APUSIC_HOME:-/kingdee/cosmic}/ailp} | awk '{print int($1/1024/1024)}'"
+    parse:
+      kind: int
+    # 可选阈值：例如 > 500,000 MB (500GB)
+    # thresholds:
+    #   - when: "> 500000"
+    #     severity: warn
+    #     message: "AILP 数据目录超过 500GB"
+
+
+  # === Kafka 消息积压检查（logstash 消费组）===
+  - id: kafka-backlog-logstash
+    name: "Kafka logstash 消费组消息积压量"
+    type: script
+    command: |
+      cd ${APUSIC_HOME:-/kingdee/cosmic}/ailp/kafka/kafka_2.12-2.7.0
+      BACKLOG=$(bin/kafka-consumer-groups.sh --bootstrap-server ${APUSIC_IP:-127.0.0.1}:9092 --group logstash --describe 2>/dev/null | awk 'NR>2 {sum += $6} END {print sum+0}')
+      echo "$BACKLOG"
+    parse:
+      kind: int
+    thresholds:
+      - when: "> 100000"
+        severity: critical
+        message: "Kafka 积压超过 10 万条，Logstash 消费慢"
+      - when: "> 10000"
+        severity: warn
+        message: "Kafka 积压超过 1 万条"
+
+
+  # === Logstash 消费延迟（in - out）===
+  - id: logstash-in-out-delta
+    name: "Logstash 输入与输出事件差值（潜在积压）"
+    type: script
+    command: |
+      curl -s http://localhost:9600/_node/stats/pipelines/main?pretty 2>/dev/null | \
+      awk '/"in"/ {in_val=$3} /"out"/ {out_val=$3} END {gsub(/,/, "", in_val); gsub(/,/, "", out_val); if(in_val+0 > 0) print in_val - out_val; else print 0}'
+    parse:
+      kind: int
+    thresholds:
+      - when: "> 10000"
+        severity: warn
+        message: "Logstash 输入输出差值过大，可能存在处理瓶颈"
+
+
+  # === Elasticsearch 集群健康状态 ===
+  - id: es-cluster-health
+    name: "Elasticsearch 集群健康状态"
+    type: script
+    command: "curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} http://127.0.0.1:9200/_cat/health?h=status | tr -d ' '"
+    parse:
+      kind: string
+    # ES 健康状态：green > yellow > red
+    thresholds:
+      - when: "== 'red'"
+        severity: critical
+        message: "ES 集群状态为 red"
+      - when: "== 'yellow'"
+        severity: warn
+        message: "ES 集群状态为 yellow"
+
+
+  # === 今日（或昨日）日志索引是否存在 ===
+  - id: es-today-index-exists
+    name: "Elasticsearch 是否存在今日/昨日日志索引"
+    type: script
+    command: |
+      DATE_STR=$([ $(date +%H) -ge 8 ] && date +"%Y-%m-%d" || date -d "yesterday" +"%Y-%m-%d")
+      INDEX_COUNT=$(curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/indices?h=index" | grep -c "$DATE_STR")
+      echo "$INDEX_COUNT"
+    parse:
+      kind: int
+    thresholds:
+      - when: "== 0"
+        severity: critical
+        message: "未找到今日或昨日的日志索引，可能数据未写入"
+
+
+  # === 【可选】ES 索引总数或最大索引大小（用于监控膨胀）===
+  # 此项仅采集，不设阈值（除非有明确需求）
+  - id: es-index-summary
+    name: "Elasticsearch 索引摘要（文档数、存储大小）"
+    type: script
+    command: |
+      curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/indices?h=docs.count,store.size" | \
+      awk '{sum_docs += $1; sum_size += ($2 ~ /[0-9]/ ? $2 : 0)} END {print "docs_total=" sum_docs ", size_total_bytes=" sum_size}'
+    parse:
+      kind: string
+    # 如需告警，建议用 custom 类型解析多字段
+
+
+  # === 【复合健康检查】===
+  - id: ailp-overall-health
+    name: "AILP（ELK）整体健康状态"
+    type: compound
+    children:
+      - ailp-es-process
+      - ailp-zk-process
+      - ailp-kafka-process
+      - ailp-logstash-process
+      - es-cluster-health
+      - es-today-index-exists
+      - kafka-backlog-logstash
+    logic: >
+      ailp-es-process &&
+      ailp-zk-process &&
+      ailp-kafka-process &&
+      ailp-logstash-process &&
+      (es-cluster-health == 'green') &&
+      (es-today-index-exists > 0) &&
+      (kafka-backlog-logstash < 10000)
+    severity: critical

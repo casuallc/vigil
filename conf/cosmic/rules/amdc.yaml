@@ -1,0 +1,209 @@
+version: 1
+meta:
+  system: amdc
+  env: prod
+  owner: middleware-team
+  tags: [redis, amdc, cache, high-availability]
+
+checks:
+  # --- Redis 实例通用配置 ---
+  # 定义端口列表（可由引擎或模板展开，此处显式列出）
+  # 建议：实际使用中可通过变量或生成脚本展开，但 YAML 需显式写
+
+  # === 实例 6379 ===
+  - id: amdc-6379-process
+    name: "AMDC Redis 6379 进程状态"
+    type: script
+    command: "systemctl is-active amdc-6379"
+    expect: "active"
+    severity: critical
+    remediation: "systemctl start amdc-6379"
+
+  - id: amdc-6379-port
+    name: "AMDC Redis 6379 端口监听状态"
+    type: script
+    command: "ss -tlnp | grep ':6379 ' | wc -l"
+    parse:
+      kind: int
+    thresholds:
+      - when: "== 0"
+        severity: critical
+        message: "端口 6379 未监听"
+
+  - id: amdc-6379-ping
+    name: "AMDC Redis 6379 服务响应（PING）"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping"
+    expect: "PONG"
+    severity: critical
+    remediation: "检查 amdc-6379 进程是否正常运行"
+
+  - id: amdc-6379-role
+    name: "AMDC Redis 6379 角色（role）"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication | grep '^role:' | cut -d: -f2"
+    parse:
+      kind: string
+    # 可选：期望值 master/slave，但角色可能动态变化，故仅采集
+
+  - id: amdc-6379-memory
+    name: "AMDC Redis 6379 内存使用量（human readable）"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | grep '^used_memory_human:' | cut -d: -f2"
+    parse:
+      kind: string
+    # 如需数值告警，可提取字节数（used_memory）并设阈值
+
+  - id: amdc-6379-rejected-conn
+    name: "AMDC Redis 6379 拒绝连接数"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats | grep '^rejected_connections:' | cut -d: -f2"
+    parse:
+      kind: int
+    thresholds:
+      - when: "> 0"
+        severity: warn
+        message: "存在被拒绝的连接，请检查 maxclients 配置或客户端行为"
+
+
+  # === 实例 6380 ===
+  - id: amdc-6380-process
+    name: "AMDC Redis 6380 进程状态"
+    type: script
+    command: "systemctl is-active amdc-6380"
+    expect: "active"
+    severity: critical
+    remediation: "systemctl start amdc-6380"
+
+  - id: amdc-6380-port
+    name: "AMDC Redis 6380 端口监听状态"
+    type: script
+    command: "ss -tlnp | grep ':6380 ' | wc -l"
+    parse:
+      kind: int
+    thresholds:
+      - when: "== 0"
+        severity: critical
+        message: "端口 6380 未监听"
+
+  - id: amdc-6380-ping
+    name: "AMDC Redis 6380 服务响应（PING）"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping"
+    expect: "PONG"
+    severity: critical
+
+  - id: amdc-6380-role
+    name: "AMDC Redis 6380 角色（role）"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication | grep '^role:' | cut -d: -f2"
+    parse:
+      kind: string
+
+  - id: amdc-6380-memory
+    name: "AMDC Redis 6380 内存使用量"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | grep '^used_memory_human:' | cut -d: -f2"
+    parse:
+      kind: string
+
+  - id: amdc-6380-rejected-conn
+    name: "AMDC Redis 6380 拒绝连接数"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats | grep '^rejected_connections:' | cut -d: -f2"
+    parse:
+      kind: int
+    thresholds:
+      - when: "> 0"
+        severity: warn
+        message: "存在被拒绝的连接"
+
+
+  # === 实例 6381 ===
+  - id: amdc-6381-process
+    name: "AMDC Redis 6381 进程状态"
+    type: script
+    command: "systemctl is-active amdc-6381"
+    expect: "active"
+    severity: critical
+    remediation: "systemctl start amdc-6381"
+
+  - id: amdc-6381-port
+    name: "AMDC Redis 6381 端口监听状态"
+    type: script
+    command: "ss -tlnp | grep ':6381 ' | wc -l"
+    parse:
+      kind: int
+    thresholds:
+      - when: "== 0"
+        severity: critical
+        message: "端口 6381 未监听"
+
+  - id: amdc-6381-ping
+    name: "AMDC Redis 6381 服务响应（PING）"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping"
+    expect: "PONG"
+    severity: critical
+
+  - id: amdc-6381-role
+    name: "AMDC Redis 6381 角色（role）"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication | grep '^role:' | cut -d: -f2"
+    parse:
+      kind: string
+
+  - id: amdc-6381-memory
+    name: "AMDC Redis 6381 内存使用量"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | grep '^used_memory_human:' | cut -d: -f2"
+    parse:
+      kind: string
+
+  - id: amdc-6381-rejected-conn
+    name: "AMDC Redis 6381 拒绝连接数"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats | grep '^rejected_connections:' | cut -d: -f2"
+    parse:
+      kind: int
+    thresholds:
+      - when: "> 0"
+        severity: warn
+        message: "存在被拒绝的连接"
+
+
+  # === 公共检查项 ===
+
+  # 磁盘使用量（AMDC 数据目录）
+  - id: amdc-disk-usage
+    name: "AMDC 数据目录磁盘使用量"
+    type: script
+    command: "du -sb ${APUSIC_AILP_DATA_DIR:-${APUSIC_HOME:-/kingdee/cosmic}/common/amdc} | awk '{print int($1/1024/1024)}'"
+    parse:
+      kind: int
+    # 可选：添加阈值，例如 > 100000 MB (100GB)
+    # thresholds:
+    #   - when: "> 100000"
+    #     severity: warn
+    #     message: "AMDC 数据目录超过 100GB"
+
+
+  # 【可选】复合健康检查（任一实例异常即告警）
+  - id: amdc-overall-health
+    name: "AMDC 整体健康状态"
+    type: compound
+    children:
+      - amdc-6379-process
+      - amdc-6379-ping
+      - amdc-6380-process
+      - amdc-6380-ping
+      - amdc-6381-process
+      - amdc-6381-ping
+    logic: >
+      amdc-6379-process &&
+      amdc-6379-ping &&
+      amdc-6380-process &&
+      amdc-6380-ping &&
+      amdc-6381-process &&
+      amdc-6381-ping
+    severity: critical
