@@ -1,8 +1,8 @@
-package config_test
+package inspection_test
 
 import (
   "fmt"
-  "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/inspection"
   "gopkg.in/yaml.v3"
   "log"
   "os"
@@ -15,7 +15,7 @@ func TestInspectionRules(t *testing.T) {
     log.Fatalf("Failed to read config file: %v", err)
   }
 
-  var inspectionConfig config.InspectionConfig
+  var inspectionConfig inspection.InspectionConfig
   err = yaml.Unmarshal(data, &inspectionConfig)
   if err != nil {
     log.Fatalf("Failed to parse YAML: %v", err)
@@ -41,7 +41,7 @@ func TestInspectionRules(t *testing.T) {
 
   // 示例：打印第一个脚本类检查的命令
   for _, chk := range inspectionConfig.Checks {
-    if chk.Type == config.TypeScript {
+    if chk.Type == inspection.TypeScript {
       cmds, _ := chk.GetCommandLines()
       fmt.Printf("   [%s] Command: %v\n", chk.ID, cmds)
       break

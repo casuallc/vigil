@@ -1,4 +1,4 @@
-node:
+nodes:
   - name: node1
     ip: 192.168.1.1
     port: 8080
@@ -6,26 +6,27 @@ node:
     ip: 192.168.1.2
     port: 8080
 
-admq:
-  targets:
-    - node1
-    - node2
-  envs:
-    - name: port
-      value: 8080
-  rules:
-    - name: test
-      path: ./conf/cosmic/rules/admq.yaml
+jobs:
+  - name: admq
+    targets:
+      - node1
+      - node2
+    envs:
+      - name: port
+        value: 8080
+    rules:
+      - name: test
+        path: ./conf/cosmic/rules/admq.yaml
 
-amdc:
-  targets:
-    - node1
-    - node2
-  envs:
-    - name: user
-      value: cosmic
-    - name: password
-      value: cosmic@123
-  rules:
-    - name: test
-      path: ./conf/cosmic/rules/amdc.yaml
+  - name: amdc
+    targets:
+      - node1
+      - node2
+    envs:
+      - name: user
+        value: cosmic
+      - name: password
+        value: cosmic@123
+    rules:
+      - name: test
+        path: ./conf/cosmic/rules/amdc.yaml

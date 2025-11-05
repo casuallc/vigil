@@ -3,6 +3,7 @@ package proc
 import (
   "errors"
   "fmt"
+  "github.com/casuallc/vigil/inspection"
   "os"
   "os/exec"
   "path/filepath"
@@ -376,15 +377,16 @@ func (m *Manager) RestartProcess(namespace, name string) error {
 }
 
 // InspectProcess 实现ProcessManager接口，巡检一个进程
-func (m *Manager) InspectProcess(namespace, name string) (string, error) {
+func (m *Manager) InspectProcess(namespace, name string, request inspection.Request) (inspection.Result, error) {
   key := fmt.Sprintf("%s/%s", namespace, name)
   process, exists := m.Processes[key]
   if !exists {
-    return "", fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
+    return inspection.Result{}, fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
 
+  fmt.Printf(process.Metadata.Name)
   // TODO
-  return process.Metadata.Name, nil
+  return inspection.Result{}, nil
 }
 
 // Linux 下应用挂载（bind/tmpfs/named）

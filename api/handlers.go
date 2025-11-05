@@ -5,6 +5,7 @@ import (
   "fmt"
   "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/inspection"
   "github.com/casuallc/vigil/proc"
   "github.com/gorilla/mux"
   "net/http"
@@ -78,13 +79,19 @@ func (s *Server) handleInspectProcess(w http.ResponseWriter, r *http.Request) {
   namespace := getNamespace(vars)
   name := vars["name"]
 
-  msg, err := s.manager.InspectProcess(namespace, name)
+  var params inspection.Request
+  if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  result, err := s.manager.InspectProcess(namespace, name, params)
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
 
-  writeJSON(w, http.StatusOK, map[string]string{"message": msg})
+  writeJSON(w, http.StatusOK, map[string]string{"message": result})
 }
 
 // 处理函数更新示例
