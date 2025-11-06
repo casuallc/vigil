@@ -1,6 +1,7 @@
 package cli
 
 import (
+  "bytes"
   "fmt"
   "github.com/casuallc/vigil/proc"
   "time"
@@ -25,6 +26,15 @@ func truncateString(s string, maxLength int) string {
     return s
   }
   return s[:maxLength-3] + "..."
+}
+
+// 辅助函数：居中显示文本
+func centerText(text string, width int) string {
+  if len(text) >= width {
+    return text
+  }
+  padding := (width - len(text)) / 2
+  return string(bytes.Repeat([]byte(" "), padding)) + text
 }
 
 // selectProcessInteractively 通用的交互式进程选择函数

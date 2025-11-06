@@ -954,39 +954,48 @@ func (c *CLI) formatAndOutputInspectionResult(result inspection.Result, format s
   case "text", "":
     // 文本格式输出
     var buf bytes.Buffer
-    fmt.Fprintf(&buf, "========================================================================\n")
-    fmt.Fprintf(&buf, "                  PROCESS INSPECTION REPORT\n")
-    fmt.Fprintf(&buf, "========================================================================\n")
-    fmt.Fprintf(&buf, "System:      %s\n", result.Meta.System)
-    fmt.Fprintf(&buf, "Environment: %s\n", result.Meta.Env)
-    fmt.Fprintf(&buf, "Host:        %s\n", result.Meta.Host)
-    fmt.Fprintf(&buf, "Executed At: %s\n", result.Meta.ExecutedAt.Format(time.RFC3339))
-    fmt.Fprintf(&buf, "Duration:    %.2f seconds\n", result.Meta.DurationSeconds)
-    fmt.Fprintf(&buf, "Status:      %s\n", result.Meta.Status)
-    fmt.Fprintf(&buf, "Summary:     %s\n", result.Meta.Summary)
+    const lineWidth = 120
+    
+    // 打印标题和分隔线
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
+    fmt.Fprintf(&buf, "%s\n", centerText("PROCESS INSPECTION REPORT", lineWidth))
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
+    
+    // 打印元数据信息（左对齐，冒号对齐）
+    fmt.Fprintf(&buf, "%-15s: %s\n", "System", result.Meta.System)
+    fmt.Fprintf(&buf, "%-15s: %s\n", "Environment", result.Meta.Env)
+    fmt.Fprintf(&buf, "%-15s: %s\n", "Host", result.Meta.Host)
+    fmt.Fprintf(&buf, "%-15s: %s\n", "Executed At", result.Meta.ExecutedAt.Format(time.RFC3339))
+    fmt.Fprintf(&buf, "%-15s: %.2f seconds\n", "Duration", result.Meta.DurationSeconds)
+    fmt.Fprintf(&buf, "%-15s: %s\n", "Status", result.Meta.Status)
+    fmt.Fprintf(&buf, "%-15s: %s\n", "Summary", result.Meta.Summary)
     fmt.Fprintf(&buf, "\n")
-    fmt.Fprintf(&buf, "Check Results:\n")
-    fmt.Fprintf(&buf, "------------------------------------------------------------------------\n")
-    fmt.Fprintf(&buf, "%-40s %-10s %-10s %-10s %-40s\n", "Name", "Type", "Status", "Severity", "Message")
-    fmt.Fprintf(&buf, "------------------------------------------------------------------------\n")
-
+    
+    // 打印检查结果标题
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    fmt.Fprintf(&buf, "%-40s %-12s %-12s %-12s %-40s\n", "Name", "Type", "Status", "Severity", "Message")
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    
+    // 打印检查结果（更合理的列宽）
     for _, check := range result.Results {
-      fmt.Fprintf(&buf, "%-40s %-10s %-10s %-10s %-40s\n",
+      fmt.Fprintf(&buf, "%-40s %-12s %-12s %-12s %-40s\n",
         truncateString(check.Name, 40),
-        check.Type,
-        check.Status,
-        check.Severity,
+        truncateString(check.Type, 12),
+        truncateString(check.Status, 12),
+        truncateString(check.Severity, 12),
         truncateString(check.Message, 40))
     }
-
-    fmt.Fprintf(&buf, "------------------------------------------------------------------------\n")
-    fmt.Fprintf(&buf, "Total Checks: %d\n", result.Summary.TotalChecks)
-    fmt.Fprintf(&buf, "OK:           %d\n", result.Summary.OK)
-    fmt.Fprintf(&buf, "Warnings:     %d\n", result.Summary.Warn)
-    fmt.Fprintf(&buf, "Critical:     %d\n", result.Summary.Critical)
-    fmt.Fprintf(&buf, "Errors:       %d\n", result.Summary.Error)
-    fmt.Fprintf(&buf, "Overall:      %s\n", result.Summary.OverallStatus)
-    fmt.Fprintf(&buf, "========================================================================\n")
+    
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    
+    // 打印统计信息（右对齐数字，使冒号对齐）
+    fmt.Fprintf(&buf, "%-12s: %6d\n", "Total Checks", result.Summary.TotalChecks)
+    fmt.Fprintf(&buf, "%-12s: %6d\n", "OK", result.Summary.OK)
+    fmt.Fprintf(&buf, "%-12s: %6d\n", "Warnings", result.Summary.Warn)
+    fmt.Fprintf(&buf, "%-12s: %6d\n", "Critical", result.Summary.Critical)
+    fmt.Fprintf(&buf, "%-12s: %6d\n", "Errors", result.Summary.Error)
+    fmt.Fprintf(&buf, "%-12s: %s\n", "Overall", result.Summary.OverallStatus)
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
 
     output = buf.Bytes()
   default:
