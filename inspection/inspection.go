@@ -1,6 +1,6 @@
 package inspection
 
 type Request struct {
-  Envs   map[string]string
+  Envs   []string
   Config InspectionConfig
 }

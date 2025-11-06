@@ -867,7 +867,7 @@ func (c *CLI) handleProcMountList(name, namespace string) error {
 }
 
 // handleInspection 处理进程巡检命令
-func (c *CLI) handleInspection(name string, namespace string, configFile string, format string, outputFile string) error {
+func (c *CLI) handleInspection(name string, namespace string, envs []string, configFile string, format string, outputFile string) error {
   // 加载巡检配置文件
   inspectionConfig, err := inspection.LoadInspectionConfig(configFile)
   if err != nil {
@@ -877,7 +877,7 @@ func (c *CLI) handleInspection(name string, namespace string, configFile string,
 
   // 准备巡检请求
   request := inspection.Request{
-    Envs:   make(map[string]string),
+    Envs:   envs,
     Config: *inspectionConfig,
   }
 
@@ -893,7 +893,7 @@ func (c *CLI) handleInspection(name string, namespace string, configFile string,
 }
 
 // handleInspectionInteractive 处理交互式进程巡检命令
-func (c *CLI) handleInspectionInteractive(namespace string, configFile string, format string, outputFile string) error {
+func (c *CLI) handleInspectionInteractive(namespace string, envs []string, configFile string, format string, outputFile string) error {
   // 获取进程列表
   processes, err := c.client.ListProcesses(namespace)
   if err != nil {
@@ -931,7 +931,7 @@ func (c *CLI) handleInspectionInteractive(namespace string, configFile string, f
   selectedProcess := processes[idx]
 
   // 执行巡检
-  return c.handleInspection(selectedProcess.Metadata.Name, namespace, configFile, format, outputFile)
+  return c.handleInspection(selectedProcess.Metadata.Name, namespace, envs, configFile, format, outputFile)
 }
 
 // formatAndOutputInspectionResult 格式化并输出巡检结果

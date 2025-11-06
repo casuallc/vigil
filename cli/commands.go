@@ -116,15 +116,13 @@ func (c *CLI) setupScanCommand() *cobra.Command {
     Short: "Scan processes",
     Long:  "Scan system processes based on query string or regex",
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-
       // 批量模式：从配置文件加载并扫描
       if batchMode {
-        return c.handleBatchScan(configFile, registerAfterScan, namespaceFlag)
+        return c.handleBatchScan(configFile, registerAfterScan, scanNamespace)
       }
 
       // 单个查询模式
-      return c.handleScan(query, registerAfterScan, namespaceFlag)
+      return c.handleScan(query, registerAfterScan, scanNamespace)
     },
   }
   scanCmd.Flags().StringVarP(&query, "query", "q", "", "Search query string or regex; support prefix: script://, file://")
@@ -158,12 +156,11 @@ func (c *CLI) setupCreateCommand() *cobra.Command {
     Long:  "Create a new managed process",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
       // 如果提供了位置参数，使用位置参数作为name
       if len(args) > 0 && processName == "" {
         processName = args[0]
       }
-      return c.handleCreate(processName, commandPath, namespaceFlag)
+      return c.handleCreate(processName, commandPath, createNamespace)
     },
   }
   createCmd.Flags().StringVarP(&processName, "name", "N", "", "Process name (alternative to positional argument)")
@@ -183,14 +180,12 @@ func (c *CLI) setupStartCommand() *cobra.Command {
     Long:  "Start a managed process. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-
       // 如果没有提供参数，使用交互式选择
       if len(args) == 0 {
-        return c.handleStartInteractive(namespaceFlag)
+        return c.handleStartInteractive(startNamespace)
       }
 
-      return c.handleStart(args[0], namespaceFlag)
+      return c.handleStart(args[0], startNamespace)
     },
   }
   startCmd.Flags().StringVarP(&startNamespace, "namespace", "n", "default", "Process namespace")
@@ -208,14 +203,12 @@ func (c *CLI) setupStopCommand() *cobra.Command {
     Long:  "Stop a managed process. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-
       // 如果没有提供参数，使用交互式选择
       if len(args) == 0 {
-        return c.handleStopInteractive(namespaceFlag)
+        return c.handleStopInteractive(stopNamespace)
       }
 
-      return c.handleStop(args[0], namespaceFlag)
+      return c.handleStop(args[0], stopNamespace)
     },
   }
   stopCmd.Flags().StringVarP(&stopNamespace, "namespace", "n", "default", "Process namespace")
@@ -233,14 +226,12 @@ func (c *CLI) setupRestartCommand() *cobra.Command {
     Long:  "Restart a managed process. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-
       // 如果没有提供参数，使用交互式选择
       if len(args) == 0 {
-        return c.handleRestartInteractive(namespaceFlag)
+        return c.handleRestartInteractive(restartNamespace)
       }
 
-      return c.handleRestart(args[0], namespaceFlag)
+      return c.handleRestart(args[0], restartNamespace)
     },
   }
   restartCmd.Flags().StringVarP(&restartNamespace, "namespace", "n", "default", "Process namespace")
@@ -258,14 +249,12 @@ func (c *CLI) setupDeleteCommand() *cobra.Command {
     Long:  "Delete a process from the managed list. If the process is running, it will be stopped first. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-
       // 如果没有提供参数，使用交互式选择
       if len(args) == 0 {
-        return c.handleDeleteInteractive(namespaceFlag)
+        return c.handleDeleteInteractive(deleteNamespace)
       }
 
-      return c.handleDelete(args[0], namespaceFlag)
+      return c.handleDelete(args[0], deleteNamespace)
     },
   }
   deleteCmd.Flags().StringVarP(&deleteNamespace, "namespace", "n", "default", "Process namespace")
@@ -275,10 +264,11 @@ func (c *CLI) setupDeleteCommand() *cobra.Command {
 
 // setupInspectionCommand 设置巡检命令
 func (c *CLI) setupInspectionCommand() *cobra.Command {
-  var namespace string
-  var configFile string
-  var outputFormat string
-  var outputFile string
+  var inspectionNamespace string
+  var inspectionEnvVars []string
+  var inspectionConfigFile string
+  var inspectionOutputFormat string
+  var inspectionOutputFile string
 
   inspectionCmd := &cobra.Command{
     Use:   "inspect [name]",
@@ -287,24 +277,21 @@ func (c *CLI) setupInspectionCommand() *cobra.Command {
       "If no name is provided, an interactive selection will be shown.",
     Args: cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-      configFlag, _ := cmd.Flags().GetString("config")
-      formatFlag, _ := cmd.Flags().GetString("format")
-      outputFlag, _ := cmd.Flags().GetString("output")
 
       // 如果没有提供参数，使用交互式选择
       if len(args) == 0 {
-        return c.handleInspectionInteractive(namespaceFlag, configFlag, formatFlag, outputFlag)
+        return c.handleInspectionInteractive(inspectionNamespace, inspectionEnvVars, inspectionConfigFile, inspectionOutputFormat, inspectionOutputFile)
       }
 
-      return c.handleInspection(args[0], namespaceFlag, configFlag, formatFlag, outputFlag)
+      return c.handleInspection(args[0], inspectionNamespace, inspectionEnvVars, inspectionConfigFile, inspectionOutputFormat, inspectionOutputFile)
     },
   }
 
-  inspectionCmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Process namespace")
-  inspectionCmd.Flags().StringVarP(&configFile, "config", "c", "conf/cosmic/rules/admq.yaml", "Inspection rules configuration file")
-  inspectionCmd.Flags().StringVarP(&outputFormat, "format", "f", "text", "Output format (text|yaml|json)")
-  inspectionCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output result to file instead of console")
+  inspectionCmd.Flags().StringVarP(&inspectionNamespace, "namespace", "n", "default", "Process namespace")
+  inspectionCmd.Flags().StringArrayVarP(&inspectionEnvVars, "env", "e", []string{}, "Environment variables to set (format: KEY=VALUE)")
+  inspectionCmd.Flags().StringVarP(&inspectionConfigFile, "config", "c", "conf/cosmic/rules/admq.yaml", "Inspection rules configuration file")
+  inspectionCmd.Flags().StringVarP(&inspectionOutputFormat, "format", "f", "text", "Output format (text|yaml|json)")
+  inspectionCmd.Flags().StringVarP(&inspectionOutputFile, "output", "o", "", "Output result to file instead of console")
 
   inspectionCmd.MarkFlagRequired("config")
   return inspectionCmd
@@ -319,8 +306,7 @@ func (c *CLI) setupListCommand() *cobra.Command {
     Short: "List processes",
     Long:  "List all managed processes",
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-      return c.handleList(namespaceFlag)
+      return c.handleList(listNamespace)
     },
   }
   listCmd.Flags().StringVarP(&listNamespace, "namespace", "n", "default", "Process namespace")
@@ -338,8 +324,7 @@ func (c *CLI) setupStatusCommand() *cobra.Command {
     Long:  "Check the status of a managed process",
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-      return c.handleStatus(args[0], namespaceFlag)
+      return c.handleStatus(args[0], statusNamespace)
     },
   }
   statusCmd.Flags().StringVarP(&statusNamespace, "namespace", "n", "default", "Process namespace")
@@ -357,14 +342,12 @@ func (c *CLI) setupEditCommand() *cobra.Command {
     Long:  "Edit the definition of a managed process using vim editor. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-
       // 如果没有提供参数，使用交互式选择
       if len(args) == 0 {
-        return c.handleEditInteractive(namespaceFlag)
+        return c.handleEditInteractive(editNamespace)
       }
 
-      return c.handleEdit(args[0], namespaceFlag)
+      return c.handleEdit(args[0], editNamespace)
     },
   }
   editCmd.Flags().StringVarP(&editNamespace, "namespace", "n", "default", "Process namespace")
@@ -383,15 +366,12 @@ func (c *CLI) setupGetCommand() *cobra.Command {
     Long:  "Get detailed information about a managed process. If no name is provided, an interactive selection will be shown.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-      formatFlag, _ := cmd.Flags().GetString("format")
-
       // 如果没有提供参数，使用交互式选择
       if len(args) == 0 {
-        return c.handleGetInteractive(formatFlag, namespaceFlag)
+        return c.handleGetInteractive(getFormat, getNamespace)
       }
 
-      return c.handleGet(args[0], formatFlag, namespaceFlag)
+      return c.handleGet(args[0], getFormat, getNamespace)
     },
   }
   getCmd.Flags().StringVarP(&getFormat, "format", "f", "yaml", "Output format (yaml|text)")
@@ -512,7 +492,7 @@ func (c *CLI) setupMountAddCommand() *cobra.Command {
   var volumeName string
   var readOnly bool
   var options []string
-  var ns string
+  var mountAddNamespace string
   var mountID string
 
   cmd := &cobra.Command{
@@ -521,11 +501,6 @@ func (c *CLI) setupMountAddCommand() *cobra.Command {
     Long:  "Add a mount to a managed process. Supports type=bind/tmpfs/volume.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-      if ns != "" {
-        namespaceFlag = ns
-      }
-
       var name string
       if len(args) > 0 {
         name = args[0]
@@ -557,7 +532,7 @@ func (c *CLI) setupMountAddCommand() *cobra.Command {
         return fmt.Errorf("unsupported mount type: %s (use bind|tmpfs|volume)", mType)
       }
 
-      return c.handleProcMountAdd(name, namespaceFlag, mountID, mType, target, source, volumeName, readOnly, options)
+      return c.handleProcMountAdd(name, mountAddNamespace, mountID, mType, target, source, volumeName, readOnly, options)
     },
   }
 
@@ -568,7 +543,7 @@ func (c *CLI) setupMountAddCommand() *cobra.Command {
   cmd.Flags().StringVarP(&volumeName, "volume", "v", "", "Named volume name for volume mount")
   cmd.Flags().BoolVarP(&readOnly, "read-only", "r", false, "Mount as read-only")
   cmd.Flags().StringArrayVarP(&options, "option", "o", []string{}, "Additional mount options (can be repeated)")
-  cmd.Flags().StringVarP(&ns, "namespace", "n", "default", "Process namespace")
+  cmd.Flags().StringVarP(&mountAddNamespace, "namespace", "n", "default", "Process namespace")
   cmd.MarkFlagRequired("name")
   cmd.MarkFlagRequired("target")
 
@@ -577,7 +552,7 @@ func (c *CLI) setupMountAddCommand() *cobra.Command {
 
 // setupMountRemoveCommand 设置挂载移除命令
 func (c *CLI) setupMountRemoveCommand() *cobra.Command {
-  var ns string
+  var mountRemoveNamespace string
   var target string
   var index int
 
@@ -587,11 +562,6 @@ func (c *CLI) setupMountRemoveCommand() *cobra.Command {
     Long:  "Remove a mount from a process by target or index.",
     Args:  cobra.MaximumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-      if ns != "" {
-        namespaceFlag = ns
-      }
-
       var name string
       if len(args) > 0 {
         name = args[0]
@@ -604,11 +574,11 @@ func (c *CLI) setupMountRemoveCommand() *cobra.Command {
         return fmt.Errorf("either --target or --index must be specified")
       }
 
-      return c.handleProcMountRemove(name, namespaceFlag, target, index)
+      return c.handleProcMountRemove(name, mountRemoveNamespace, target, index)
     },
   }
 
-  cmd.Flags().StringVarP(&ns, "namespace", "n", "default", "Process namespace")
+  cmd.Flags().StringVarP(&mountRemoveNamespace, "namespace", "n", "default", "Process namespace")
   cmd.Flags().StringVarP(&target, "target", "T", "", "Target path to remove")
   cmd.Flags().IntVarP(&index, "index", "i", -1, "Mount index to remove")
   return cmd
@@ -616,7 +586,7 @@ func (c *CLI) setupMountRemoveCommand() *cobra.Command {
 
 // setupMountListCommand 设置挂载列表命令
 func (c *CLI) setupMountListCommand() *cobra.Command {
-  var ns string
+  var mountListNamespace string
 
   cmd := &cobra.Command{
     Use:   "list [name]",
@@ -624,15 +594,10 @@ func (c *CLI) setupMountListCommand() *cobra.Command {
     Long:  "List all mounts configured for a managed process.",
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-      namespaceFlag, _ := cmd.Flags().GetString("namespace")
-      if ns != "" {
-        namespaceFlag = ns
-      }
-
-      return c.handleProcMountList(args[0], namespaceFlag)
+      return c.handleProcMountList(args[0], mountListNamespace)
     },
   }
 
-  cmd.Flags().StringVarP(&ns, "namespace", "n", "default", "Process namespace")
+  cmd.Flags().StringVarP(&mountListNamespace, "namespace", "n", "default", "Process namespace")
   return cmd
 }
