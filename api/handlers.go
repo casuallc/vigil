@@ -91,7 +91,7 @@ func (s *Server) handleInspectProcess(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  writeJSON(w, http.StatusOK, map[string]string{"message": result})
+  writeJSON(w, http.StatusOK, result)
 }
 
 // 处理函数更新示例

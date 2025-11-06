@@ -1,8 +1,11 @@
 package cli
 
 import (
+  "bytes"
+  "encoding/json"
   "fmt"
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/inspection"
   "os"
   "os/exec"
   "path/filepath"
@@ -860,5 +863,146 @@ func (c *CLI) handleProcMountList(name, namespace string) error {
     }
     fmt.Printf("%-5d %-8s %-25s %-35s %-8t %-20v\n", i, string(m.Type), src, m.Target, m.ReadOnly, m.Options)
   }
+  return nil
+}
+
+// handleInspection 处理进程巡检命令
+func (c *CLI) handleInspection(name string, namespace string, configFile string, format string, outputFile string) error {
+  // 加载巡检配置文件
+  inspectionConfig, err := inspection.LoadInspectionConfig(configFile)
+  if err != nil {
+    fmt.Printf("ERROR failed to load inspection config: %v\n", err)
+    return nil
+  }
+
+  // 准备巡检请求
+  request := inspection.Request{
+    Envs:   make(map[string]string),
+    Config: *inspectionConfig,
+  }
+
+  // 执行巡检
+  result, err := c.client.InspectProcess(namespace, name, request)
+  if err != nil {
+    fmt.Printf("ERROR failed to inspect process: %v\n", err)
+    return nil
+  }
+
+  // 格式化并输出结果
+  return c.formatAndOutputInspectionResult(result, format, outputFile)
+}
+
+// handleInspectionInteractive 处理交互式进程巡检命令
+func (c *CLI) handleInspectionInteractive(namespace string, configFile string, format string, outputFile string) error {
+  // 获取进程列表
+  processes, err := c.client.ListProcesses(namespace)
+  if err != nil {
+    fmt.Printf("ERROR failed to list processes: %v\n", err)
+    return nil
+  }
+
+  if len(processes) == 0 {
+    fmt.Println("No processes found in namespace:", namespace)
+    return nil
+  }
+
+  // 准备进程选择列表
+  processNames := make([]string, len(processes))
+  for i, p := range processes {
+    processNames[i] = fmt.Sprintf("%s (Status: %s, PID: %d)", p.Metadata.Name, p.Status.Phase, p.Status.PID)
+  }
+
+  // 交互式选择进程
+  idx, _, err := Select(SelectConfig{
+    Label:    "Select process to inspect",
+    Items:    processNames,
+    PageSize: 10,
+  })
+  if err != nil {
+    if err.Error() == "user cancelled" {
+      fmt.Println("Inspection cancelled.")
+      return nil
+    }
+    fmt.Printf("ERROR selection failed: %v\n", err)
+    return nil
+  }
+
+  // 获取选中的进程名称
+  selectedProcess := processes[idx]
+
+  // 执行巡检
+  return c.handleInspection(selectedProcess.Metadata.Name, namespace, configFile, format, outputFile)
+}
+
+// formatAndOutputInspectionResult 格式化并输出巡检结果
+func (c *CLI) formatAndOutputInspectionResult(result inspection.Result, format string, outputFile string) error {
+  var output []byte
+  var err error
+
+  // 根据格式选项格式化输出
+  switch format {
+  case "yaml":
+    output, err = yaml.Marshal(result)
+    if err != nil {
+      return fmt.Errorf("failed to marshal result to yaml: %w", err)
+    }
+  case "json":
+    output, err = json.MarshalIndent(result, "", "  ")
+    if err != nil {
+      return fmt.Errorf("failed to marshal result to json: %w", err)
+    }
+  case "text", "":
+    // 文本格式输出
+    var buf bytes.Buffer
+    fmt.Fprintf(&buf, "========================================================================\n")
+    fmt.Fprintf(&buf, "                  PROCESS INSPECTION REPORT\n")
+    fmt.Fprintf(&buf, "========================================================================\n")
+    fmt.Fprintf(&buf, "System:      %s\n", result.Meta.System)
+    fmt.Fprintf(&buf, "Environment: %s\n", result.Meta.Env)
+    fmt.Fprintf(&buf, "Host:        %s\n", result.Meta.Host)
+    fmt.Fprintf(&buf, "Executed At: %s\n", result.Meta.ExecutedAt.Format(time.RFC3339))
+    fmt.Fprintf(&buf, "Duration:    %.2f seconds\n", result.Meta.DurationSeconds)
+    fmt.Fprintf(&buf, "Status:      %s\n", result.Meta.Status)
+    fmt.Fprintf(&buf, "Summary:     %s\n", result.Meta.Summary)
+    fmt.Fprintf(&buf, "\n")
+    fmt.Fprintf(&buf, "Check Results:\n")
+    fmt.Fprintf(&buf, "------------------------------------------------------------------------\n")
+    fmt.Fprintf(&buf, "%-40s %-10s %-10s %-10s %-40s\n", "Name", "Type", "Status", "Severity", "Message")
+    fmt.Fprintf(&buf, "------------------------------------------------------------------------\n")
+
+    for _, check := range result.Results {
+      fmt.Fprintf(&buf, "%-40s %-10s %-10s %-10s %-40s\n",
+        truncateString(check.Name, 40),
+        check.Type,
+        check.Status,
+        check.Severity,
+        truncateString(check.Message, 40))
+    }
+
+    fmt.Fprintf(&buf, "------------------------------------------------------------------------\n")
+    fmt.Fprintf(&buf, "Total Checks: %d\n", result.Summary.TotalChecks)
+    fmt.Fprintf(&buf, "OK:           %d\n", result.Summary.OK)
+    fmt.Fprintf(&buf, "Warnings:     %d\n", result.Summary.Warn)
+    fmt.Fprintf(&buf, "Critical:     %d\n", result.Summary.Critical)
+    fmt.Fprintf(&buf, "Errors:       %d\n", result.Summary.Error)
+    fmt.Fprintf(&buf, "Overall:      %s\n", result.Summary.OverallStatus)
+    fmt.Fprintf(&buf, "========================================================================\n")
+
+    output = buf.Bytes()
+  default:
+    return fmt.Errorf("unsupported output format: %s", format)
+  }
+
+  // 输出结果
+  if outputFile != "" {
+    if err := os.WriteFile(outputFile, output, 0644); err != nil {
+      fmt.Printf("ERROR failed to write output to file: %v\n", err)
+      return nil
+    }
+    fmt.Printf("Inspection report written to %s\n", outputFile)
+  } else {
+    fmt.Println(string(output))
+  }
+
   return nil
 }

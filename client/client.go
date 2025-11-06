@@ -6,6 +6,7 @@ import (
   "fmt"
   "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/inspection"
   "github.com/casuallc/vigil/proc"
   "io"
   "net/http"
@@ -273,6 +274,26 @@ func (c *Client) UpdateProcess(process proc.ManagedProcess) error {
   }
 
   return nil
+}
+
+// InspectProcess inspect a process
+func (c *Client) InspectProcess(namespace, name string, inspectRequest inspection.Request) (inspection.Result, error) {
+  var result inspection.Result
+
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/inspect", namespace, name), inspectRequest)
+  if err != nil {
+    return result, err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return result, c.errorFromResponse(resp)
+  }
+
+  if err := c.getJSONResponse(resp, &result); err != nil {
+    return result, err
+  }
+
+  return result, nil
 }
 
 func (c *Client) GetSystemResources() (proc.ResourceStats, error) {

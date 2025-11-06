@@ -91,6 +91,7 @@ func (c *CLI) setupProcCommands() *cobra.Command {
   procCmd.AddCommand(c.setupStopCommand())
   procCmd.AddCommand(c.setupRestartCommand())
   procCmd.AddCommand(c.setupDeleteCommand())
+  procCmd.AddCommand(c.setupInspectionCommand())
   procCmd.AddCommand(c.setupListCommand())
   procCmd.AddCommand(c.setupStatusCommand())
   procCmd.AddCommand(c.setupEditCommand())
@@ -270,6 +271,43 @@ func (c *CLI) setupDeleteCommand() *cobra.Command {
   deleteCmd.Flags().StringVarP(&deleteNamespace, "namespace", "n", "default", "Process namespace")
 
   return deleteCmd
+}
+
+// setupInspectionCommand 设置巡检命令
+func (c *CLI) setupInspectionCommand() *cobra.Command {
+  var namespace string
+  var configFile string
+  var outputFormat string
+  var outputFile string
+
+  inspectionCmd := &cobra.Command{
+    Use:   "inspect [name]",
+    Short: "Inspect process health and status",
+    Long: "Run inspection rules against a managed process and generate a detailed report. " +
+      "If no name is provided, an interactive selection will be shown.",
+    Args: cobra.MaximumNArgs(1),
+    RunE: func(cmd *cobra.Command, args []string) error {
+      namespaceFlag, _ := cmd.Flags().GetString("namespace")
+      configFlag, _ := cmd.Flags().GetString("config")
+      formatFlag, _ := cmd.Flags().GetString("format")
+      outputFlag, _ := cmd.Flags().GetString("output")
+
+      // 如果没有提供参数，使用交互式选择
+      if len(args) == 0 {
+        return c.handleInspectionInteractive(namespaceFlag, configFlag, formatFlag, outputFlag)
+      }
+
+      return c.handleInspection(args[0], namespaceFlag, configFlag, formatFlag, outputFlag)
+    },
+  }
+
+  inspectionCmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Process namespace")
+  inspectionCmd.Flags().StringVarP(&configFile, "config", "c", "conf/cosmic/rules/admq.yaml", "Inspection rules configuration file")
+  inspectionCmd.Flags().StringVarP(&outputFormat, "format", "f", "text", "Output format (text|yaml|json)")
+  inspectionCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output result to file instead of console")
+
+  inspectionCmd.MarkFlagRequired("config")
+  return inspectionCmd
 }
 
 // setupListCommand 设置list命令
