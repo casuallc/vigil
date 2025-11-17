@@ -15,7 +15,7 @@ func TestInspectionRules(t *testing.T) {
     log.Fatalf("Failed to read config file: %v", err)
   }
 
-  var inspectionConfig inspection.InspectionConfig
+  var inspectionConfig inspection.Config
   err = yaml.Unmarshal(data, &inspectionConfig)
   if err != nil {
     log.Fatalf("Failed to parse YAML: %v", err)

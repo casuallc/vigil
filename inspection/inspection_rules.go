@@ -74,8 +74,8 @@ type Check struct {
   Logic         string       `yaml:"logic,omitempty"`           // compound only
 }
 
-// InspectionConfig 顶层配置
-type InspectionConfig struct {
+// Config 顶层配置
+type Config struct {
   Version int     `yaml:"version"`
   Meta    Meta    `yaml:"meta"`
   Checks  []Check `yaml:"checks"`
@@ -146,7 +146,7 @@ func (c *Check) GetExpectLines() ([]string, error) {
 }
 
 // CompileExpressions 预编译所有表达式，确保语法合法
-func (config *InspectionConfig) CompileExpressions() error {
+func (config *Config) CompileExpressions() error {
   env := make(map[string]interface{})
   // 注册所有 check ID 为变量（用于 compound logic）
   for _, chk := range config.Checks {
@@ -172,14 +172,14 @@ func (config *InspectionConfig) CompileExpressions() error {
 }
 
 // LoadInspectionConfig 加载巡检配置
-func LoadInspectionConfig(filePath string) (*InspectionConfig, error) {
+func LoadInspectionConfig(filePath string) (*Config, error) {
   data, err := os.ReadFile(filePath)
   if err != nil {
     fmt.Printf("❌  Faied to read file: %s", filePath)
     return nil, err
   }
 
-  var inspectionConfig InspectionConfig
+  var inspectionConfig Config
   err = yaml.Unmarshal(data, &inspectionConfig)
   if err != nil {
     fmt.Printf("❌  Failed to parse inspection config")
