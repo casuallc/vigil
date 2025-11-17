@@ -72,6 +72,10 @@ func (c *CLI) setupCommands() *cobra.Command {
   pulsarCmd := c.setupPulsarCommands()
   rootCmd.AddCommand(pulsarCmd)
 
+  // Add Cosmic commands
+  cosmicCmd := c.setupCosmicCommands()
+  rootCmd.AddCommand(cosmicCmd)
+
   return rootCmd
 }
 

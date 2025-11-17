@@ -955,12 +955,12 @@ func (c *CLI) formatAndOutputInspectionResult(result inspection.Result, format s
     // 文本格式输出
     var buf bytes.Buffer
     const lineWidth = 120
-    
+
     // 打印标题和分隔线
     fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
     fmt.Fprintf(&buf, "%s\n", centerText("PROCESS INSPECTION REPORT", lineWidth))
     fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
-    
+
     // 打印元数据信息（左对齐，冒号对齐）
     fmt.Fprintf(&buf, "%-15s: %s\n", "System", result.Meta.System)
     fmt.Fprintf(&buf, "%-15s: %s\n", "Environment", result.Meta.Env)
@@ -970,12 +970,12 @@ func (c *CLI) formatAndOutputInspectionResult(result inspection.Result, format s
     fmt.Fprintf(&buf, "%-15s: %s\n", "Status", result.Meta.Status)
     fmt.Fprintf(&buf, "%-15s: %s\n", "Summary", result.Meta.Summary)
     fmt.Fprintf(&buf, "\n")
-    
+
     // 打印检查结果标题
     fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
     fmt.Fprintf(&buf, "%-40s %-12s %-12s %-12s %-40s\n", "Name", "Type", "Status", "Severity", "Message")
     fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-    
+
     // 打印检查结果（更合理的列宽）
     for _, check := range result.Results {
       fmt.Fprintf(&buf, "%-40s %-12s %-12s %-12s %-40s\n",
@@ -985,9 +985,9 @@ func (c *CLI) formatAndOutputInspectionResult(result inspection.Result, format s
         truncateString(check.Severity, 12),
         truncateString(check.Message, 40))
     }
-    
+
     fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-    
+
     // 打印统计信息（右对齐数字，使冒号对齐）
     fmt.Fprintf(&buf, "%-12s: %6d\n", "Total Checks", result.Summary.TotalChecks)
     fmt.Fprintf(&buf, "%-12s: %6d\n", "OK", result.Summary.OK)

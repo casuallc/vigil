@@ -34,6 +34,31 @@ type CosmicConfig struct {
   Jobs  []Job  `yaml:"jobs"`
 }
 
+// CosmicJob 表示一个cosmic作业配置
+type CosmicJob struct {
+  Name   string            `yaml:"name"`
+  Host   string            `yaml:"host"`
+  Port   int               `yaml:"port"`
+  Labels map[string]string `yaml:"labels,omitempty"`
+}
+
+// CosmicRequest 表示cosmic巡检请求
+type CosmicRequest struct {
+  Job  CosmicJob         `json:"job"`
+  Envs map[string]string `json:"envs,omitempty"`
+}
+
+// CosmicResult 表示cosmic巡检结果
+type CosmicResult struct {
+  JobName  string        `json:"job_name"`
+  Host     string        `json:"host"`
+  Port     int           `json:"port"`
+  Status   string        `json:"status"`
+  Message  string        `json:"message,omitempty"`
+  Duration float64       `json:"duration,omitempty"`
+  Checks   []CheckResult `json:"checks"`
+}
+
 func LoadCosmicConfig(filePath string) (*CosmicConfig, error) {
   data, err := os.ReadFile(filePath)
   if err != nil {
