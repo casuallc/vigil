@@ -3,10 +3,11 @@ package inspection
 import "time"
 
 type Result struct {
+  ID      string        `yaml:"id" json:"id,omitempty"`
   Version int           `yaml:"version" json:"version"`
-  Meta    MetaInfo      `yaml:"meta" json:"meta"`
+  Meta    ResultMeta    `yaml:"meta" json:"meta"`
   Results []CheckResult `yaml:"results" json:"results"`
-  Summary SummaryInfo   `yaml:"summary" json:"summary"`
+  Summary SummaryInfo   `yaml:"summary" json:"summary,omitempty"`
 }
 
 type MetaInfo struct {
@@ -18,6 +19,15 @@ type MetaInfo struct {
   InspectorVersion string    `yaml:"inspector_version" json:"inspector_version"`
   Status           string    `yaml:"status" json:"status"` // OK / WARN / CRITICAL / ERROR
   Summary          string    `yaml:"summary" json:"summary"`
+}
+
+// ResultMeta 扩展的元信息结构
+type ResultMeta struct {
+  System  string    `yaml:"system" json:"system"`
+  Host    string    `yaml:"host" json:"host"`
+  JobName string    `yaml:"job_name" json:"job_name"`
+  Time    time.Time `yaml:"time" json:"time"`
+  Status  string    `yaml:"status" json:"status"`
 }
 
 type CheckResult struct {

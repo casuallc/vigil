@@ -397,3 +397,23 @@ func (c *Client) ExecuteCommand(command string, isFile bool, envVars []string) (
 
   return string(body), nil
 }
+
+// ExecuteInspection 执行巡检检查
+func (c *Client) ExecuteInspection(request inspection.Request) (inspection.Result, error) {
+  var result inspection.Result
+
+  resp, err := c.doRequest("POST", "/api/inspect", request)
+  if err != nil {
+    return result, err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return result, c.errorFromResponse(resp)
+  }
+
+  if err := c.getJSONResponse(resp, &result); err != nil {
+    return result, err
+  }
+
+  return result, nil
+}

@@ -75,3 +75,17 @@ func LoadCosmicConfig(filePath string) (*CosmicConfig, error) {
   return &cosmicConfig, nil
 
 }
+
+// RuleConfig 定义规则配置类型（使用inspection_rules.go中的Config）
+type RuleConfig Config
+
+// LoadRules 加载规则配置
+func LoadRules(filePath string) (*RuleConfig, error) {
+  config, err := LoadInspectionConfig(filePath)
+  if err != nil {
+    return nil, err
+  }
+
+  ruleConfig := RuleConfig(*config)
+  return &ruleConfig, nil
+}

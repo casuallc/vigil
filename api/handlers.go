@@ -9,7 +9,10 @@ import (
   "github.com/casuallc/vigil/proc"
   "github.com/gorilla/mux"
   "net/http"
+  "regexp"
   "strconv"
+  "strings"
+  "time"
 )
 
 // 以下是所有的处理函数实现（保持不变）
@@ -305,4 +308,191 @@ func dedupMounts(mounts []proc.Mount) []proc.Mount {
     uniq = append(uniq, m)
   }
   return uniq
+}
+
+// handleCosmicInspect 处理cosmic巡检请求
+func (s *Server) handleCosmicInspect(w http.ResponseWriter, r *http.Request) {
+  var req inspection.Request
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %v", err))
+    return
+  }
+
+  // 验证请求参数
+  if len(req.Checks) == 0 {
+    writeError(w, http.StatusBadRequest, "No checks specified in request")
+    return
+  }
+
+  // 执行检查
+  var results []inspection.CheckResult
+  totalChecks := len(req.Checks)
+  passedChecks := 0
+  warningChecks := 0
+  errorChecks := 0
+
+  for _, check := range req.Checks {
+    result := s.executeCheck(check, req.Env)
+    results = append(results, result)
+
+    // 统计检查结果
+    switch strings.ToLower(result.Status) {
+    case "ok", "pass":
+      passedChecks++
+    case "warning":
+      warningChecks++
+    case "error", "fail", "critical":
+      errorChecks++
+    }
+  }
+
+  // 构建响应
+  response := inspection.Result{
+    ID: req.Meta.JobName,
+    Meta: inspection.ResultMeta{
+      System:  req.Meta.System,
+      Host:    req.Meta.Host,
+      JobName: req.Meta.JobName,
+      Time:    time.Now(),
+    },
+    Results: results,
+    Summary: inspection.SummaryInfo{
+      TotalChecks: totalChecks,
+      OK:          passedChecks,
+      Warn:        warningChecks,
+      Critical:    errorChecks,
+    },
+  }
+
+  writeJSON(w, http.StatusOK, response)
+}
+
+// executeCheck 执行单个检查项
+func (s *Server) executeCheck(check inspection.Check, envVars []string) inspection.CheckResult {
+  // 记录开始时间
+  startTime := time.Now()
+  result := s.executeScriptCheck(check, envVars)
+
+  // 计算执行时间
+  result.DurationMs = int64(int(time.Since(startTime).Milliseconds()))
+
+  return result
+}
+
+// executeScriptCheck 执行脚本检查
+func (s *Server) executeScriptCheck(check inspection.Check, envVars []string) inspection.CheckResult {
+  result := inspection.CheckResult{
+    ID:       check.ID,
+    Name:     check.Name,
+    Type:     check.Type,
+    Status:   "ok",
+    Severity: "info",
+  }
+
+  // 获取命令
+  commandLines, err := check.GetCommandLines()
+  if err != nil || len(commandLines) == 0 {
+    result.Status = "error"
+    result.Severity = "critical"
+    result.Message = fmt.Sprintf("Failed to get command: %v", err)
+    return result
+  }
+
+  // 执行命令
+  output, err := common.ExecuteCommand(commandLines[0], envVars)
+  if err != nil {
+    result.Status = "error"
+    result.Severity = "critical"
+    result.Message = fmt.Sprintf("Command execution failed: %v, output: %s", err, output)
+    return result
+  }
+
+  // 解析输出
+  result = s.parseCheckOutput(check, output, result)
+  return result
+}
+
+// parseCheckOutput 解析检查输出
+func (s *Server) parseCheckOutput(check inspection.Check, output string, result inspection.CheckResult) inspection.CheckResult {
+  if check.Parse == nil {
+    result.Message = output
+    return result
+  }
+
+  switch check.Parse.Kind {
+  case "regex":
+    if check.Parse.Pattern != "" {
+      re := regexp.MustCompile(check.Parse.Pattern)
+      if matches := re.FindStringSubmatch(output); len(matches) > 1 {
+        if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
+          result.Value = val
+        }
+      }
+    }
+  case "json":
+    var data map[string]interface{}
+    if err := json.Unmarshal([]byte(output), &data); err == nil {
+      if val, ok := data[check.Parse.Path]; ok {
+        if valFloat, err := strconv.ParseFloat(fmt.Sprintf("%v", val), 64); err == nil {
+          result.Value = valFloat
+        }
+      }
+    }
+  case "threshold":
+    // 阈值解析在executeScriptCheck中处理
+  default:
+    result.Message = output
+  }
+
+  return result
+}
+
+// evaluateThreshold 评估阈值
+func (s *Server) evaluateThreshold(value float64, threshold *inspection.Threshold, result inspection.CheckResult) inspection.CheckResult {
+  if threshold == nil {
+    return result
+  }
+
+  switch threshold.Operator {
+  case ">":
+    if value > threshold.Value {
+      result.Status = "error"
+      result.Severity = "critical"
+      result.Message = fmt.Sprintf("Critical: value %.2f exceeds threshold %.2f", value, threshold.Value)
+    }
+  case ">=":
+    if value >= threshold.Value {
+      result.Status = "error"
+      result.Severity = "critical"
+      result.Message = fmt.Sprintf("Critical: value %.2f exceeds or equals threshold %.2f", value, threshold.Value)
+    }
+  case "<":
+    if value < threshold.Value {
+      result.Status = "error"
+      result.Severity = "critical"
+      result.Message = fmt.Sprintf("Critical: value %.2f below threshold %.2f", value, threshold.Value)
+    }
+  case "<=":
+    if value <= threshold.Value {
+      result.Status = "error"
+      result.Severity = "critical"
+      result.Message = fmt.Sprintf("Critical: value %.2f below or equals threshold %.2f", value, threshold.Value)
+    }
+  case "==":
+    if value == threshold.Value {
+      result.Status = "error"
+      result.Severity = "critical"
+      result.Message = fmt.Sprintf("Critical: value %.2f equals threshold %.2f", value, threshold.Value)
+    }
+  case "!=":
+    if value != threshold.Value {
+      result.Status = "error"
+      result.Severity = "critical"
+      result.Message = fmt.Sprintf("Critical: value %.2f not equals threshold %.2f", value, threshold.Value)
+    }
+  default:
+    result.Message = fmt.Sprintf("Unknown operator: %s", threshold.Operator)
+  }
+
+  return result
 }

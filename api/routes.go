@@ -34,5 +34,8 @@ func (s *Server) Router() *mux.Router {
   // Execute command endpoint
   r.HandleFunc("/api/exec", s.handleExecuteCommand).Methods("POST")
 
+  // Cosmic inspection endpoint
+  r.HandleFunc("/api/inspect", s.handleCosmicInspect).Methods("POST")
+
   return r
 }

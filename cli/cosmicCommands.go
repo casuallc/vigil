@@ -9,6 +9,7 @@ import (
   "gopkg.in/yaml.v3"
   "os"
   "strings"
+  "time"
 )
 
 // setupCosmicCommands 设置cosmic相关命令
@@ -99,6 +100,18 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
   // 执行巡检
   var allResults []inspection.CosmicResult
   for _, job := range jobsToInspect {
+    // 加载作业规则
+    var inspectionRules *inspection.RuleConfig
+    if len(job.Rules) > 0 {
+      // 使用第一个规则文件（可以根据需要扩展为支持多个规则）
+      rulePath := job.Rules[0].Path
+      inspectionRules, err = inspection.LoadRules(rulePath)
+      if err != nil {
+        fmt.Printf("WARNING failed to load rules for job '%s' from %s: %v\n", job.Name, rulePath, err)
+        // 继续执行，但会缺少规则检查
+      }
+    }
+
     for _, targetName := range job.Targets {
       node, exists := nodeMap[targetName]
       if !exists {
@@ -108,67 +121,131 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
 
       fmt.Printf("Inspecting job: %s on node %s (%s:%d)\n", job.Name, node.Name, node.IP, node.Port)
 
-      // 构建cosmic作业配置
-      cosmicJob := inspection.CosmicJob{
-        Name: job.Name,
-        Host: node.IP,
-        Port: node.Port,
-      }
-
-      // 添加标签
-      if cosmicJob.Labels == nil {
-        cosmicJob.Labels = make(map[string]string)
-      }
-      cosmicJob.Labels["node"] = node.Name
-
-      // 添加作业环境变量
-      for _, env := range job.Envs {
-        cosmicJob.Labels[env.Name] = env.Value
-      }
-
-      // 构建巡检请求
-      request := inspection.CosmicRequest{
-        Job:  cosmicJob,
-        Envs: envMap,
-      }
-
-      // 执行巡检（这里使用模拟数据，实际应该调用c.client.CosmicInspect）
-      result := inspection.CosmicResult{
-        JobName:  job.Name,
-        Host:     node.IP,
-        Port:     node.Port,
-        Status:   "ok",
-        Message:  fmt.Sprintf("Successfully inspected %s on %s", job.Name, node.Name),
-        Duration: 1.5,
-        Checks: []inspection.CheckResult{
-          {
-            ID:      "process_check",
-            Name:    "Process Status",
-            Type:    "process",
-            Status:  "ok",
-            Message: "All processes running normally",
-            //Duration: 0.5,
-            Severity: "info",
-          },
-          {
-            ID:      "memory_check",
-            Name:    "Memory Usage",
-            Type:    "performance",
-            Status:  "warning",
-            Value:   85.5,
-            Message: "Memory usage is high (85.5%)",
-            //Duration: 0.3,
-            Severity: "warning",
-          },
-        },
-      }
-
+      // 执行实际巡检
+      result := c.performCosmicInspection(job, node, inspectionRules, envMap)
       allResults = append(allResults, result)
     }
   }
 
   // 格式化输出结果
   return c.formatAndOutputCosmicResults(allResults, outputFormat, outputFile)
+}
+
+// performRuleBasedInspection 基于规则配置执行巡检
+func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Node, rules *inspection.RuleConfig, envMap map[string]string, result *inspection.CosmicResult) error {
+  // 构建检查请求
+  checkRequest := inspection.Request{
+    Version: rules.Version,
+    Meta: inspection.RequestMeta{
+      System:  rules.Meta.System,
+      Host:    node.IP,
+      JobName: job.Name,
+    },
+    Checks: rules.Checks,
+    //Env:    envs,
+  }
+
+  // 执行远程检查
+  checkResult, err := c.client.ExecuteInspection(checkRequest)
+  if err != nil {
+    return nil
+  }
+
+  // 转换检查结果
+  result.Status = strings.ToLower(checkResult.Summary.OverallStatus)
+  result.Message = fmt.Sprintf("Inspection completed with status: %s", checkResult.Summary.OverallStatus)
+
+  // 转换检查项
+  for _, check := range checkResult.Results {
+    result.Checks = append(result.Checks, inspection.CheckResult{
+      ID:         check.ID,
+      Name:       check.Name,
+      Type:       check.Type,
+      Value:      check.Value,
+      Unit:       check.Unit,
+      Status:     strings.ToLower(check.Status),
+      Severity:   strings.ToLower(check.Severity),
+      Message:    check.Message,
+      DurationMs: check.DurationMs,
+    })
+  }
+
+  return nil
+}
+
+// evaluateThreshold 评估阈值
+func (c *CLI) evaluateThreshold(value float64, threshold *inspection.Threshold) bool {
+  if threshold == nil {
+    return false
+  }
+
+  switch threshold.Operator {
+  case ">":
+    return value > threshold.Value
+  case ">=":
+    return value >= threshold.Value
+  case "<":
+    return value < threshold.Value
+  case "<=":
+    return value <= threshold.Value
+  case "==":
+    return value == threshold.Value
+  case "!=":
+    return value != threshold.Value
+  default:
+    return false
+  }
+}
+
+// performCosmicInspection 执行具体的cosmic系统巡检
+func (c *CLI) performCosmicInspection(job inspection.Job, node inspection.Node, rules *inspection.RuleConfig, envMap map[string]string) inspection.CosmicResult {
+  result := inspection.CosmicResult{
+    JobName: job.Name,
+    Host:    node.IP,
+    Port:    node.Port,
+    Status:  "ok",
+    Checks:  []inspection.CheckResult{},
+  }
+
+  // 记录开始时间
+  startTime := time.Now()
+
+  // 构建环境变量（合并作业配置和命令行参数）
+  allEnvs := make(map[string]string)
+
+  // 添加作业环境变量
+  for _, env := range job.Envs {
+    allEnvs[env.Name] = env.Value
+  }
+
+  // 添加命令行环境变量（优先级更高）
+  for k, v := range envMap {
+    allEnvs[k] = v
+  }
+
+  // 添加节点信息到环境变量
+  allEnvs["NODE_IP"] = node.IP
+  allEnvs["NODE_PORT"] = fmt.Sprintf("%d", node.Port)
+  allEnvs["NODE_NAME"] = node.Name
+  allEnvs["JOB_NAME"] = job.Name
+
+  tryInspect := func() error {
+    // 如果存在规则配置，使用规则进行巡检
+    if rules != nil {
+      return c.performRuleBasedInspection(job, node, rules, allEnvs, &result)
+    }
+
+    return nil
+  }
+
+  if err := tryInspect(); err != nil {
+    result.Status = "error"
+    result.Message = fmt.Sprintf("Inspection failed: %v", err)
+  }
+
+  // 计算执行时间
+  result.Duration = time.Since(startTime).Seconds()
+  return result
 }
 
 // formatAndOutputCosmicResults 格式化并输出cosmic巡检结果

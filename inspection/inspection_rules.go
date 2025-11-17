@@ -44,12 +44,13 @@ type Threshold struct {
   When     string       `yaml:"when"`
   Severity SeverityType `yaml:"severity"`
   Message  string       `yaml:"message,omitempty"`
+  Value    float64
+  Operator string
 }
 
 // Meta 元信息
 type Meta struct {
   System string   `yaml:"system"`
-  Env    string   `yaml:"env"`
   Owner  string   `yaml:"owner"`
   Tags   []string `yaml:"tags,omitempty"`
 }
