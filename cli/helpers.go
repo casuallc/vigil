@@ -4,6 +4,7 @@ import (
   "bytes"
   "fmt"
   "github.com/casuallc/vigil/proc"
+  "strings"
   "time"
 )
 
@@ -65,4 +66,13 @@ func (c *CLI) selectProcessInteractively(namespace string, label string) (proc.M
   }
 
   return processes[idx], nil
+}
+
+func firstNonEmptyLine(msg string) string {
+  for _, line := range strings.Split(msg, "\n") {
+    if trimmed := strings.TrimSpace(line); trimmed != "" {
+      return trimmed
+    }
+  }
+  return ""
 }

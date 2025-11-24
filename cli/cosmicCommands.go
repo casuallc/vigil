@@ -6,9 +6,12 @@ import (
   "fmt"
   "github.com/casuallc/vigil/client"
   "github.com/casuallc/vigil/inspection"
+  "github.com/pterm/pterm"
   "github.com/spf13/cobra"
   "gopkg.in/yaml.v3"
   "os"
+  "os/exec"
+  "strconv"
   "strings"
   "time"
 )
@@ -44,11 +47,11 @@ func (c *CLI) setupCosmicInspectCommand() *cobra.Command {
     },
   }
 
-  inspectCmd.Flags().StringVarP(&configFile, "config", "c", "conf/cosmic/cosmic.yaml", "Cosmic configuration file path")
+  inspectCmd.Flags().StringVarP(&configFile, "config", "c", "conf/cosmic/cosmic.yml", "Cosmic configuration file path")
   inspectCmd.Flags().StringVarP(&jobName, "job", "j", "", "Specific job name to inspect (if not specified, all jobs will be inspected)")
   inspectCmd.Flags().StringArrayVarP(&envVars, "env", "e", []string{}, "Environment variables to override (format: KEY=VALUE)")
-  inspectCmd.Flags().StringVarP(&outputFormat, "format", "f", "text", "Output format (text|yaml|json)")
   inspectCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output result to file instead of console")
+  inspectCmd.Flags().StringVarP(&outputFormat, "format", "f", "text", "Output format (text|json|yaml|markdown|html|pdf)")
 
   return inspectCmd
 }
@@ -57,7 +60,7 @@ func (c *CLI) setupCosmicInspectCommand() *cobra.Command {
 func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []string, outputFormat string, outputFile string) error {
   fmt.Println("=== Cosmic System Inspection Started ===")
   startTime := time.Now()
-  
+
   // 加载cosmic配置文件
   cosmicConfig, err := inspection.LoadCosmicConfig(configFile)
   if err != nil {
@@ -108,10 +111,10 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
   // 执行巡检
   var allResults []inspection.CosmicResult
   var summaryBySoftware = make(map[string][]inspection.CosmicResult)
-  
+
   for _, job := range jobsToInspect {
     fmt.Printf("\n=== Processing Software: %s ===\n", job.Name)
-    
+
     // 加载作业规则
     var inspectionRules *inspection.RuleConfig
     if len(job.Rules) > 0 {
@@ -119,13 +122,13 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
       for _, rule := range job.Rules {
         rulePath := rule.Path
         fmt.Printf("Loading rules for %s from %s\n", job.Name, rulePath)
-        
+
         rules, err := inspection.LoadRules(rulePath)
         if err != nil {
           fmt.Printf("WARNING failed to load rules '%s' for job '%s' from %s: %v\n", rule.Name, job.Name, rulePath, err)
           continue
         }
-        
+
         // 如果是第一个规则文件，直接赋值；否则合并检查项
         if inspectionRules == nil {
           inspectionRules = rules
@@ -133,7 +136,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
           inspectionRules.Checks = append(inspectionRules.Checks, rules.Checks...)
         }
       }
-      
+
       if inspectionRules != nil {
         fmt.Printf("Successfully loaded %d inspection rules for %s\n", len(inspectionRules.Checks), job.Name)
       }
@@ -154,7 +157,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
       // 执行实际巡检
       result := c.performCosmicInspection(job, node, inspectionRules, envMap)
       allResults = append(allResults, result)
-      
+
       // 按软件分组存储结果
       summaryBySoftware[job.Name] = append(summaryBySoftware[job.Name], result)
     }
@@ -165,7 +168,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
   for software, results := range summaryBySoftware {
     fmt.Printf("Software: %s\n", software)
     fmt.Printf("- Total nodes: %d\n", len(results))
-    
+
     var success, warning, errorCount int
     for _, r := range results {
       switch r.Status {
@@ -177,12 +180,12 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
         errorCount++
       }
     }
-    
+
     fmt.Printf("- Success: %d\n", success)
     fmt.Printf("- Warning: %d\n", warning)
     fmt.Printf("- Error: %d\n", errorCount)
   }
-  
+
   fmt.Printf("\nTotal inspection duration: %.2f seconds\n", time.Since(startTime).Seconds())
 
   // 格式化输出结果
@@ -196,7 +199,7 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   for k, v := range envMap {
     envList = append(envList, fmt.Sprintf("%s=%s", k, v))
   }
-  
+
   // 构建检查请求
   checkRequest := inspection.Request{
     Version: rules.Version,
@@ -217,7 +220,7 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
 
   // 为每个节点创建客户端
   nodeClient := client.NewClient(fmt.Sprintf("http://%s:%d", node.IP, node.Port))
-  
+
   // 执行远程检查
   checkResult, err := nodeClient.ExecuteInspection(checkRequest)
   if err != nil {
@@ -259,7 +262,7 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
       errorCount++
     }
   }
-  
+
   fmt.Printf("Inspection results for node %s:\n", node.Name)
   fmt.Printf("- Total checks: %d\n", len(result.Checks))
   fmt.Printf("- Passed: %d\n", passed)
@@ -331,7 +334,7 @@ func (c *CLI) performCosmicInspection(job inspection.Job, node inspection.Node, 
     if rules != nil {
       return c.performRuleBasedInspection(job, node, rules, allEnvs, &result)
     }
-    
+
     // 如果没有规则，进行基本的连通性检查
     fmt.Printf("No rules specified for job '%s', performing basic connectivity check\n", job.Name)
     result.Status = "warning"
@@ -354,7 +357,6 @@ func (c *CLI) formatAndOutputCosmicResults(results []inspection.CosmicResult, fo
   var output []byte
   var err error
 
-  // 根据格式选项格式化输出
   switch format {
   case "yaml":
     output, err = yaml.Marshal(results)
@@ -367,203 +369,711 @@ func (c *CLI) formatAndOutputCosmicResults(results []inspection.CosmicResult, fo
       return fmt.Errorf("failed to marshal cosmic results to json: %w", err)
     }
   case "text", "":
-    // 文本格式输出
-    var buf bytes.Buffer
-    const lineWidth = 120
-
-    // 打印标题和分隔线
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
-    fmt.Fprintf(&buf, "%s\n", centerText("COSMIC SYSTEM INSPECTION REPORT", lineWidth))
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
-    fmt.Fprintf(&buf, "Generated at: %s\n", time.Now().Format("2006-01-02 15:04:05"))
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-
-    // 统计信息
-    totalJobs := len(results)
-    successJobs := 0
-    failedJobs := 0
-    totalChecks := 0
-    totalPassed := 0
-    totalWarnings := 0
-    totalCritical := 0
-    totalErrors := 0
-
-    // 按软件分组统计
-    softwareStats := make(map[string]map[string]int)
-    nodeStats := make(map[string]map[string]int)
-    
-    for _, result := range results {
-      // 初始化软件统计
-      if _, exists := softwareStats[result.JobName]; !exists {
-        softwareStats[result.JobName] = map[string]int{
-          "total":   0,
-          "success": 0,
-          "warning": 0,
-          "error":   0,
-          "checks":  0,
-        }
-      }
-      
-      // 初始化节点统计
-      if _, exists := nodeStats[result.Host]; !exists {
-        nodeStats[result.Host] = map[string]int{
-          "total":   0,
-          "success": 0,
-          "warning": 0,
-          "error":   0,
-          "checks":  0,
-        }
-      }
-      
-      // 更新统计
-      if result.Status == "ok" {
-        successJobs++
-        softwareStats[result.JobName]["success"]++
-        nodeStats[result.Host]["success"]++
-      } else if result.Status == "warning" {
-        softwareStats[result.JobName]["warning"]++
-        nodeStats[result.Host]["warning"]++
-      } else {
-        failedJobs++
-        softwareStats[result.JobName]["error"]++
-        nodeStats[result.Host]["error"]++
-      }
-      
-      softwareStats[result.JobName]["total"]++
-      nodeStats[result.Host]["total"]++
-
-      for _, check := range result.Checks {
-        totalChecks++
-        softwareStats[result.JobName]["checks"]++
-        nodeStats[result.Host]["checks"]++
-        
-        switch check.Status {
-        case "ok":
-          totalPassed++
-        case "warning":
-          totalWarnings++
-        case "critical":
-          totalCritical++
-        case "error":
-          totalErrors++
-        }
-      }
-    }
-
-    // 打印总体统计
-    fmt.Fprintf(&buf, "%-15s: %d\n", "Total Jobs", totalJobs)
-    fmt.Fprintf(&buf, "%-15s: %d\n", "Success Jobs", successJobs)
-    fmt.Fprintf(&buf, "%-15s: %d\n", "Failed Jobs", failedJobs)
-    fmt.Fprintf(&buf, "%-15s: %d\n", "Total Checks", totalChecks)
-    fmt.Fprintf(&buf, "%-15s: %d\n", "Passed", totalPassed)
-    fmt.Fprintf(&buf, "%-15s: %d\n", "Warnings", totalWarnings)
-    fmt.Fprintf(&buf, "%-15s: %d\n", "Critical", totalCritical)
-    fmt.Fprintf(&buf, "%-15s: %d\n", "Errors", totalErrors)
-
-    if totalJobs > 0 {
-      successRate := float64(successJobs) * 100.0 / float64(totalJobs)
-      fmt.Fprintf(&buf, "%-15s: %.1f%%\n", "Success Rate", successRate)
-    }
-
-    // 按软件分组统计
-    fmt.Fprintf(&buf, "\n%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-    fmt.Fprintf(&buf, "%s\n", centerText("SOFTWARE SUMMARY", lineWidth))
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-    fmt.Fprintf(&buf, "%-30s %-10s %-10s %-10s %-10s %-10s\n", 
-      "Software", "Nodes", "Success", "Warning", "Error", "Checks")
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-    
-    for software, stats := range softwareStats {
-      fmt.Fprintf(&buf, "%-30s %-10d %-10d %-10d %-10d %-10d\n",
-        truncateString(software, 30),
-        stats["total"],
-        stats["success"],
-        stats["warning"],
-        stats["error"],
-        stats["checks"])
-    }
-
-    // 按节点分组统计
-    fmt.Fprintf(&buf, "\n%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-    fmt.Fprintf(&buf, "%s\n", centerText("NODE SUMMARY", lineWidth))
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-    fmt.Fprintf(&buf, "%-30s %-10s %-10s %-10s %-10s %-10s\n", 
-      "Node", "Jobs", "Success", "Warning", "Error", "Checks")
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-    
-    for node, stats := range nodeStats {
-      fmt.Fprintf(&buf, "%-30s %-10d %-10d %-10d %-10d %-10d\n",
-        truncateString(node, 30),
-        stats["total"],
-        stats["success"],
-        stats["warning"],
-        stats["error"],
-        stats["checks"])
-    }
-
-    // 按软件-节点维度详细展示结果
-    fmt.Fprintf(&buf, "\n%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
-    fmt.Fprintf(&buf, "%s\n", centerText("DETAILED INSPECTION RESULTS", lineWidth))
-    fmt.Fprintf(&buf, "%s\n\n", string(bytes.Repeat([]byte("="), lineWidth)))
-    
-    // 按软件分组展示详细结果
-    softwareResults := make(map[string][]inspection.CosmicResult)
-    for _, result := range results {
-      softwareResults[result.JobName] = append(softwareResults[result.JobName], result)
-    }
-    
-    for software, softwareRes := range softwareResults {
-      fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("*"), lineWidth)))
-      fmt.Fprintf(&buf, "%s\n", centerText("SOFTWARE: "+software, lineWidth))
-      fmt.Fprintf(&buf, "%s\n\n", string(bytes.Repeat([]byte("*"), lineWidth)))
-      
-      for _, result := range softwareRes {
-        fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-        fmt.Fprintf(&buf, "Node: %s (%s:%d)\n", result.Host, result.Host, result.Port)
-        fmt.Fprintf(&buf, "Status: %s\n", result.Status)
-        if result.Message != "" {
-          fmt.Fprintf(&buf, "Message: %s\n", result.Message)
-        }
-        if result.Duration > 0 {
-          fmt.Fprintf(&buf, "Duration: %.2fs\n", result.Duration)
-        }
-
-        if len(result.Checks) > 0 {
-          fmt.Fprintf(&buf, "\nChecks (%d):\n", len(result.Checks))
-          fmt.Fprintf(&buf, "%-40s %-12s %-12s %-40s\n", "Name", "Type", "Status", "Message")
-          fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), 104)))
-
-          for _, check := range result.Checks {
-            fmt.Fprintf(&buf, "%-40s %-12s %-12s %-40s\n",
-              truncateString(check.Name, 40),
-              truncateString(check.Type, 12),
-              truncateString(check.Status, 12),
-              truncateString(check.Message, 40))
-          }
-        }
-        fmt.Fprintf(&buf, "\n")
-      }
-    }
-
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
-    fmt.Fprintf(&buf, "%s\n", centerText("END OF REPORT", lineWidth))
-    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
-
-    output = buf.Bytes()
+    output = formatToText(results, outputFile)
+  case "html":
+    output = formatToHtml(results, outputFile)
+  case "markdown":
+    output = formatToMarkdown(results, outputFile)
+  case "pdf":
+    return formatToPdf(results, outputFile)
   default:
     return fmt.Errorf("unsupported output format: %s", format)
   }
 
-  // 输出结果
+  // === 输出 ===
   if outputFile != "" {
     if err := os.WriteFile(outputFile, output, 0644); err != nil {
-      fmt.Printf("ERROR failed to write cosmic output to file: %v\n", err)
-      return fmt.Errorf("failed to write cosmic output to file: %w", err)
+      return fmt.Errorf("failed to write output file: %w", err)
     }
-    fmt.Printf("✅ Cosmic inspection report written to %s\n", outputFile)
+    pterm.Success.Printf("Report written to: %s\n", outputFile)
   } else {
-    fmt.Println(string(output))
+    fmt.Print(string(output))
   }
 
   return nil
+}
+
+// formatToText 格式化并输出cosmic巡检结果为纯文本
+func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
+  var buf bytes.Buffer
+  const lineWidth = 120
+
+  // === 报告标题 ===
+  headerText := pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgBlue)).
+    Sprint("COSMIC SYSTEM INSPECTION REPORT")
+  fmt.Fprintf(&buf, "%s\n", headerText)
+  fmt.Fprintf(&buf, "Generated at: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+  fmt.Fprintf(&buf, "%s\n\n", strings.Repeat("=", lineWidth))
+
+  // === 收集统计信息 ===
+  totalJobs := len(results)
+  successJobs, warningJobs, failedJobs := 0, 0, 0
+  totalChecks, totalPassed, totalWarnings, totalCritical, totalErrors := 0, 0, 0, 0, 0
+
+  softwareResults := make(map[string][]inspection.CosmicResult)
+  for _, r := range results {
+    softwareResults[r.JobName] = append(softwareResults[r.JobName], r)
+
+    switch r.Status {
+    case "ok":
+      successJobs++
+    case "warning":
+      warningJobs++
+    default: // "error", "critical", etc.
+      failedJobs++
+    }
+
+    for _, check := range r.Checks {
+      totalChecks++
+      switch check.Status {
+      case "ok":
+        totalPassed++
+      case "warning":
+        totalWarnings++
+      case "critical":
+        totalCritical++
+      case "error":
+        totalErrors++
+      }
+    }
+  }
+
+  // === 总体统计（自动适配终端/文件）===
+  statsText := fmt.Sprintf(
+    "• Total Jobs: %d\n"+
+      "• Success: %s | Warnings: %s | Failures: %s\n"+
+      "• Total Checks: %d\n"+
+      "• Passed: %s | Warnings: %s | Critical: %s | Errors: %s",
+    totalJobs,
+    pterm.Green(strconv.Itoa(successJobs)),
+    pterm.Yellow(strconv.Itoa(warningJobs)),
+    pterm.Red(strconv.Itoa(failedJobs)),
+    totalChecks,
+    pterm.Green(strconv.Itoa(totalPassed)),
+    pterm.Yellow(strconv.Itoa(totalWarnings)),
+    pterm.Red(strconv.Itoa(totalCritical)),
+    pterm.Red(strconv.Itoa(totalErrors)),
+  )
+
+  var statsOutput string
+  if pterm.Output && outputFile == "" {
+    statsOutput = pterm.DefaultBox.WithTitle("Overall Statistics").Sprint(statsText)
+  } else {
+    statsOutput = "Overall Statistics\n" + strings.Repeat("-", 30) + "\n" + statsText
+  }
+  fmt.Fprintf(&buf, "%s\n\n", statsOutput)
+
+  // === 按软件分组输出详情 ===
+  for software, jobResults := range softwareResults {
+    softwareHeader := pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgCyan, pterm.FgBlack)).
+      Sprint(" SOFTWARE: " + software + " ")
+    fmt.Fprintf(&buf, "%s\n\n", softwareHeader)
+
+    for _, result := range jobResults {
+      fmt.Fprintf(&buf, "→ Node: %s:%d (%s)\n", result.Host, result.Port, result.Host)
+
+      var statusLine string
+      switch result.Status {
+      case "ok":
+        statusLine = pterm.Success.Sprint("Status: OK")
+      case "warning":
+        statusLine = pterm.Warning.Sprint("Status: WARNING")
+      default:
+        statusLine = pterm.Error.Sprint("Status: FAILED")
+      }
+      fmt.Fprintf(&buf, "  %s", statusLine)
+      if result.Duration > 0 {
+        fmt.Fprintf(&buf, " | Duration: %.2fs", result.Duration)
+      }
+      fmt.Fprintf(&buf, "\n")
+
+      if result.Message != "" {
+        fmt.Fprintf(&buf, "  Message: %s\n", truncateString(result.Message, 100))
+      }
+
+      if len(result.Checks) > 0 {
+        fmt.Fprintf(&buf, "\n  Checks (%d):\n", len(result.Checks))
+
+        tableData := [][]string{{"Name", "Type", "Status", "Message"}}
+        for _, check := range result.Checks {
+          name := truncateString(check.Name, 25)
+          typ := truncateString(check.Type, 12)
+          msg := truncateString(firstNonEmptyLine(check.Message), 40)
+
+          statusStr := check.Status
+          // 终端输出带颜色，文件输出用纯文本
+          if outputFile == "" && pterm.Output {
+            switch check.Status {
+            case "ok":
+              statusStr = pterm.Green("OK")
+            case "warning":
+              statusStr = pterm.Yellow("WARN")
+            case "critical", "error":
+              statusStr = pterm.Red("FAIL")
+            }
+          } else {
+            switch check.Status {
+            case "ok":
+              statusStr = "OK"
+            case "warning":
+              statusStr = "WARN"
+            case "critical", "error":
+              statusStr = "FAIL"
+            }
+          }
+
+          tableData = append(tableData, []string{name, typ, statusStr, msg})
+        }
+
+        pterm.DefaultTable.
+          WithWriter(&buf).
+          WithHasHeader().
+          WithBoxed().
+          WithLeftAlignment().
+          WithData(tableData).
+          Render()
+      }
+      fmt.Fprintf(&buf, "\n")
+    }
+  }
+
+  // === 结束标记 ===
+  endText := pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgGray, pterm.FgWhite)).
+    Sprint(" END OF REPORT ")
+  fmt.Fprintf(&buf, "\n%s\n", endText)
+  return buf.Bytes()
+}
+
+// formatToMarkdown 辅助函数：将检查结果格式化为Markdown
+func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []byte {
+  var buf bytes.Buffer
+
+  // 报告标题
+  fmt.Fprintf(&buf, "# COSMIC SYSTEM INSPECTION REPORT\n\n")
+  fmt.Fprintf(&buf, "> Generated at: `%s`\n\n", time.Now().Format("2006-01-02 15:04:05"))
+
+  // 收集统计
+  totalJobs := len(results)
+  successJobs, warningJobs, failedJobs := 0, 0, 0
+  totalChecks, totalPassed, totalWarnings, totalCritical, totalErrors := 0, 0, 0, 0, 0
+
+  softwareResults := make(map[string][]inspection.CosmicResult)
+  for _, r := range results {
+    softwareResults[r.JobName] = append(softwareResults[r.JobName], r)
+    switch r.Status {
+    case "ok":
+      successJobs++
+    case "warning":
+      warningJobs++
+    default:
+      failedJobs++
+    }
+    for _, check := range r.Checks {
+      totalChecks++
+      switch check.Status {
+      case "ok":
+        totalPassed++
+      case "warning":
+        totalWarnings++
+      case "critical":
+        totalCritical++
+      case "error":
+        totalErrors++
+      }
+    }
+  }
+
+  // 总体统计表格
+  fmt.Fprintf(&buf, "## 📊 Overall Statistics\n\n")
+  fmt.Fprintf(&buf, "| Metric | Value |\n")
+  fmt.Fprintf(&buf, "|--------|-------|\n")
+  fmt.Fprintf(&buf, "| Total Jobs | %d |\n", totalJobs)
+  fmt.Fprintf(&buf, "| Success | %d ✅ |\n", successJobs)
+  fmt.Fprintf(&buf, "| Warnings | %d ⚠️ |\n", warningJobs)
+  fmt.Fprintf(&buf, "| Failures | %d ❌ |\n", failedJobs)
+  fmt.Fprintf(&buf, "| Total Checks | %d |\n", totalChecks)
+  fmt.Fprintf(&buf, "| Passed | %d ✅ |\n", totalPassed)
+  fmt.Fprintf(&buf, "| Warnings | %d ⚠️ |\n", totalWarnings)
+  fmt.Fprintf(&buf, "| Critical | %d ❌ |\n", totalCritical)
+  fmt.Fprintf(&buf, "| Errors | %d ❌ |\n", totalErrors)
+  fmt.Fprintf(&buf, "\n")
+
+  // 按软件分组
+  fmt.Fprintf(&buf, "## 🧩 Software Details\n\n")
+  for software, jobResults := range softwareResults {
+    fmt.Fprintf(&buf, "### 📦 %s\n\n", software)
+
+    // 软件级表格
+    fmt.Fprintf(&buf, "| Node | Status | Duration | Message |\n")
+    fmt.Fprintf(&buf, "|------|--------|----------|---------|\n")
+
+    for _, result := range jobResults {
+      // 状态图标
+      statusIcon := "❓"
+      statusText := result.Status
+      switch result.Status {
+      case "ok":
+        statusIcon = "✅"
+        statusText = "OK"
+      case "warning":
+        statusIcon = "⚠️"
+        statusText = "WARNING"
+      default:
+        statusIcon = "❌"
+        statusText = "FAILED"
+      }
+
+      duration := "N/A"
+      if result.Duration > 0 {
+        duration = fmt.Sprintf("%.2fs", result.Duration)
+      }
+
+      message := truncateString(result.Message, 80)
+      if message == "" {
+        message = "—"
+      }
+
+      fmt.Fprintf(&buf, "| `%s:%d` | %s %s | %s | %s |\n",
+        result.Host, result.Port,
+        statusIcon, statusText,
+        duration,
+        message,
+      )
+    }
+    fmt.Fprintf(&buf, "\n")
+
+    // 检查项详情（可折叠，兼容 GitHub）
+    fmt.Fprintf(&buf, "<details>\n")
+    fmt.Fprintf(&buf, "<summary>🔍 View %d Checks</summary>\n\n", len(jobResults)*0) // 先不展开，下面补充
+
+    // 为每个节点列出检查项
+    for _, result := range jobResults {
+      if len(result.Checks) == 0 {
+        continue
+      }
+      fmt.Fprintf(&buf, "#### Node: `%s:%d`\n\n", result.Host, result.Port)
+      fmt.Fprintf(&buf, "| Name | Type | Status | Message |\n")
+      fmt.Fprintf(&buf, "|------|------|--------|---------|\n")
+      for _, check := range result.Checks {
+        checkStatusIcon := "❓"
+        switch check.Status {
+        case "ok":
+          checkStatusIcon = "✅"
+        case "warning":
+          checkStatusIcon = "⚠️"
+        case "critical", "error":
+          checkStatusIcon = "❌"
+        }
+        checkMsg := truncateString(firstNonEmptyLine(check.Message), 60)
+        if checkMsg == "" {
+          checkMsg = "—"
+        }
+        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s |\n",
+          truncateString(check.Name, 30),
+          truncateString(check.Type, 15),
+          checkStatusIcon,
+          strings.ToUpper(check.Status),
+          checkMsg,
+        )
+      }
+      fmt.Fprintf(&buf, "\n")
+    }
+    fmt.Fprintf(&buf, "</details>\n\n")
+  }
+
+  fmt.Fprintf(&buf, "---\n")
+  fmt.Fprintf(&buf, "> **End of Report**\n")
+
+  return buf.Bytes()
+}
+
+// formatToHtml 辅助函数：格式化为 HTML
+func formatToHtml(results []inspection.CosmicResult, outputFile string) []byte {
+  var buf bytes.Buffer
+
+  // 内联 CSS（现代、响应式、折叠支持）
+  css := `
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f8f9fa; color: #212529; }
+.container { max-width: 1200px; margin: 0 auto; }
+.header { background: #0d6efd; color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px; }
+.header h1 { margin: 0; font-size: 28px; }
+.meta { text-align: center; color: #6c757d; margin-bottom: 24px; font-style: italic; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 32px; }
+.stat-card { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+.stat-value { font-size: 24px; font-weight: bold; margin: 8px 0; }
+.stat-label { font-size: 14px; color: #6c757d; }
+.software-section { background: white; margin-bottom: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
+.software-header { background: #e9ecef; padding: 16px 20px; font-size: 20px; font-weight: bold; color: #495057; }
+.node-item { border-bottom: 1px solid #eee; padding: 16px 20px; }
+.node-item:last-child { border-bottom: none; }
+.node-title { font-weight: bold; margin-bottom: 8px; color: #0d6efd; }
+.status-ok { color: #198754; }
+.status-warning { color: #ffc107; }
+.status-error { color: #dc3545; }
+.checks-table { width: 100%; border-collapse: collapse; margin-top: 12px; display: none; }
+.checks-table th, .checks-table td { text-align: left; padding: 10px; border-bottom: 1px solid #dee2e6; font-size: 14px; }
+.checks-table th { background: #f8f9fa; }
+.toggle-btn { background: #f8f9fa; border: 1px solid #dee2e6; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; color: #0d6efd; }
+.toggle-btn:hover { background: #e9ecef; }
+.footer { text-align: center; margin-top: 32px; color: #6c757d; font-size: 14px; }
+.status-badge { padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; color: white; }
+.badge-ok { background: #198754; }
+.badge-warning { background: #ffc107; color: #212529; }
+.badge-error { background: #dc3545; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const table = btn.nextElementSibling;
+      if (table.style.display === 'table') {
+        table.style.display = 'none';
+        btn.textContent = 'Show Checks';
+      } else {
+        table.style.display = 'table';
+        btn.textContent = 'Hide Checks';
+      }
+    });
+  });
+});
+</script>
+`
+
+  // 开始 HTML
+  buf.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
+  buf.WriteString("<meta charset=\"UTF-8\">\n")
+  buf.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
+  buf.WriteString("<title>COSMIC Inspection Report</title>\n")
+  buf.WriteString(css)
+  buf.WriteString("</head>\n<body>\n")
+  buf.WriteString("<div class=\"container\">\n")
+
+  // 标题
+  buf.WriteString("<div class=\"header\">\n")
+  buf.WriteString("<h1>COSMIC SYSTEM INSPECTION REPORT</h1>\n")
+  buf.WriteString("</div>\n")
+  buf.WriteString(fmt.Sprintf("<div class=\"meta\">Generated at: %s</div>\n", time.Now().Format("2006-01-02 15:04:05")))
+
+  // === 统计卡片 ===
+  totalJobs := len(results)
+  successJobs, warningJobs, failedJobs := 0, 0, 0
+  totalChecks, totalPassed, totalWarnings, totalCritical, totalErrors := 0, 0, 0, 0, 0
+
+  softwareResults := make(map[string][]inspection.CosmicResult)
+  for _, r := range results {
+    softwareResults[r.JobName] = append(softwareResults[r.JobName], r)
+    switch r.Status {
+    case "ok":
+      successJobs++
+    case "warning":
+      warningJobs++
+    default:
+      failedJobs++
+    }
+    for _, check := range r.Checks {
+      totalChecks++
+      switch check.Status {
+      case "ok":
+        totalPassed++
+      case "warning":
+        totalWarnings++
+      case "critical":
+        totalCritical++
+      case "error":
+        totalErrors++
+      }
+    }
+  }
+
+  buf.WriteString("<div class=\"stats-grid\">\n")
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Total Jobs</div><div class=\"stat-value\">%d</div></div>\n", totalJobs))
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Success</div><div class=\"stat-value\" style=\"color:#198754\">%d ✅</div></div>\n", successJobs))
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Warnings</div><div class=\"stat-value\" style=\"color:#ffc107\">%d ⚠️</div></div>\n", warningJobs))
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Failures</div><div class=\"stat-value\" style=\"color:#dc3545\">%d ❌</div></div>\n", failedJobs))
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Total Checks</div><div class=\"stat-value\">%d</div></div>\n", totalChecks))
+  buf.WriteString("</div>\n")
+
+  // === 软件分组 ===
+  buf.WriteString("<h2>Software Details</h2>\n")
+  for software, jobResults := range softwareResults {
+    buf.WriteString("<div class=\"software-section\">\n")
+    buf.WriteString(fmt.Sprintf("<div class=\"software-header\">📦 %s</div>\n", software))
+
+    for _, result := range jobResults {
+      buf.WriteString("<div class=\"node-item\">\n")
+      buf.WriteString(fmt.Sprintf("<div class=\"node-title\">Node: %s:%d</div>\n", result.Host, result.Port))
+
+      // 状态徽章
+      var statusText string
+      switch result.Status {
+      case "ok":
+        //statusClass = "status-ok"
+        statusText = `<span class="status-badge badge-ok">OK</span>`
+      case "warning":
+        //statusClass = "status-warning"
+        statusText = `<span class="status-badge badge-warning">WARNING</span>`
+      default:
+        //statusClass = "status-error"
+        statusText = `<span class="status-badge badge-error">FAILED</span>`
+      }
+
+      duration := "N/A"
+      if result.Duration > 0 {
+        duration = fmt.Sprintf("%.2f s", result.Duration)
+      }
+
+      message := truncateString(result.Message, 120)
+      if message == "" {
+        message = "—"
+      }
+
+      buf.WriteString(fmt.Sprintf("<div>Status: %s | Duration: %s</div>\n", statusText, duration))
+      buf.WriteString(fmt.Sprintf("<div>Message: %s</div>\n", message))
+
+      // 检查项表格（初始隐藏）
+      if len(result.Checks) > 0 {
+        buf.WriteString("<button class=\"toggle-btn\">Show Checks</button>\n")
+        buf.WriteString("<table class=\"checks-table\">\n")
+        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Message</th></tr></thead>\n")
+        buf.WriteString("<tbody>\n")
+        for _, check := range result.Checks {
+          var checkStatusBadge string
+          switch check.Status {
+          case "ok":
+            checkStatusBadge = `<span class="status-badge badge-ok">OK</span>`
+          case "warning":
+            checkStatusBadge = `<span class="status-badge badge-warning">WARN</span>`
+          case "critical", "error":
+            checkStatusBadge = `<span class="status-badge badge-error">FAIL</span>`
+          default:
+            checkStatusBadge = check.Status
+          }
+          checkMsg := truncateString(firstNonEmptyLine(check.Message), 80)
+          if checkMsg == "" {
+            checkMsg = "—"
+          }
+          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+            truncateString(check.Name, 30),
+            truncateString(check.Type, 15),
+            checkStatusBadge,
+            checkMsg,
+          ))
+        }
+        buf.WriteString("</tbody>\n</table>\n")
+      }
+
+      buf.WriteString("</div>\n") // node-item
+    }
+    buf.WriteString("</div>\n") // software-section
+  }
+
+  // 结束
+  buf.WriteString("<div class=\"footer\">End of Report</div>\n")
+  buf.WriteString("</div>\n</body>\n</html>")
+
+  return buf.Bytes()
+}
+
+// formatToPdf 辅助函数：格式化为 PDF
+func formatToPdf(results []inspection.CosmicResult, outputFile string) error {
+  if outputFile == "" {
+    return fmt.Errorf("--output/-o is required for PDF format")
+  }
+
+  // 1. 渲染 HTML
+  htmlContent, err := renderCosmicReportHTML(results)
+  if err != nil {
+    return fmt.Errorf("failed to render HTML: %w", err)
+  }
+
+  // 2. 检查 wkhtmltopdf
+  if _, err := exec.LookPath("wkhtmltopdf"); err != nil {
+    return fmt.Errorf("wkhtmltopdf not found. Install from https://wkhtmltopdf.org/downloads.html")
+  }
+
+  // 3. 临时文件
+  tmpFile, err := os.CreateTemp("", "cosmic-*.html")
+  if err != nil {
+    return fmt.Errorf("create temp file: %w", err)
+  }
+  defer os.Remove(tmpFile.Name())
+  defer tmpFile.Close()
+
+  if _, err := tmpFile.WriteString(htmlContent); err != nil {
+    return fmt.Errorf("write temp HTML: %w", err)
+  }
+  tmpFile.Close()
+
+  // 4. 转 PDF
+  cmd := exec.Command("wkhtmltopdf", "--quiet", tmpFile.Name(), outputFile)
+  if err := cmd.Run(); err != nil {
+    return fmt.Errorf("wkhtmltopdf failed: %w", err)
+  }
+
+  pterm.Success.Printf("PDF report saved to: %s\n", outputFile)
+  return nil
+}
+
+// renderCosmicReportHTML 生成完整的 HTML 报告内容（不含 DOCTYPE 等？不，含完整 HTML）
+func renderCosmicReportHTML(results []inspection.CosmicResult) (string, error) {
+  var buf bytes.Buffer
+
+  css := `
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f8f9fa; color: #212529; }
+.container { max-width: 1200px; margin: 0 auto; }
+.header { background: #0d6efd; color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px; }
+.header h1 { margin: 0; font-size: 28px; }
+.meta { text-align: center; color: #6c757d; margin-bottom: 24px; font-style: italic; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 32px; }
+.stat-card { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+.stat-value { font-size: 24px; font-weight: bold; margin: 8px 0; }
+.stat-label { font-size: 14px; color: #6c757d; }
+.software-section { background: white; margin-bottom: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
+.software-header { background: #e9ecef; padding: 16px 20px; font-size: 20px; font-weight: bold; color: #495057; }
+.node-item { border-bottom: 1px solid #eee; padding: 16px 20px; }
+.node-item:last-child { border-bottom: none; }
+.node-title { font-weight: bold; margin-bottom: 8px; color: #0d6efd; }
+.status-ok { color: #198754; }
+.status-warning { color: #ffc107; }
+.status-error { color: #dc3545; }
+.checks-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.checks-table th, .checks-table td { text-align: left; padding: 10px; border-bottom: 1px solid #dee2e6; font-size: 14px; }
+.checks-table th { background: #f8f9fa; }
+.footer { text-align: center; margin-top: 32px; color: #6c757d; font-size: 14px; }
+.status-badge { padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; color: white; }
+.badge-ok { background: #198754; }
+.badge-warning { background: #ffc107; color: #212529; }
+.badge-error { background: #dc3545; }
+</style>
+`
+
+  // 开始 HTML
+  buf.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
+  buf.WriteString("<meta charset=\"UTF-8\">\n")
+  buf.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
+  buf.WriteString("<title>COSMIC Inspection Report</title>\n")
+  buf.WriteString(css)
+  buf.WriteString("</head>\n<body>\n")
+  buf.WriteString("<div class=\"container\">\n")
+
+  // 标题
+  buf.WriteString("<div class=\"header\">\n")
+  buf.WriteString("<h1>COSMIC SYSTEM INSPECTION REPORT</h1>\n")
+  buf.WriteString("</div>\n")
+  buf.WriteString(fmt.Sprintf("<div class=\"meta\">Generated at: %s</div>\n", time.Now().Format("2006-01-02 15:04:05")))
+
+  // === 统计 ===
+  totalJobs := len(results)
+  successJobs, warningJobs, failedJobs := 0, 0, 0
+  totalChecks := 0
+  totalPassed, totalWarnings, totalCritical, totalErrors := 0, 0, 0, 0
+
+  softwareResults := make(map[string][]inspection.CosmicResult)
+  for _, r := range results {
+    softwareResults[r.JobName] = append(softwareResults[r.JobName], r)
+    switch r.Status {
+    case "ok":
+      successJobs++
+    case "warning":
+      warningJobs++
+    default:
+      failedJobs++
+    }
+    for _, check := range r.Checks {
+      totalChecks++
+      switch check.Status {
+      case "ok":
+        totalPassed++
+      case "warning":
+        totalWarnings++
+      case "critical":
+        totalCritical++
+      case "error":
+        totalErrors++
+      }
+    }
+  }
+
+  buf.WriteString("<div class=\"stats-grid\">\n")
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Total Jobs</div><div class=\"stat-value\">%d</div></div>\n", totalJobs))
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Success</div><div class=\"stat-value\" style=\"color:#198754\">%d ✅</div></div>\n", successJobs))
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Warnings</div><div class=\"stat-value\" style=\"color:#ffc107\">%d ⚠️</div></div>\n", warningJobs))
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Failures</div><div class=\"stat-value\" style=\"color:#dc3545\">%d ❌</div></div>\n", failedJobs))
+  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Total Checks</div><div class=\"stat-value\">%d</div></div>\n", totalChecks))
+  buf.WriteString("</div>\n")
+
+  // === 软件分组 ===
+  buf.WriteString("<h2>Software Details</h2>\n")
+  for software, jobResults := range softwareResults {
+    buf.WriteString("<div class=\"software-section\">\n")
+    buf.WriteString(fmt.Sprintf("<div class=\"software-header\">📦 %s</div>\n", software))
+
+    for _, result := range jobResults {
+      buf.WriteString("<div class=\"node-item\">\n")
+      buf.WriteString(fmt.Sprintf("<div class=\"node-title\">Node: %s:%d</div>\n", result.Host, result.Port))
+
+      var statusBadge string
+      switch result.Status {
+      case "ok":
+        statusBadge = `<span class="status-badge badge-ok">OK</span>`
+      case "warning":
+        statusBadge = `<span class="status-badge badge-warning">WARNING</span>`
+      default:
+        statusBadge = `<span class="status-badge badge-error">FAILED</span>`
+      }
+
+      duration := "N/A"
+      if result.Duration > 0 {
+        duration = fmt.Sprintf("%.2f s", result.Duration)
+      }
+
+      message := truncateString(result.Message, 120)
+      if message == "" {
+        message = "—"
+      }
+
+      buf.WriteString(fmt.Sprintf("<div>Status: %s | Duration: %s</div>\n", statusBadge, duration))
+      buf.WriteString(fmt.Sprintf("<div>Message: %s</div>\n", message))
+
+      if len(result.Checks) > 0 {
+        buf.WriteString("<table class=\"checks-table\">\n")
+        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Message</th></tr></thead>\n")
+        buf.WriteString("<tbody>\n")
+        for _, check := range result.Checks {
+          var checkBadge string
+          switch check.Status {
+          case "ok":
+            checkBadge = `<span class="status-badge badge-ok">OK</span>`
+          case "warning":
+            checkBadge = `<span class="status-badge badge-warning">WARN</span>`
+          case "critical", "error":
+            checkBadge = `<span class="status-badge badge-error">FAIL</span>`
+          default:
+            checkBadge = check.Status
+          }
+          checkMsg := truncateString(firstNonEmptyLine(check.Message), 80)
+          if checkMsg == "" {
+            checkMsg = "—"
+          }
+          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+            truncateString(check.Name, 30),
+            truncateString(check.Type, 15),
+            checkBadge,
+            checkMsg,
+          ))
+        }
+        buf.WriteString("</tbody>\n</table>\n")
+      }
+
+      buf.WriteString("</div>\n")
+    }
+    buf.WriteString("</div>\n")
+  }
+
+  buf.WriteString("<div class=\"footer\">End of Report</div>\n")
+  buf.WriteString("</div>\n</body>\n</html>")
+
+  return buf.String(), nil
 }
