@@ -4,6 +4,7 @@ import (
   "bytes"
   "encoding/json"
   "fmt"
+  "github.com/casuallc/vigil/client"
   "github.com/casuallc/vigil/inspection"
   "github.com/spf13/cobra"
   "gopkg.in/yaml.v3"
@@ -54,18 +55,23 @@ func (c *CLI) setupCosmicInspectCommand() *cobra.Command {
 
 // handleCosmicInspect 处理cosmic系统巡检命令
 func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []string, outputFormat string, outputFile string) error {
+  fmt.Println("=== Cosmic System Inspection Started ===")
+  startTime := time.Now()
+  
   // 加载cosmic配置文件
   cosmicConfig, err := inspection.LoadCosmicConfig(configFile)
   if err != nil {
     fmt.Printf("ERROR failed to load cosmic config: %v\n", err)
-    return nil
+    return fmt.Errorf("failed to load cosmic config: %w", err)
   }
 
   // 创建节点映射
   nodeMap := make(map[string]inspection.Node)
   for _, node := range cosmicConfig.Nodes {
     nodeMap[node.Name] = node
+    fmt.Printf("Discovered node: %s (%s:%d)\n", node.Name, node.IP, node.Port)
   }
+  fmt.Printf("Total nodes discovered: %d\n", len(nodeMap))
 
   // 筛选需要巡检的作业
   var jobsToInspect []inspection.Job
@@ -81,12 +87,13 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
     }
     if !found {
       fmt.Printf("ERROR job '%s' not found in configuration\n", jobName)
-      return nil
+      return fmt.Errorf("job '%s' not found in configuration", jobName)
     }
   } else {
     // 检查所有作业
     jobsToInspect = cosmicConfig.Jobs
   }
+  fmt.Printf("Total jobs to inspect: %d\n", len(jobsToInspect))
 
   // 处理环境变量
   envMap := make(map[string]string)
@@ -94,24 +101,47 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
     parts := strings.SplitN(env, "=", 2)
     if len(parts) == 2 {
       envMap[parts[0]] = parts[1]
+      fmt.Printf("Override env var: %s=%s\n", parts[0], parts[1])
     }
   }
 
   // 执行巡检
   var allResults []inspection.CosmicResult
+  var summaryBySoftware = make(map[string][]inspection.CosmicResult)
+  
   for _, job := range jobsToInspect {
+    fmt.Printf("\n=== Processing Software: %s ===\n", job.Name)
+    
     // 加载作业规则
     var inspectionRules *inspection.RuleConfig
     if len(job.Rules) > 0 {
-      // 使用第一个规则文件（可以根据需要扩展为支持多个规则）
-      rulePath := job.Rules[0].Path
-      inspectionRules, err = inspection.LoadRules(rulePath)
-      if err != nil {
-        fmt.Printf("WARNING failed to load rules for job '%s' from %s: %v\n", job.Name, rulePath, err)
-        // 继续执行，但会缺少规则检查
+      // 支持多个规则文件，按顺序加载
+      for _, rule := range job.Rules {
+        rulePath := rule.Path
+        fmt.Printf("Loading rules for %s from %s\n", job.Name, rulePath)
+        
+        rules, err := inspection.LoadRules(rulePath)
+        if err != nil {
+          fmt.Printf("WARNING failed to load rules '%s' for job '%s' from %s: %v\n", rule.Name, job.Name, rulePath, err)
+          continue
+        }
+        
+        // 如果是第一个规则文件，直接赋值；否则合并检查项
+        if inspectionRules == nil {
+          inspectionRules = rules
+        } else {
+          inspectionRules.Checks = append(inspectionRules.Checks, rules.Checks...)
+        }
       }
+      
+      if inspectionRules != nil {
+        fmt.Printf("Successfully loaded %d inspection rules for %s\n", len(inspectionRules.Checks), job.Name)
+      }
+    } else {
+      fmt.Printf("No rules defined for job: %s\n", job.Name)
     }
 
+    // 按节点维度进行巡检
     for _, targetName := range job.Targets {
       node, exists := nodeMap[targetName]
       if !exists {
@@ -119,13 +149,41 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
         continue
       }
 
-      fmt.Printf("Inspecting job: %s on node %s (%s:%d)\n", job.Name, node.Name, node.IP, node.Port)
+      fmt.Printf("\n==== Inspecting %s on node %s (%s:%d) ====\n", job.Name, node.Name, node.IP, node.Port)
 
       // 执行实际巡检
       result := c.performCosmicInspection(job, node, inspectionRules, envMap)
       allResults = append(allResults, result)
+      
+      // 按软件分组存储结果
+      summaryBySoftware[job.Name] = append(summaryBySoftware[job.Name], result)
     }
   }
+
+  // 汇总分析结果
+  fmt.Println("\n=== Summary Analysis ===")
+  for software, results := range summaryBySoftware {
+    fmt.Printf("Software: %s\n", software)
+    fmt.Printf("- Total nodes: %d\n", len(results))
+    
+    var success, warning, errorCount int
+    for _, r := range results {
+      switch r.Status {
+      case "ok":
+        success++
+      case "warning":
+        warning++
+      case "error":
+        errorCount++
+      }
+    }
+    
+    fmt.Printf("- Success: %d\n", success)
+    fmt.Printf("- Warning: %d\n", warning)
+    fmt.Printf("- Error: %d\n", errorCount)
+  }
+  
+  fmt.Printf("\nTotal inspection duration: %.2f seconds\n", time.Since(startTime).Seconds())
 
   // 格式化输出结果
   return c.formatAndOutputCosmicResults(allResults, outputFormat, outputFile)
@@ -133,6 +191,12 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
 
 // performRuleBasedInspection 基于规则配置执行巡检
 func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Node, rules *inspection.RuleConfig, envMap map[string]string, result *inspection.CosmicResult) error {
+  // 构建环境变量列表，转换为[]string格式
+  var envList []string
+  for k, v := range envMap {
+    envList = append(envList, fmt.Sprintf("%s=%s", k, v))
+  }
+  
   // 构建检查请求
   checkRequest := inspection.Request{
     Version: rules.Version,
@@ -140,15 +204,26 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
       System:  rules.Meta.System,
       Host:    node.IP,
       JobName: job.Name,
+      Time:    time.Now(),
     },
     Checks: rules.Checks,
-    //Env:    envs,
+    Env:    envList,
   }
 
+  fmt.Printf("Sending inspection rules to node %s (%s:%d)\n", node.Name, node.IP, node.Port)
+  fmt.Printf("- System: %s\n", rules.Meta.System)
+  fmt.Printf("- Job: %s\n", job.Name)
+  fmt.Printf("- Rules count: %d\n", len(rules.Checks))
+
+  // 为每个节点创建客户端
+  nodeClient := client.NewClient(fmt.Sprintf("http://%s:%d", node.IP, node.Port))
+  
   // 执行远程检查
-  checkResult, err := c.client.ExecuteInspection(checkRequest)
+  checkResult, err := nodeClient.ExecuteInspection(checkRequest)
   if err != nil {
-    return nil
+    result.Status = "error"
+    result.Message = fmt.Sprintf("Failed to execute inspection on node %s: %v", node.Name, err)
+    return err
   }
 
   // 转换检查结果
@@ -169,6 +244,28 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
       DurationMs: check.DurationMs,
     })
   }
+
+  // 统计检查结果
+  var passed, warning, critical, errorCount int
+  for _, check := range result.Checks {
+    switch check.Status {
+    case "ok":
+      passed++
+    case "warning":
+      warning++
+    case "critical":
+      critical++
+    case "error":
+      errorCount++
+    }
+  }
+  
+  fmt.Printf("Inspection results for node %s:\n", node.Name)
+  fmt.Printf("- Total checks: %d\n", len(result.Checks))
+  fmt.Printf("- Passed: %d\n", passed)
+  fmt.Printf("- Warning: %d\n", warning)
+  fmt.Printf("- Critical: %d\n", critical)
+  fmt.Printf("- Error: %d\n", errorCount)
 
   return nil
 }
@@ -234,7 +331,11 @@ func (c *CLI) performCosmicInspection(job inspection.Job, node inspection.Node, 
     if rules != nil {
       return c.performRuleBasedInspection(job, node, rules, allEnvs, &result)
     }
-
+    
+    // 如果没有规则，进行基本的连通性检查
+    fmt.Printf("No rules specified for job '%s', performing basic connectivity check\n", job.Name)
+    result.Status = "warning"
+    result.Message = "Basic connectivity check: No inspection rules provided"
     return nil
   }
 
@@ -274,6 +375,8 @@ func (c *CLI) formatAndOutputCosmicResults(results []inspection.CosmicResult, fo
     fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
     fmt.Fprintf(&buf, "%s\n", centerText("COSMIC SYSTEM INSPECTION REPORT", lineWidth))
     fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
+    fmt.Fprintf(&buf, "Generated at: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
 
     // 统计信息
     totalJobs := len(results)
@@ -285,15 +388,55 @@ func (c *CLI) formatAndOutputCosmicResults(results []inspection.CosmicResult, fo
     totalCritical := 0
     totalErrors := 0
 
+    // 按软件分组统计
+    softwareStats := make(map[string]map[string]int)
+    nodeStats := make(map[string]map[string]int)
+    
     for _, result := range results {
+      // 初始化软件统计
+      if _, exists := softwareStats[result.JobName]; !exists {
+        softwareStats[result.JobName] = map[string]int{
+          "total":   0,
+          "success": 0,
+          "warning": 0,
+          "error":   0,
+          "checks":  0,
+        }
+      }
+      
+      // 初始化节点统计
+      if _, exists := nodeStats[result.Host]; !exists {
+        nodeStats[result.Host] = map[string]int{
+          "total":   0,
+          "success": 0,
+          "warning": 0,
+          "error":   0,
+          "checks":  0,
+        }
+      }
+      
+      // 更新统计
       if result.Status == "ok" {
         successJobs++
+        softwareStats[result.JobName]["success"]++
+        nodeStats[result.Host]["success"]++
+      } else if result.Status == "warning" {
+        softwareStats[result.JobName]["warning"]++
+        nodeStats[result.Host]["warning"]++
       } else {
         failedJobs++
+        softwareStats[result.JobName]["error"]++
+        nodeStats[result.Host]["error"]++
       }
+      
+      softwareStats[result.JobName]["total"]++
+      nodeStats[result.Host]["total"]++
 
       for _, check := range result.Checks {
         totalChecks++
+        softwareStats[result.JobName]["checks"]++
+        nodeStats[result.Host]["checks"]++
+        
         switch check.Status {
         case "ok":
           totalPassed++
@@ -322,36 +465,88 @@ func (c *CLI) formatAndOutputCosmicResults(results []inspection.CosmicResult, fo
       fmt.Fprintf(&buf, "%-15s: %.1f%%\n", "Success Rate", successRate)
     }
 
-    fmt.Fprintf(&buf, "\n")
-
-    // 打印每个作业的详细结果
-    for i, result := range results {
-      fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
-      fmt.Fprintf(&buf, "Job %d: %s (%s:%d)\n", i+1, result.JobName, result.Host, result.Port)
-      fmt.Fprintf(&buf, "Status: %s\n", result.Status)
-      if result.Message != "" {
-        fmt.Fprintf(&buf, "Message: %s\n", result.Message)
-      }
-      if result.Duration > 0 {
-        fmt.Fprintf(&buf, "Duration: %.2fs\n", result.Duration)
-      }
-
-      if len(result.Checks) > 0 {
-        fmt.Fprintf(&buf, "\nChecks:\n")
-        fmt.Fprintf(&buf, "%-40s %-12s %-12s %-40s\n", "Name", "Type", "Status", "Message")
-        fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), 104)))
-
-        for _, check := range result.Checks {
-          fmt.Fprintf(&buf, "%-40s %-12s %-12s %-40s\n",
-            truncateString(check.Name, 40),
-            truncateString(check.Type, 12),
-            truncateString(check.Status, 12),
-            truncateString(check.Message, 40))
-        }
-      }
-      fmt.Fprintf(&buf, "\n")
+    // 按软件分组统计
+    fmt.Fprintf(&buf, "\n%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    fmt.Fprintf(&buf, "%s\n", centerText("SOFTWARE SUMMARY", lineWidth))
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    fmt.Fprintf(&buf, "%-30s %-10s %-10s %-10s %-10s %-10s\n", 
+      "Software", "Nodes", "Success", "Warning", "Error", "Checks")
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    
+    for software, stats := range softwareStats {
+      fmt.Fprintf(&buf, "%-30s %-10d %-10d %-10d %-10d %-10d\n",
+        truncateString(software, 30),
+        stats["total"],
+        stats["success"],
+        stats["warning"],
+        stats["error"],
+        stats["checks"])
     }
 
+    // 按节点分组统计
+    fmt.Fprintf(&buf, "\n%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    fmt.Fprintf(&buf, "%s\n", centerText("NODE SUMMARY", lineWidth))
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    fmt.Fprintf(&buf, "%-30s %-10s %-10s %-10s %-10s %-10s\n", 
+      "Node", "Jobs", "Success", "Warning", "Error", "Checks")
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+    
+    for node, stats := range nodeStats {
+      fmt.Fprintf(&buf, "%-30s %-10d %-10d %-10d %-10d %-10d\n",
+        truncateString(node, 30),
+        stats["total"],
+        stats["success"],
+        stats["warning"],
+        stats["error"],
+        stats["checks"])
+    }
+
+    // 按软件-节点维度详细展示结果
+    fmt.Fprintf(&buf, "\n%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
+    fmt.Fprintf(&buf, "%s\n", centerText("DETAILED INSPECTION RESULTS", lineWidth))
+    fmt.Fprintf(&buf, "%s\n\n", string(bytes.Repeat([]byte("="), lineWidth)))
+    
+    // 按软件分组展示详细结果
+    softwareResults := make(map[string][]inspection.CosmicResult)
+    for _, result := range results {
+      softwareResults[result.JobName] = append(softwareResults[result.JobName], result)
+    }
+    
+    for software, softwareRes := range softwareResults {
+      fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("*"), lineWidth)))
+      fmt.Fprintf(&buf, "%s\n", centerText("SOFTWARE: "+software, lineWidth))
+      fmt.Fprintf(&buf, "%s\n\n", string(bytes.Repeat([]byte("*"), lineWidth)))
+      
+      for _, result := range softwareRes {
+        fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), lineWidth)))
+        fmt.Fprintf(&buf, "Node: %s (%s:%d)\n", result.Host, result.Host, result.Port)
+        fmt.Fprintf(&buf, "Status: %s\n", result.Status)
+        if result.Message != "" {
+          fmt.Fprintf(&buf, "Message: %s\n", result.Message)
+        }
+        if result.Duration > 0 {
+          fmt.Fprintf(&buf, "Duration: %.2fs\n", result.Duration)
+        }
+
+        if len(result.Checks) > 0 {
+          fmt.Fprintf(&buf, "\nChecks (%d):\n", len(result.Checks))
+          fmt.Fprintf(&buf, "%-40s %-12s %-12s %-40s\n", "Name", "Type", "Status", "Message")
+          fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("-"), 104)))
+
+          for _, check := range result.Checks {
+            fmt.Fprintf(&buf, "%-40s %-12s %-12s %-40s\n",
+              truncateString(check.Name, 40),
+              truncateString(check.Type, 12),
+              truncateString(check.Status, 12),
+              truncateString(check.Message, 40))
+          }
+        }
+        fmt.Fprintf(&buf, "\n")
+      }
+    }
+
+    fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
+    fmt.Fprintf(&buf, "%s\n", centerText("END OF REPORT", lineWidth))
     fmt.Fprintf(&buf, "%s\n", string(bytes.Repeat([]byte("="), lineWidth)))
 
     output = buf.Bytes()
@@ -363,9 +558,9 @@ func (c *CLI) formatAndOutputCosmicResults(results []inspection.CosmicResult, fo
   if outputFile != "" {
     if err := os.WriteFile(outputFile, output, 0644); err != nil {
       fmt.Printf("ERROR failed to write cosmic output to file: %v\n", err)
-      return nil
+      return fmt.Errorf("failed to write cosmic output to file: %w", err)
     }
-    fmt.Printf("Cosmic inspection report written to %s\n", outputFile)
+    fmt.Printf("✅ Cosmic inspection report written to %s\n", outputFile)
   } else {
     fmt.Println(string(output))
   }

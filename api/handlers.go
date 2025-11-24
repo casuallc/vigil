@@ -77,26 +77,6 @@ func (s *Server) handleRestartProcess(w http.ResponseWriter, r *http.Request) {
   writeJSON(w, http.StatusOK, map[string]string{"message": "Process restarted successfully"})
 }
 
-func (s *Server) handleInspectProcess(w http.ResponseWriter, r *http.Request) {
-  vars := mux.Vars(r)
-  namespace := getNamespace(vars)
-  name := vars["name"]
-
-  var params inspection.Request
-  if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-    writeError(w, http.StatusBadRequest, err.Error())
-    return
-  }
-
-  result, err := s.manager.InspectProcess(namespace, name, params)
-  if err != nil {
-    writeError(w, http.StatusInternalServerError, err.Error())
-    return
-  }
-
-  writeJSON(w, http.StatusOK, result)
-}
-
 // 处理函数更新示例
 func (s *Server) handleGetProcess(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
@@ -347,6 +327,14 @@ func (s *Server) handleCosmicInspect(w http.ResponseWriter, r *http.Request) {
   }
 
   // 构建响应
+  // 确定整体状态
+  var overallStatus string = "OK"
+  if errorChecks > 0 {
+    overallStatus = "CRITICAL"
+  } else if warningChecks > 0 {
+    overallStatus = "WARN"
+  }
+
   response := inspection.Result{
     ID: req.Meta.JobName,
     Meta: inspection.ResultMeta{
@@ -354,13 +342,17 @@ func (s *Server) handleCosmicInspect(w http.ResponseWriter, r *http.Request) {
       Host:    req.Meta.Host,
       JobName: req.Meta.JobName,
       Time:    time.Now(),
+      Status:  overallStatus,
     },
     Results: results,
     Summary: inspection.SummaryInfo{
-      TotalChecks: totalChecks,
-      OK:          passedChecks,
-      Warn:        warningChecks,
-      Critical:    errorChecks,
+      TotalChecks:   totalChecks,
+      OK:            passedChecks,
+      Warn:          warningChecks,
+      Critical:      errorChecks,
+      OverallStatus: overallStatus,
+      StartedAt:     req.Meta.Time,
+      FinishedAt:    time.Now(),
     },
   }
 
