@@ -425,8 +425,8 @@ func (s *Server) executeScriptCheck(check inspection.Check, envVars []string) in
 
 // parseCheckOutput 解析检查输出
 func (s *Server) parseCheckOutput(check inspection.Check, output string, result inspection.CheckResult) inspection.CheckResult {
+  result.Message = output
   if check.Parse == nil {
-    result.Message = output
     return result
   }
   var parseErr error

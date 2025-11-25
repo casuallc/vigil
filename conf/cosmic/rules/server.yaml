@@ -129,32 +129,3 @@ checks:
     expect: "1"
     severity: warn
     remediation: "sysctl -w net.ipv4.tcp_syncookies=1"
-
-
-  # 【可选】复合健康检查
-  - id: server-overall-health
-    name: "服务器整体健康状态"
-    type: compound
-    children:
-      - memory-usage
-      - disk-usage
-      - system-load
-      - disk-io-util
-      - fd-limit
-      - kernel-ip-local-port-range
-      - kernel-somaxconn
-      - kernel-tcp-tw-reuse
-      - kernel-tcp-fin-timeout
-      - kernel-tcp-syncookies
-    logic: >
-      (memory-usage <= 90) &&
-      (disk-usage <= 90) &&
-      (system-load <= 4.0) &&
-      (disk-io-util <= 90) &&
-      (fd-limit >= 65535) &&
-      kernel-ip-local-port-range &&
-      kernel-somaxconn &&
-      kernel-tcp-tw-reuse &&
-      kernel-tcp-fin-timeout &&
-      kernel-tcp-syncookies
-    severity: critical

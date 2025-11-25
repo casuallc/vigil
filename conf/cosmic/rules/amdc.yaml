@@ -187,23 +187,3 @@ checks:
     #     severity: warn
     #     message: "AMDC 数据目录超过 100GB"
 
-
-  # 【可选】复合健康检查（任一实例异常即告警）
-  - id: amdc-overall-health
-    name: "AMDC 整体健康状态"
-    type: compound
-    children:
-      - amdc-6379-process
-      - amdc-6379-ping
-      - amdc-6380-process
-      - amdc-6380-ping
-      - amdc-6381-process
-      - amdc-6381-ping
-    logic: >
-      amdc-6379-process &&
-      amdc-6379-ping &&
-      amdc-6380-process &&
-      amdc-6380-ping &&
-      amdc-6381-process &&
-      amdc-6381-ping
-    severity: critical

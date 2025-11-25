@@ -178,11 +178,6 @@ checks:
     type: script
     parse:
       kind: regex
-      pattern: "e=(\\d+),w=(\\d+),a=(\\d+)"
-    # 该解析返回三个组，需引擎支持多字段提取（或改用 custom 类型）
-    # 为简化，用字符串判断（不推荐，但符合 script 类型限制）
-    # 替代方案：使用复合脚本输出 yes/no
-    # 以下为 workaround：
     command: |
       cd ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4
       e=$(grep '^managedLedgerDefaultEnsembleSize=' config/broker.conf | cut -d= -f2)
@@ -197,7 +192,6 @@ checks:
     severity: warn
     message: "副本策略异常，可能导致数据丢失"
     remediation: "设置 ensembleSize>=2, writeQuorum>=2, ackQuorum>=1"
-
 
   # 12. 存储同步刷盘检查
   - id: admq-storage-sync
@@ -241,24 +235,3 @@ checks:
     expect: "ok"
     severity: warn
     remediation: "在 storage_env.sh 中配置 STORAGE_MEM 包含 -Xmx2g"
-
-
-  # 【可选】复合健康检查
-  - id: admq-overall-health
-    name: "ADMQ 整体健康状态"
-    type: compound
-    children:
-      - admq-zk-status
-      - admq-broker-status
-      - admq-storage-status
-      - admq-port-5672
-      - admq-backlog-queues
-      - admq-unack-queues
-    logic: >
-      admq_zk_status == 1 
-      && admq_broker_status == 1 
-      && admq_storage_status == 1 
-      && admq_port_5672 == 1 
-      && admq_backlog_queues <= 100 
-      && admq_unack_queues <= 100
-    severity: critical

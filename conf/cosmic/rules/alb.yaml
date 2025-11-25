@@ -128,19 +128,3 @@ checks:
         severity: critical
         message: "4xx/5xx 错误率超过 1%"
     remediation: "检查后端服务健康状态及客户端请求合法性"
-
-
-  # 【可选】复合健康检查
-  - id: alb-overall-health
-    name: "ALB 整体健康状态"
-    type: compound
-    children:
-      - alb-main-process
-      - alb-reverse-proxy-health
-      - alb-http-error-rate
-      - alb-license-expiry
-    logic: >
-      (alb-main-process == 1) &&
-      (alb-reverse-proxy-health == '200') &&
-      (alb-http-error-rate <= 1.0)
-    severity: critical

@@ -18,12 +18,10 @@ func main() {
   var (
     configPath string
     apiAddr    string
-    foreground bool
   )
 
   flag.StringVar(&configPath, "config", "", "Config file path")
   flag.StringVar(&apiAddr, "addr", ":8080", "API server address")
-  flag.BoolVar(&foreground, "foreground", false, "Run in foreground mode")
   flag.Parse()
 
   // Set default config file path
@@ -50,13 +48,6 @@ func main() {
   ProcessesFilePath := "proc/managed_processes.yaml"
   if err := processManager.LoadManagedProcesses(ProcessesFilePath); err != nil {
     log.Printf("Warning: failed to load managed processes: %v", err)
-  }
-
-  // If not running in foreground, daemonize the proc
-  if !foreground {
-    // Here we would typically daemonize the proc
-    // For simplicity, we'll just log that we would do this
-    log.Println("Starting in daemon mode (implementation simplified)")
   }
 
   // Create and start the API server with the loaded proc manager

@@ -132,26 +132,3 @@ checks:
     parse:
       kind: string
     # 如需告警，建议用 custom 类型解析多字段
-
-
-  # === 【复合健康检查】===
-  - id: ailp-overall-health
-    name: "AILP（ELK）整体健康状态"
-    type: compound
-    children:
-      - ailp-es-process
-      - ailp-zk-process
-      - ailp-kafka-process
-      - ailp-logstash-process
-      - es-cluster-health
-      - es-today-index-exists
-      - kafka-backlog-logstash
-    logic: >
-      ailp-es-process &&
-      ailp-zk-process &&
-      ailp-kafka-process &&
-      ailp-logstash-process &&
-      (es-cluster-health == 'green') &&
-      (es-today-index-exists > 0) &&
-      (kafka-backlog-logstash < 10000)
-    severity: critical
