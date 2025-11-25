@@ -38,6 +38,7 @@ func ExecuteCommand(command string, envVars []string) (string, error) {
     output += stderr.String()
   }
 
+  output = strings.TrimSpace(output)
   return output, err
 }
 

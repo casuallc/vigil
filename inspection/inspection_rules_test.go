@@ -6,6 +6,7 @@ import (
   "gopkg.in/yaml.v3"
   "log"
   "os"
+  "strconv"
   "testing"
 )
 
@@ -47,4 +48,14 @@ func TestInspectionRules(t *testing.T) {
       break
     }
   }
+}
+
+func TestParseInt(t *testing.T) {
+  output := "1"
+  val, err := strconv.ParseInt(output, 10, 64)
+  if err != nil {
+    fmt.Printf("Error parsing int: %v", err)
+    return
+  }
+  fmt.Printf("value: %d", val)
 }

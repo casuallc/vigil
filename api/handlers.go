@@ -368,7 +368,7 @@ func (s *Server) executeCheck(check inspection.Check, envVars []string) inspecti
   // 计算执行时间
   result.DurationMs = int64(int(time.Since(startTime).Milliseconds()))
 
-  if result.Value == nil {
+  if result.Value == nil || result.Status == inspection.StatusError || result.Status == inspection.StatusWarn {
     return result
   }
 
@@ -429,7 +429,7 @@ func (s *Server) parseCheckOutput(check inspection.Check, output string, result 
     result.Message = output
     return result
   }
-
+  var parseErr error
   switch check.Parse.Kind {
   case "regex":
     if check.Parse.Pattern != "" {
@@ -437,6 +437,8 @@ func (s *Server) parseCheckOutput(check inspection.Check, output string, result 
       if matches := re.FindStringSubmatch(output); len(matches) > 1 {
         if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
           result.Value = val
+        } else {
+          parseErr = err
         }
       }
     }
@@ -446,21 +448,36 @@ func (s *Server) parseCheckOutput(check inspection.Check, output string, result 
       if val, ok := data[check.Parse.Path]; ok {
         if valFloat, err := strconv.ParseFloat(fmt.Sprintf("%v", val), 64); err == nil {
           result.Value = valFloat
+        } else {
+          parseErr = err
         }
       }
     }
   case "int":
     if val, err := strconv.ParseInt(output, 10, 64); err == nil {
       result.Value = val
+    } else {
+      parseErr = err
     }
   case "float":
     if val, err := strconv.ParseFloat(output, 64); err == nil {
       result.Value = val
+    } else {
+      parseErr = err
     }
   case "string":
     result.Value = output
   default:
     result.Value = output
+  }
+  // 获取不到值，则返回错误
+  if result.Value == nil {
+    errStr := ""
+    if parseErr != nil {
+      errStr = parseErr.Error()
+    }
+    result.Message = fmt.Sprintf("Can not parse value with %s, error: %s", check.Parse.Kind, errStr)
+    result.Status = inspection.StatusError
   }
 
   return result
