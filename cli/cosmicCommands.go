@@ -399,11 +399,9 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
   const lineWidth = 120
 
   // === 报告标题 ===
-  headerText := pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgBlue)).
-    Sprint("COSMIC SYSTEM INSPECTION REPORT")
-  fmt.Fprintf(&buf, "%s\n", headerText)
-  fmt.Fprintf(&buf, "Generated at: %s\n", time.Now().Format("2006-01-02 15:04:05"))
-  fmt.Fprintf(&buf, "%s\n\n", strings.Repeat("=", lineWidth))
+  headerText := pterm.DefaultHeader.WithFullWidth().Sprint("Cosmic Middleware Inspection Report ")
+  fmt.Fprintf(&buf, "%s", headerText)
+  fmt.Fprintf(&buf, "Generated at: %s\n\n", time.Now().Format("2006-01-02 15:04:05"))
 
   // === 收集统计信息 ===
   totalJobs := len(results)
@@ -465,8 +463,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
 
   // === 按软件分组输出详情 ===
   for software, jobResults := range softwareResults {
-    softwareHeader := pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgCyan, pterm.FgBlack)).
-      Sprint(" SOFTWARE: " + software + " ")
+    softwareHeader := pterm.DefaultHeader.WithFullWidth().Sprint(" Software: " + software + " ")
     fmt.Fprintf(&buf, "%s\n\n", softwareHeader)
 
     for _, result := range jobResults {
@@ -488,7 +485,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
       fmt.Fprintf(&buf, "\n")
 
       if result.Message != "" {
-        fmt.Fprintf(&buf, "  Message: %s\n", truncateString(result.Message, 100))
+        fmt.Fprintf(&buf, "  Message: %s\n", SplitStringByFixedWidth(result.Message, 100))
       }
 
       if len(result.Checks) > 0 {
@@ -496,9 +493,9 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
 
         tableData := [][]string{{"Name", "Type", "Status", "Message"}}
         for _, check := range result.Checks {
-          name := truncateString(check.Name, 25)
-          typ := truncateString(check.Type, 12)
-          msg := truncateString(firstNonEmptyLine(check.Message), 40)
+          name := SplitStringByFixedWidth(check.Name, 25)
+          typ := SplitStringByFixedWidth(check.Type, 12)
+          msg := SplitStringByFixedWidth(check.Message, 40)
 
           statusStr := check.Status
           // 终端输出带颜色，文件输出用纯文本
@@ -529,6 +526,8 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
           WithWriter(&buf).
           WithHasHeader().
           WithBoxed().
+          WithRowSeparator("-").
+          WithHeaderRowSeparator("-").
           WithLeftAlignment().
           WithData(tableData).
           Render()
@@ -538,8 +537,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
   }
 
   // === 结束标记 ===
-  endText := pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgGray, pterm.FgWhite)).
-    Sprint(" END OF REPORT ")
+  endText := pterm.DefaultHeader.WithFullWidth().Sprint(" END OF REPORT ")
   fmt.Fprintf(&buf, "\n%s\n", endText)
   return buf.Bytes()
 }
@@ -549,7 +547,7 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
   var buf bytes.Buffer
 
   // 报告标题
-  fmt.Fprintf(&buf, "# COSMIC SYSTEM INSPECTION REPORT\n\n")
+  fmt.Fprintf(&buf, "# Cosmic Middleware Inspection Report\n\n")
   fmt.Fprintf(&buf, "> Generated at: `%s`\n\n", time.Now().Format("2006-01-02 15:04:05"))
 
   // 收集统计
@@ -628,7 +626,7 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         duration = fmt.Sprintf("%.2fs", result.Duration)
       }
 
-      message := truncateString(result.Message, 80)
+      message := SplitStringByFixedWidth(result.Message, 80)
       if message == "" {
         message = "—"
       }
@@ -664,13 +662,13 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         case "critical", "error":
           checkStatusIcon = "❌"
         }
-        checkMsg := truncateString(firstNonEmptyLine(check.Message), 60)
+        checkMsg := SplitStringByFixedWidth(firstNonEmptyLine(check.Message), 60)
         if checkMsg == "" {
           checkMsg = "—"
         }
         fmt.Fprintf(&buf, "| %s | %s | %s %s | %s |\n",
-          truncateString(check.Name, 30),
-          truncateString(check.Type, 15),
+          SplitStringByFixedWidth(check.Name, 30),
+          SplitStringByFixedWidth(check.Type, 15),
           checkStatusIcon,
           strings.ToUpper(check.Status),
           checkMsg,
@@ -744,14 +742,14 @@ document.addEventListener('DOMContentLoaded', () => {
   buf.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
   buf.WriteString("<meta charset=\"UTF-8\">\n")
   buf.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
-  buf.WriteString("<title>COSMIC Inspection Report</title>\n")
+  buf.WriteString("<title>苍穹中间件巡检报告</title>\n")
   buf.WriteString(css)
   buf.WriteString("</head>\n<body>\n")
   buf.WriteString("<div class=\"container\">\n")
 
   // 标题
   buf.WriteString("<div class=\"header\">\n")
-  buf.WriteString("<h1>COSMIC SYSTEM INSPECTION REPORT</h1>\n")
+  buf.WriteString("<h1>Cosmic Middleware Inspection Report</h1>\n")
   buf.WriteString("</div>\n")
   buf.WriteString(fmt.Sprintf("<div class=\"meta\">Generated at: %s</div>\n", time.Now().Format("2006-01-02 15:04:05")))
 
@@ -823,7 +821,7 @@ document.addEventListener('DOMContentLoaded', () => {
         duration = fmt.Sprintf("%.2f s", result.Duration)
       }
 
-      message := truncateString(result.Message, 120)
+      message := SplitStringByFixedWidth(result.Message, 120)
       if message == "" {
         message = "—"
       }
@@ -849,13 +847,13 @@ document.addEventListener('DOMContentLoaded', () => {
           default:
             checkStatusBadge = check.Status
           }
-          checkMsg := truncateString(firstNonEmptyLine(check.Message), 80)
+          checkMsg := firstNonEmptyLine(check.Message)
           if checkMsg == "" {
             checkMsg = "—"
           }
           buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-            truncateString(check.Name, 30),
-            truncateString(check.Type, 15),
+            check.Name,
+            check.Type,
             checkStatusBadge,
             checkMsg,
           ))
@@ -960,7 +958,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
   // 标题
   buf.WriteString("<div class=\"header\">\n")
-  buf.WriteString("<h1>COSMIC SYSTEM INSPECTION REPORT</h1>\n")
+  buf.WriteString("<h1>Cosmic Middleware Inspection Report</h1>\n")
   buf.WriteString("</div>\n")
   buf.WriteString(fmt.Sprintf("<div class=\"meta\">Generated at: %s</div>\n", time.Now().Format("2006-01-02 15:04:05")))
 
@@ -1029,7 +1027,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         duration = fmt.Sprintf("%.2f s", result.Duration)
       }
 
-      message := truncateString(result.Message, 120)
+      message := SplitStringByFixedWidth(result.Message, 120)
       if message == "" {
         message = "—"
       }
@@ -1053,13 +1051,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
           default:
             checkBadge = check.Status
           }
-          checkMsg := truncateString(firstNonEmptyLine(check.Message), 80)
+          checkMsg := SplitStringByFixedWidth(firstNonEmptyLine(check.Message), 80)
           if checkMsg == "" {
             checkMsg = "—"
           }
           buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-            truncateString(check.Name, 30),
-            truncateString(check.Type, 15),
+            SplitStringByFixedWidth(check.Name, 30),
+            SplitStringByFixedWidth(check.Type, 15),
             checkBadge,
             checkMsg,
           ))

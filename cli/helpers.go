@@ -68,6 +68,7 @@ func (c *CLI) selectProcessInteractively(namespace string, label string) (proc.M
   return processes[idx], nil
 }
 
+// firstNonEmptyLine 获取字符串的第一行非空行
 func firstNonEmptyLine(msg string) string {
   for _, line := range strings.Split(msg, "\n") {
     if trimmed := strings.TrimSpace(line); trimmed != "" {
@@ -75,4 +76,27 @@ func firstNonEmptyLine(msg string) string {
     }
   }
   return ""
+}
+
+// SplitStringByFixedWidth 按固定宽度使用换行分割字符串
+func SplitStringByFixedWidth(s string, lineLen int) string {
+  if lineLen <= 0 || len(s) <= lineLen {
+    return s
+  }
+
+  r := []rune(s)
+  var b strings.Builder
+
+  for i := 0; i < len(r); i += lineLen {
+    end := i + lineLen
+    if end > len(r) {
+      end = len(r)
+    }
+    b.WriteString(string(r[i:end]))
+    if end < len(r) {
+      b.WriteString("\n")
+    }
+  }
+
+  return b.String()
 }
