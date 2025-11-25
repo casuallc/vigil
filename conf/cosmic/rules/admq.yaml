@@ -176,8 +176,6 @@ checks:
   - id: admq-replica-policy
     name: "ADMQ 数据副本策略（Ensemble/Write/Ack Quorum）"
     type: script
-    parse:
-      kind: regex
     command: |
       cd ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4
       e=$(grep '^managedLedgerDefaultEnsembleSize=' config/broker.conf | cut -d= -f2)

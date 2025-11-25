@@ -465,8 +465,6 @@ func (s *Server) parseCheckOutput(check inspection.Check, output string, result 
     } else {
       parseErr = err
     }
-  case "string":
-    result.Value = output
   default:
     result.Value = output
   }
