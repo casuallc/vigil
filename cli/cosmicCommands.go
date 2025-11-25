@@ -58,7 +58,7 @@ func (c *CLI) setupCosmicInspectCommand() *cobra.Command {
 
 // handleCosmicInspect 处理cosmic系统巡检命令
 func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []string, outputFormat string, outputFile string) error {
-  fmt.Println("=== Cosmic System Inspection Started ===")
+  pterm.DefaultHeader.WithFullWidth().Printf("Cosmic System Inspection Started")
   startTime := time.Now()
 
   // 加载cosmic配置文件
@@ -113,7 +113,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
   var summaryBySoftware = make(map[string][]inspection.CosmicResult)
 
   for _, job := range jobsToInspect {
-    fmt.Printf("\n=== Processing Software: %s ===\n", job.Name)
+    pterm.DefaultHeader.WithFullWidth().Printf("Processing Software: %s", job.Name)
 
     // 加载作业规则
     var inspectionRules *inspection.RuleConfig
@@ -152,7 +152,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
         continue
       }
 
-      fmt.Printf("\n==== Inspecting %s on node %s (%s:%d) ====\n", job.Name, node.Name, node.IP, node.Port)
+      pterm.DefaultHeader.WithFullWidth().Printf("Inspecting %s on node %s (%s:%d)", job.Name, node.Name, node.IP, node.Port)
 
       // 执行实际巡检
       result := c.performCosmicInspection(job, node, inspectionRules, envMap)
@@ -164,7 +164,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
   }
 
   // 汇总分析结果
-  fmt.Println("\n=== Summary Analysis ===")
+  pterm.DefaultHeader.WithFullWidth().Printf("Summary Analysis")
   for software, results := range summaryBySoftware {
     fmt.Printf("Software: %s\n", software)
     fmt.Printf("- Total nodes: %d\n", len(results))
@@ -271,30 +271,6 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   fmt.Printf("- Error: %d\n", errorCount)
 
   return nil
-}
-
-// evaluateThreshold 评估阈值
-func (c *CLI) evaluateThreshold(value float64, threshold *inspection.Threshold) bool {
-  if threshold == nil {
-    return false
-  }
-
-  switch threshold.Operator {
-  case ">":
-    return value > threshold.Value
-  case ">=":
-    return value >= threshold.Value
-  case "<":
-    return value < threshold.Value
-  case "<=":
-    return value <= threshold.Value
-  case "==":
-    return value == threshold.Value
-  case "!=":
-    return value != threshold.Value
-  default:
-    return false
-  }
 }
 
 // performCosmicInspection 执行具体的cosmic系统巡检
