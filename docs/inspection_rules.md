@@ -86,7 +86,7 @@ checks:                       # 指标列表（数组）
     - `path`: 对于 json/yaml 指定的 jsonpath 或 yamlpath
 + `thresholds`（可选，数组）：用于数值类或可比较结果。每个项包含：
     - `when`：表达式字符串，例如 `">= 1000"`, `"> 0.9"`, `"== 0"`。推荐支持复合条件（见表达式部分）。
-    - `severity`：`info|warn|critical`
+    - `severity`：`info|warn|error|critical`
     - `message`：提示/说明
 + `compare`（可选）：简写比较符，如 `<, <=, >, >=, ==, !=`（若使用 `thresholds` 可忽略）
 + `timeout`（可选，秒）：执行超时

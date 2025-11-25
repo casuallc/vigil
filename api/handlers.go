@@ -7,6 +7,7 @@ import (
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/inspection"
   "github.com/casuallc/vigil/proc"
+  "github.com/expr-lang/expr"
   "github.com/gorilla/mux"
   "net/http"
   "regexp"
@@ -317,22 +318,22 @@ func (s *Server) handleCosmicInspect(w http.ResponseWriter, r *http.Request) {
 
     // 统计检查结果
     switch strings.ToLower(result.Status) {
-    case "ok", "pass":
+    case inspection.StatusOk:
       passedChecks++
-    case "warning":
+    case inspection.StatusWarn:
       warningChecks++
-    case "error", "fail", "critical":
+    case inspection.StatusError:
       errorChecks++
     }
   }
 
   // 构建响应
   // 确定整体状态
-  var overallStatus string = "OK"
+  var overallStatus string = inspection.StatusOk
   if errorChecks > 0 {
-    overallStatus = "CRITICAL"
+    overallStatus = inspection.StatusError
   } else if warningChecks > 0 {
-    overallStatus = "WARN"
+    overallStatus = inspection.StatusWarn
   }
 
   response := inspection.Result{
@@ -364,9 +365,26 @@ func (s *Server) executeCheck(check inspection.Check, envVars []string) inspecti
   // 记录开始时间
   startTime := time.Now()
   result := s.executeScriptCheck(check, envVars)
-
   // 计算执行时间
   result.DurationMs = int64(int(time.Since(startTime).Milliseconds()))
+
+  if result.Value == nil {
+    return result
+  }
+
+  // 根据 docs/inspection_rules.md 中定义的规则进行解析和结果判断
+  if check.Expect != nil {
+    // 处理 expect 匹配
+    s.handleExpectMatch(check, &result)
+  } else if len(check.Compare) > 0 {
+    // 处理 compare 匹配
+    s.handleCompare(check, &result)
+  } else if len(check.Thresholds) > 0 {
+    // 处理阈值判断
+    s.handleThresholds(check, &result)
+  } else {
+    result.Status = inspection.StatusError
+  }
 
   return result
 }
@@ -377,15 +395,15 @@ func (s *Server) executeScriptCheck(check inspection.Check, envVars []string) in
     ID:       check.ID,
     Name:     check.Name,
     Type:     check.Type,
-    Status:   "ok",
+    Status:   inspection.StatusOk,
     Severity: "info",
   }
 
   // 获取命令
   commandLines, err := check.GetCommandLines()
   if err != nil || len(commandLines) == 0 {
-    result.Status = "error"
-    result.Severity = "critical"
+    result.Status = inspection.StatusError
+    result.Severity = inspection.SeverityCritical
     result.Message = fmt.Sprintf("Failed to get command: %v", err)
     return result
   }
@@ -393,14 +411,15 @@ func (s *Server) executeScriptCheck(check inspection.Check, envVars []string) in
   // 执行命令
   output, err := common.ExecuteCommand(commandLines[0], envVars)
   if err != nil {
-    result.Status = "error"
-    result.Severity = "critical"
+    result.Status = inspection.StatusError
+    result.Severity = inspection.SeverityCritical
     result.Message = fmt.Sprintf("Command execution failed: %v, output: %s", err, output)
     return result
   }
 
   // 解析输出
   result = s.parseCheckOutput(check, output, result)
+
   return result
 }
 
@@ -430,61 +449,122 @@ func (s *Server) parseCheckOutput(check inspection.Check, output string, result 
         }
       }
     }
-  case "threshold":
-    // 阈值解析在executeScriptCheck中处理
+  case "int":
+    if val, err := strconv.ParseInt(output, 10, 64); err == nil {
+      result.Value = val
+    }
+  case "float":
+    if val, err := strconv.ParseFloat(output, 64); err == nil {
+      result.Value = val
+    }
+  case "string":
+    result.Value = output
   default:
-    result.Message = output
+    result.Value = output
   }
 
   return result
 }
 
-// evaluateThreshold 评估阈值
-func (s *Server) evaluateThreshold(value float64, threshold *inspection.Threshold, result inspection.CheckResult) inspection.CheckResult {
-  if threshold == nil {
-    return result
+// handleExpectMatch 处理期望匹配
+func (s *Server) handleExpectMatch(check inspection.Check, result *inspection.CheckResult) {
+  output := fmt.Sprintf("%v", result.Value)
+
+  expectLines, err := check.GetExpectLines()
+  if err != nil {
+    result.Status = inspection.StatusError
+    result.Severity = inspection.SeverityCritical
+    result.Message = fmt.Sprintf("Invalid expect configuration: %v", err)
+    return
   }
 
-  switch threshold.Operator {
-  case ">":
-    if value > threshold.Value {
-      result.Status = "error"
-      result.Severity = "critical"
-      result.Message = fmt.Sprintf("Critical: value %.2f exceeds threshold %.2f", value, threshold.Value)
+  // 检查输出是否包含任一期望的行
+  matched := false
+  for _, expect := range expectLines {
+    if strings.Contains(output, expect) {
+      matched = true
+      break
     }
-  case ">=":
-    if value >= threshold.Value {
-      result.Status = "error"
-      result.Severity = "critical"
-      result.Message = fmt.Sprintf("Critical: value %.2f exceeds or equals threshold %.2f", value, threshold.Value)
-    }
-  case "<":
-    if value < threshold.Value {
-      result.Status = "error"
-      result.Severity = "critical"
-      result.Message = fmt.Sprintf("Critical: value %.2f below threshold %.2f", value, threshold.Value)
-    }
-  case "<=":
-    if value <= threshold.Value {
-      result.Status = "error"
-      result.Severity = "critical"
-      result.Message = fmt.Sprintf("Critical: value %.2f below or equals threshold %.2f", value, threshold.Value)
-    }
-  case "==":
-    if value == threshold.Value {
-      result.Status = "error"
-      result.Severity = "critical"
-      result.Message = fmt.Sprintf("Critical: value %.2f equals threshold %.2f", value, threshold.Value)
-    }
-  case "!=":
-    if value != threshold.Value {
-      result.Status = "error"
-      result.Severity = "critical"
-      result.Message = fmt.Sprintf("Critical: value %.2f not equals threshold %.2f", value, threshold.Value)
-    }
-  default:
-    result.Message = fmt.Sprintf("Unknown operator: %s", threshold.Operator)
   }
 
-  return result
+  if !matched {
+    result.Status = inspection.StatusError
+    result.Severity = string(check.Severity)
+    if result.Severity == "" {
+      result.Severity = inspection.SeverityWarn
+    }
+    result.Message = fmt.Sprintf("Output does not match expected pattern(s)")
+  }
+}
+
+// handleCompare 处理数值比较
+func (s *Server) handleCompare(check inspection.Check, result *inspection.CheckResult) {
+  value, err := parseFloatValue(result.Value)
+  if err != nil {
+    result.Status = inspection.StatusError
+    result.Severity = inspection.SeverityCritical
+    result.Message = fmt.Sprintf("Failed to parse value: %v", err)
+    return
+  }
+
+  // 使用expr-lang评估阈值表达式
+  env := map[string]interface{}{
+    "value": value,
+  }
+  exprStr := "value " + check.Compare
+  // 评估表达式
+  evalResult, err := expr.Eval(exprStr, env)
+  if err != nil {
+    return
+  }
+
+  // 如果表达式为真，则应用该阈值规则
+  if match, ok := evalResult.(bool); ok && match {
+    result.Status = "ok"
+    result.Severity = "ok"
+    result.Message = fmt.Sprintf("Threshold condition met: %s", check.Compare)
+  } else {
+    result.Status = "error"
+    result.Severity = "error"
+  }
+}
+
+// handleThresholds 处理阈值判断
+func (s *Server) handleThresholds(check inspection.Check, result *inspection.CheckResult) {
+  value, err := parseFloatValue(result.Value)
+  if err != nil {
+    result.Status = inspection.StatusError
+    result.Severity = inspection.SeverityCritical
+    result.Message = fmt.Sprintf("Failed to parse value: %v", err)
+    return
+  }
+
+  // 使用expr-lang评估阈值表达式
+  env := map[string]interface{}{
+    "value": value,
+  }
+
+  // 检查每个阈值规则
+  for _, threshold := range check.Thresholds {
+    // 构建表达式
+    exprStr := "value " + threshold.When
+
+    // 评估表达式
+    evalResult, err := expr.Eval(exprStr, env)
+    if err != nil {
+      continue // 跳过无效的表达式
+    }
+
+    // 如果表达式为真，则应用该阈值规则
+    if match, ok := evalResult.(bool); ok && match {
+      result.Status = string(threshold.Severity)
+      result.Severity = string(threshold.Severity)
+      if threshold.Message != "" {
+        result.Message = threshold.Message
+      } else {
+        result.Message = fmt.Sprintf("Threshold condition met: %s", threshold.When)
+      }
+      break // 一旦匹配到阈值规则就停止检查
+    }
+  }
 }
