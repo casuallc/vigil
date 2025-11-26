@@ -176,11 +176,11 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
     var success, warning, errorCount int
     for _, r := range results {
       switch r.Status {
-      case "ok":
+      case inspection.StatusOk:
         success++
-      case "warning":
+      case inspection.StatusWarn:
         warning++
-      case "error":
+      case inspection.StatusError:
         errorCount++
       }
     }
@@ -254,16 +254,14 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   }
 
   // 统计检查结果
-  var passed, warning, critical, errorCount int
+  var passed, warning, errorCount int
   for _, check := range result.Checks {
     switch check.Status {
-    case "ok":
+    case inspection.StatusOk:
       passed++
-    case "warning":
+    case inspection.StatusWarn:
       warning++
-    case "critical":
-      critical++
-    case "error":
+    case inspection.StatusError:
       errorCount++
     }
   }
@@ -272,7 +270,6 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   fmt.Printf("- Total checks: %d\n", len(result.Checks))
   fmt.Printf("- Passed: %d\n", passed)
   fmt.Printf("- Warning: %d\n", warning)
-  fmt.Printf("- Critical: %d\n", critical)
   fmt.Printf("- Error: %d\n", errorCount)
 
   return nil
@@ -449,9 +446,9 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
 
       var statusLine string
       switch result.Status {
-      case "ok":
+      case inspection.SeverityOk:
         statusLine = pterm.Success.Sprint("Status: OK")
-      case "warning":
+      case inspection.StatusWarn:
         statusLine = pterm.Warning.Sprint("Status: WARNING")
       default:
         statusLine = pterm.Error.Sprint("Status: FAILED")
@@ -469,7 +466,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
       if len(result.Checks) > 0 {
         fmt.Fprintf(&buf, "\n  Checks (%d):\n", len(result.Checks))
 
-        tableData := [][]string{{"Name", "Type", "Status", "Value", "Message", "Remediation"}}
+        tableData := [][]string{{"Name", "Type", "Status", "Severity", "Value", "Message", "Remediation"}}
         for _, check := range result.Checks {
           name := SplitStringByFixedWidth(check.Name, 30)
           typ := SplitStringByFixedWidth(check.Type, 12)
@@ -502,7 +499,13 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
             }
           }
 
-          tableData = append(tableData, []string{name, typ, statusStr, val, msg, remediation})
+          // Severity 字段处理
+          severityStr := check.Severity
+          if severityStr == "" {
+            severityStr = "N/A"
+          }
+
+          tableData = append(tableData, []string{name, typ, statusStr, severityStr, val, msg, remediation})
         }
 
         pterm.DefaultTable.
@@ -595,10 +598,10 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
       statusIcon := "❓"
       statusText := result.Status
       switch result.Status {
-      case "ok":
+      case inspection.StatusOk:
         statusIcon = "✅"
         statusText = "OK"
-      case "warning":
+      case inspection.StatusWarn:
         statusIcon = "⚠️"
         statusText = "WARNING"
       default:
@@ -668,8 +671,8 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         continue
       }
       fmt.Fprintf(&buf, "#### Node: `%s:%d`\n\n", result.Host, result.Port)
-      fmt.Fprintf(&buf, "| Name | Type | Status | Message | Remediation |\n")
-      fmt.Fprintf(&buf, "|------|------|--------|---------|-------------|\n")
+      fmt.Fprintf(&buf, "| Name | Type | Status | Severity | Message | Remediation |\n")
+      fmt.Fprintf(&buf, "|------|------|--------|----------|---------|-------------|\n")
       for _, check := range result.Checks {
         checkStatusIcon := "❓"
         switch check.Status {
@@ -688,11 +691,16 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         if check.Remediation != "" {
           remediation = SplitStringByFixedWidth(check.Remediation, 30)
         }
-        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s |\n",
+        severity := check.Severity
+        if severity == "" {
+          severity = "N/A"
+        }
+        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s | %s |\n",
           SplitStringByFixedWidth(check.Name, 25),
           SplitStringByFixedWidth(check.Type, 12),
           checkStatusIcon,
           strings.ToUpper(check.Status),
+          severity,
           checkMsg,
           remediation,
         )
@@ -854,7 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if len(result.Checks) > 0 {
         buf.WriteString("<button class=\"toggle-btn\">Show Checks</button>\n")
         buf.WriteString("<table class=\"checks-table\">\n")
-        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Value</th><th>Message</th><th>Remediation</th></tr></thead>\n")
+        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Severity</th><th>Value</th><th>Message</th><th>Remediation</th></tr></thead>\n")
         buf.WriteString("<tbody>\n")
         for _, check := range result.Checks {
           var checkStatusBadge string
@@ -876,10 +884,15 @@ document.addEventListener('DOMContentLoaded', () => {
           if checkRemediation == "" {
             checkRemediation = "—"
           }
-          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+          severity := check.Severity
+          if severity == "" {
+            severity = "N/A"
+          }
+          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
             check.Name,
             check.Type,
             checkStatusBadge,
+            severity,
             common.ParseInterfaceToString(check.Value),
             checkMsg,
             checkRemediation,

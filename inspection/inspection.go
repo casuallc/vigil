@@ -77,57 +77,57 @@ func executeScriptCheck(check Check, envVars []string) CheckResult {
 
 // parseCheckOutput 解析检查输出
 func parseCheckOutput(check Check, output string, result CheckResult) CheckResult {
-  if check.Parse == nil {
-    result.Message = output
-    return result
-  }
   var parseErr error
-  switch check.Parse.Kind {
-  case "regex":
-    if check.Parse.Pattern != "" {
-      re := regexp.MustCompile(check.Parse.Pattern)
-      if matches := re.FindStringSubmatch(output); len(matches) > 1 {
-        if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
-          result.Value = val
-        } else {
-          parseErr = err
-        }
-      }
-    }
-  case "json":
-    var data map[string]interface{}
-    if err := json.Unmarshal([]byte(output), &data); err == nil {
-      if val, ok := data[check.Parse.Path]; ok {
-        if valFloat, err := strconv.ParseFloat(fmt.Sprintf("%v", val), 64); err == nil {
-          result.Value = valFloat
-        } else {
-          parseErr = err
-        }
-      }
-    }
-  case "int":
-    if val, err := strconv.ParseInt(output, 10, 64); err == nil {
-      result.Value = val
-    } else {
-      parseErr = err
-    }
-  case "float":
-    if val, err := strconv.ParseFloat(output, 64); err == nil {
-      result.Value = val
-    } else {
-      parseErr = err
-    }
-  default:
+  if check.Parse == nil {
     result.Value = output
-  }
-  // 获取不到值，则返回错误
-  if result.Value == nil {
-    errStr := ""
-    if parseErr != nil {
-      errStr = parseErr.Error()
+  } else {
+    switch check.Parse.Kind {
+    case "regex":
+      if check.Parse.Pattern != "" {
+        re := regexp.MustCompile(check.Parse.Pattern)
+        if matches := re.FindStringSubmatch(output); len(matches) > 1 {
+          if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
+            result.Value = val
+          } else {
+            parseErr = err
+          }
+        }
+      }
+    case "json":
+      var data map[string]interface{}
+      if err := json.Unmarshal([]byte(output), &data); err == nil {
+        if val, ok := data[check.Parse.Path]; ok {
+          if valFloat, err := strconv.ParseFloat(fmt.Sprintf("%v", val), 64); err == nil {
+            result.Value = valFloat
+          } else {
+            parseErr = err
+          }
+        }
+      }
+    case "int":
+      if val, err := strconv.ParseInt(output, 10, 64); err == nil {
+        result.Value = val
+      } else {
+        parseErr = err
+      }
+    case "float":
+      if val, err := strconv.ParseFloat(output, 64); err == nil {
+        result.Value = val
+      } else {
+        parseErr = err
+      }
+    default:
+      result.Value = output
     }
-    result.Message = fmt.Sprintf("Can not parse value with %s, error: %s", check.Parse.Kind, errStr)
-    result.Status = StatusError
+    // 获取不到值，则返回错误
+    if result.Value == nil {
+      errStr := ""
+      if parseErr != nil {
+        errStr = parseErr.Error()
+      }
+      result.Message = fmt.Sprintf("Can not parse value, error: %s", errStr)
+      result.Status = StatusError
+    }
   }
 
   return result
