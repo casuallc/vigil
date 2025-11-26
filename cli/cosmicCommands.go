@@ -470,12 +470,12 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
 
         tableData := [][]string{{"Name", "Type", "Status", "Message", "Remediation"}}
         for _, check := range result.Checks {
-          name := SplitStringByFixedWidth(check.Name, 20)
+          name := SplitStringByFixedWidth(check.Name, 30)
           typ := SplitStringByFixedWidth(check.Type, 12)
-          msg := SplitStringByFixedWidth(check.Message, 30)
+          msg := SplitStringByFixedWidth(check.Message, 40)
           remediation := ""
           if check.Remediation != "" {
-            remediation = SplitStringByFixedWidth(check.Remediation, 20)
+            remediation = SplitStringByFixedWidth(check.Remediation, 40)
           }
 
           statusStr := check.Status
@@ -687,7 +687,7 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         }
         remediation := "—"
         if check.Remediation != "" {
-          remediation = SplitStringByFixedWidth(check.Remediation, 30)
+          remediation = SplitStringByFixedWidth(check.Remediation, 40)
         }
         fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s |\n",
           SplitStringByFixedWidth(check.Name, 25),
@@ -845,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
         duration = fmt.Sprintf("%.2f s", result.Duration)
       }
 
-      message := SplitStringByFixedWidth(result.Message, 120)
+      message := result.Message
       if message == "" {
         message = "—"
       }
@@ -857,7 +857,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if len(result.Checks) > 0 {
         buf.WriteString("<button class=\"toggle-btn\">Show Checks</button>\n")
         buf.WriteString("<table class=\"checks-table\">\n")
-        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Message</th>th>Remediation</th></tr></thead>\n")
+        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Message</th><th>Remediation</th></tr></thead>\n")
         buf.WriteString("<tbody>\n")
         for _, check := range result.Checks {
           var checkStatusBadge string
