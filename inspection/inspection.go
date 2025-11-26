@@ -48,7 +48,7 @@ func executeScriptCheck(check Check, envVars []string) CheckResult {
     Type:        check.Type,
     Remediation: check.Remediation,
     Status:      StatusOk,
-    Severity:    "info",
+    Severity:    SeverityOk,
   }
 
   // 获取命令
@@ -77,8 +77,8 @@ func executeScriptCheck(check Check, envVars []string) CheckResult {
 
 // parseCheckOutput 解析检查输出
 func parseCheckOutput(check Check, output string, result CheckResult) CheckResult {
-  result.Message = output
   if check.Parse == nil {
+    result.Message = output
     return result
   }
   var parseErr error
@@ -187,12 +187,12 @@ func handleCompare(check Check, result *CheckResult) {
 
   // 如果表达式为真，则应用该阈值规则
   if match, ok := evalResult.(bool); ok && match {
-    result.Status = "ok"
-    result.Severity = "ok"
+    result.Status = StatusOk
+    result.Severity = SeverityOk
     result.Message = fmt.Sprintf("Threshold condition met: %s", check.Compare)
   } else {
-    result.Status = "error"
-    result.Severity = "error"
+    result.Status = StatusError
+    result.Severity = SeverityError
   }
 }
 

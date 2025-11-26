@@ -24,10 +24,10 @@ checks:
     parse:
       kind: int
     # 可选：添加阈值，例如 > 100000 MB (100GB)
-    # thresholds:
-    #   - when: "> 100000"
-    #     severity: warn
-    #     message: "ADCC 数据目录超过 100GB"
+    thresholds:
+      - when: "> 100000"
+        severity: warn
+        message: "ADCC 数据目录超过 100GB"
 
 
   # 3. ZooKeeper 节点健康状态（ruok）
@@ -65,15 +65,3 @@ checks:
     #   - when: "> 5000"
     #     severity: warn
     #     message: "tickTime 过大，故障检测延迟高"
-
-
-  # 【可选】复合健康检查
-  - id: adcc-overall-health
-    name: "ADCC 整体健康状态"
-    type: compound
-    children:
-      - adcc-process-status
-      - adcc-ruok-check
-      - adcc-license-expiry
-    logic: "adcc-process-status && adcc-ruok-check"
-    severity: critical

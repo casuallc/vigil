@@ -36,9 +36,9 @@ package_arch() {
     chmod +x "$temp_pkg/bin/appctl.sh"
 
     # 拷贝对应架构的二进制
-    cp "$src_dir"/bbx-dev* "$temp_pkg/bbx"
-    cp "$src_dir"/bbx-cli-dev* "$temp_pkg/bbx-cli"
-    chmod +x "$temp_pkg/bbx"
+    cp "$src_dir"/bbx-server* "$temp_pkg/bbx-server"
+    cp "$src_dir"/bbx-cli-* "$temp_pkg/bbx-cli"
+    chmod +x "$temp_pkg/bbx-server"
     chmod +x "$temp_pkg/bbx-cli"
 
     # 打包（在 dest 目录内打包）

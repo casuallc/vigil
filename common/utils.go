@@ -196,3 +196,49 @@ func ParseFloatValue(v interface{}) (float64, error) {
   }
   return value, nil
 }
+
+// ParseInterfaceToString 转换成 string
+func ParseInterfaceToString(val interface{}) string {
+  if val == nil {
+    return ""
+  }
+
+  switch v := val.(type) {
+  case string:
+    return v
+  case []byte:
+    return string(v)
+  case int:
+    return strconv.Itoa(v)
+  case int8:
+    return strconv.FormatInt(int64(v), 10)
+  case int16:
+    return strconv.FormatInt(int64(v), 10)
+  case int32:
+    return strconv.FormatInt(int64(v), 10)
+  case int64:
+    return strconv.FormatInt(v, 10)
+  case uint:
+    return strconv.FormatUint(uint64(v), 10)
+  case uint8:
+    return strconv.FormatUint(uint64(v), 10)
+  case uint16:
+    return strconv.FormatUint(uint64(v), 10)
+  case uint32:
+    return strconv.FormatUint(uint64(v), 10)
+  case uint64:
+    return strconv.FormatUint(v, 10)
+  case float32:
+    return strconv.FormatFloat(float64(v), 'f', -1, 32)
+  case float64:
+    return strconv.FormatFloat(v, 'f', -1, 64)
+  case bool:
+    return strconv.FormatBool(v)
+  case fmt.Stringer:
+    return v.String()
+  default:
+    // 对于结构体、map、slice（非[]byte）等复杂类型，使用 fmt.Sprint 安全转换
+    // 注意：这会调用其 String() 方法（如果有）或生成类似 "{field: value}" 的字符串
+    return fmt.Sprint(val)
+  }
+}

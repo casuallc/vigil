@@ -5,6 +5,7 @@ import (
   "encoding/json"
   "fmt"
   "github.com/casuallc/vigil/client"
+  "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/inspection"
   "github.com/pterm/pterm"
   "github.com/spf13/cobra"
@@ -47,7 +48,7 @@ func (c *CLI) setupCosmicInspectCommand() *cobra.Command {
     },
   }
 
-  inspectCmd.Flags().StringVarP(&configFile, "config", "c", "conf/cosmic/cosmic.yml", "Cosmic configuration file path")
+  inspectCmd.Flags().StringVarP(&configFile, "config", "c", "conf/cosmic/cosmic.yaml", "Cosmic configuration file path")
   inspectCmd.Flags().StringVarP(&jobName, "job", "j", "", "Specific job name to inspect (if not specified, all jobs will be inspected)")
   inspectCmd.Flags().StringArrayVarP(&envVars, "env", "e", []string{}, "Environment variables to override (format: KEY=VALUE)")
   inspectCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output result to file instead of console")
@@ -113,6 +114,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
   var summaryBySoftware = make(map[string][]inspection.CosmicResult)
 
   for _, job := range jobsToInspect {
+    fmt.Println()
     pterm.DefaultHeader.WithFullWidth().Printf("Processing Software: %s", job.Name)
 
     // 加载作业规则
@@ -152,6 +154,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
         continue
       }
 
+      fmt.Println()
       pterm.DefaultHeader.WithFullWidth().Printf("Inspecting %s on node %s (%s:%d)", job.Name, node.Name, node.IP, node.Port)
 
       // 执行实际巡检
@@ -164,6 +167,7 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
   }
 
   // 汇总分析结果
+  fmt.Println()
   pterm.DefaultHeader.WithFullWidth().Printf("Summary Analysis")
   for software, results := range summaryBySoftware {
     fmt.Printf("Software: %s\n", software)
@@ -224,7 +228,7 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   // 执行远程检查
   checkResult, err := nodeClient.ExecuteInspection(checkRequest)
   if err != nil {
-    result.Status = "error"
+    result.Status = inspection.StatusError
     result.Message = fmt.Sprintf("Failed to execute inspection on node %s: %v", node.Name, err)
     return err
   }
@@ -280,7 +284,7 @@ func (c *CLI) performCosmicInspection(job inspection.Job, node inspection.Node, 
     JobName: job.Name,
     Host:    node.IP,
     Port:    node.Port,
-    Status:  "ok",
+    Status:  inspection.StatusOk,
     Checks:  []inspection.CheckResult{},
   }
 
@@ -314,13 +318,13 @@ func (c *CLI) performCosmicInspection(job inspection.Job, node inspection.Node, 
 
     // 如果没有规则，进行基本的连通性检查
     fmt.Printf("No rules specified for job '%s', performing basic connectivity check\n", job.Name)
-    result.Status = "warning"
+    result.Status = inspection.StatusWarn
     result.Message = "Basic connectivity check: No inspection rules provided"
     return nil
   }
 
   if err := tryInspect(); err != nil {
-    result.Status = "error"
+    result.Status = inspection.StatusError
     result.Message = fmt.Sprintf("Inspection failed: %v", err)
   }
 
@@ -376,23 +380,23 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
   const lineWidth = 120
 
   // === 报告标题 ===
-  headerText := pterm.DefaultHeader.WithFullWidth().Sprint("Cosmic Middleware Inspection Report ")
+  headerText := pterm.DefaultHeader.WithFullWidth().Sprint("\nCosmic Middleware Inspection Report")
   fmt.Fprintf(&buf, "%s", headerText)
   fmt.Fprintf(&buf, "Generated at: %s\n\n", time.Now().Format("2006-01-02 15:04:05"))
 
   // === 收集统计信息 ===
   totalJobs := len(results)
   successJobs, warningJobs, failedJobs := 0, 0, 0
-  totalChecks, totalPassed, totalWarnings, totalCritical, totalErrors := 0, 0, 0, 0, 0
+  totalChecks, totalPassed, totalWarnings, totalErrors := 0, 0, 0, 0
 
   softwareResults := make(map[string][]inspection.CosmicResult)
   for _, r := range results {
     softwareResults[r.JobName] = append(softwareResults[r.JobName], r)
 
     switch r.Status {
-    case "ok":
+    case inspection.StatusOk:
       successJobs++
-    case "warning":
+    case inspection.StatusWarn:
       warningJobs++
     default: // "error", "critical", etc.
       failedJobs++
@@ -401,13 +405,11 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
     for _, check := range r.Checks {
       totalChecks++
       switch check.Status {
-      case "ok":
+      case inspection.StatusOk:
         totalPassed++
-      case "warning":
+      case inspection.StatusWarn:
         totalWarnings++
-      case "critical":
-        totalCritical++
-      case "error":
+      case inspection.StatusError:
         totalErrors++
       }
     }
@@ -418,7 +420,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
     "• Total Jobs: %d\n"+
       "• Success: %s | Warnings: %s | Failures: %s\n"+
       "• Total Checks: %d\n"+
-      "• Passed: %s | Warnings: %s | Critical: %s | Errors: %s",
+      "• Passed: %s | Warnings: %s | Errors: %s",
     totalJobs,
     pterm.Green(strconv.Itoa(successJobs)),
     pterm.Yellow(strconv.Itoa(warningJobs)),
@@ -426,7 +428,6 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
     totalChecks,
     pterm.Green(strconv.Itoa(totalPassed)),
     pterm.Yellow(strconv.Itoa(totalWarnings)),
-    pterm.Red(strconv.Itoa(totalCritical)),
     pterm.Red(strconv.Itoa(totalErrors)),
   )
 
@@ -440,7 +441,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
 
   // === 按软件分组输出详情 ===
   for software, jobResults := range softwareResults {
-    softwareHeader := pterm.DefaultHeader.WithFullWidth().Sprint(" Software: " + software + " ")
+    softwareHeader := pterm.DefaultHeader.WithFullWidth().Sprintf("\nSoftware: %s", software)
     fmt.Fprintf(&buf, "%s\n\n", softwareHeader)
 
     for _, result := range jobResults {
@@ -468,39 +469,40 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
       if len(result.Checks) > 0 {
         fmt.Fprintf(&buf, "\n  Checks (%d):\n", len(result.Checks))
 
-        tableData := [][]string{{"Name", "Type", "Status", "Message", "Remediation"}}
+        tableData := [][]string{{"Name", "Type", "Status", "Value", "Message", "Remediation"}}
         for _, check := range result.Checks {
           name := SplitStringByFixedWidth(check.Name, 30)
           typ := SplitStringByFixedWidth(check.Type, 12)
+          val := SplitStringByFixedWidth(common.ParseInterfaceToString(check.Value), 10)
           msg := SplitStringByFixedWidth(check.Message, 40)
           remediation := ""
           if check.Remediation != "" {
-            remediation = SplitStringByFixedWidth(check.Remediation, 40)
+            remediation = SplitStringByFixedWidth(check.Remediation, 30)
           }
 
           statusStr := check.Status
           // 终端输出带颜色，文件输出用纯文本
           if outputFile == "" && pterm.Output {
             switch check.Status {
-            case "ok":
+            case inspection.StatusOk:
               statusStr = pterm.Green("OK")
-            case "warning":
+            case inspection.StatusWarn:
               statusStr = pterm.Yellow("WARN")
-            case "critical", "error":
+            case inspection.StatusError:
               statusStr = pterm.Red("FAIL")
             }
           } else {
             switch check.Status {
-            case "ok":
+            case inspection.StatusOk:
               statusStr = "OK"
-            case "warning":
+            case inspection.StatusWarn:
               statusStr = "WARN"
-            case "critical", "error":
+            case inspection.StatusError:
               statusStr = "FAIL"
             }
           }
 
-          tableData = append(tableData, []string{name, typ, statusStr, msg, remediation})
+          tableData = append(tableData, []string{name, typ, statusStr, val, msg, remediation})
         }
 
         pterm.DefaultTable.
@@ -518,7 +520,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
   }
 
   // === 结束标记 ===
-  endText := pterm.DefaultHeader.WithFullWidth().Sprint(" END OF REPORT ")
+  endText := pterm.DefaultHeader.WithFullWidth().Sprint("\nEND OF REPORT")
   fmt.Fprintf(&buf, "\n%s\n", endText)
   return buf.Bytes()
 }
@@ -534,15 +536,15 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
   // 收集统计
   totalJobs := len(results)
   successJobs, warningJobs, failedJobs := 0, 0, 0
-  totalChecks, totalPassed, totalWarnings, totalCritical, totalErrors := 0, 0, 0, 0, 0
+  totalChecks, totalPassed, totalWarnings, totalErrors := 0, 0, 0, 0
 
   softwareResults := make(map[string][]inspection.CosmicResult)
   for _, r := range results {
     softwareResults[r.JobName] = append(softwareResults[r.JobName], r)
     switch r.Status {
-    case "ok":
+    case inspection.StatusOk:
       successJobs++
-    case "warning":
+    case inspection.StatusWarn:
       warningJobs++
     default:
       failedJobs++
@@ -550,13 +552,11 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
     for _, check := range r.Checks {
       totalChecks++
       switch check.Status {
-      case "ok":
+      case inspection.StatusOk:
         totalPassed++
-      case "warning":
+      case inspection.StatusWarn:
         totalWarnings++
-      case "critical":
-        totalCritical++
-      case "error":
+      case inspection.StatusError:
         totalErrors++
       }
     }
@@ -573,7 +573,6 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
   fmt.Fprintf(&buf, "| Total Checks | %d |\n", totalChecks)
   fmt.Fprintf(&buf, "| Passed | %d ✅ |\n", totalPassed)
   fmt.Fprintf(&buf, "| Warnings | %d ⚠️ |\n", totalWarnings)
-  fmt.Fprintf(&buf, "| Critical | %d ❌ |\n", totalCritical)
   fmt.Fprintf(&buf, "| Errors | %d ❌ |\n", totalErrors)
   fmt.Fprintf(&buf, "\n")
 
@@ -588,8 +587,8 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
 
     // 每个节点的检查详情表格
     fmt.Fprintf(&buf, "\n#### Node Checks\n\n")
-    fmt.Fprintf(&buf, "| Name | Type | Status | Message | Remediation |\n")
-    fmt.Fprintf(&buf, "|------|------|--------|---------|-------------|\n")
+    fmt.Fprintf(&buf, "| Name | Type | Status | Value | Message | Remediation |\n")
+    fmt.Fprintf(&buf, "|------|------|--------|---------|---------|-------------|\n")
 
     for _, result := range jobResults {
       // 状态图标
@@ -621,10 +620,10 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         checkStatusIcon := "❓"
         checkStatusText := check.Status
         switch check.Status {
-        case "ok":
+        case inspection.StatusOk:
           checkStatusIcon = "✅"
           checkStatusText = "OK"
-        case "warning":
+        case inspection.StatusWarn:
           checkStatusIcon = "⚠️"
           checkStatusText = "WARNING"
         default:
@@ -637,8 +636,8 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
           remediation = check.Remediation
         }
 
-        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s |\n",
-          check.Name, check.Type, checkStatusIcon, checkStatusText, check.Message, remediation)
+        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s | %s |\n",
+          check.Name, check.Type, checkStatusIcon, checkStatusText, common.ParseInterfaceToString(check.Value), check.Message, remediation)
       }
       fmt.Fprintf(&buf, "\n")
       if result.Duration > 0 {
@@ -674,11 +673,11 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
       for _, check := range result.Checks {
         checkStatusIcon := "❓"
         switch check.Status {
-        case "ok":
+        case inspection.StatusOk:
           checkStatusIcon = "✅"
-        case "warning":
+        case inspection.StatusWarn:
           checkStatusIcon = "⚠️"
-        case "critical", "error":
+        case inspection.StatusError:
           checkStatusIcon = "❌"
         }
         checkMsg := SplitStringByFixedWidth(firstNonEmptyLine(check.Message), 40)
@@ -687,7 +686,7 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         }
         remediation := "—"
         if check.Remediation != "" {
-          remediation = SplitStringByFixedWidth(check.Remediation, 40)
+          remediation = SplitStringByFixedWidth(check.Remediation, 30)
         }
         fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s |\n",
           SplitStringByFixedWidth(check.Name, 25),
@@ -780,15 +779,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // === 统计卡片 ===
   totalJobs := len(results)
   successJobs, warningJobs, failedJobs := 0, 0, 0
-  totalChecks, totalPassed, totalWarnings, totalCritical, totalErrors := 0, 0, 0, 0, 0
+  totalChecks, totalPassed, totalWarnings, totalErrors := 0, 0, 0, 0
 
   softwareResults := make(map[string][]inspection.CosmicResult)
   for _, r := range results {
     softwareResults[r.JobName] = append(softwareResults[r.JobName], r)
     switch r.Status {
-    case "ok":
+    case inspection.StatusOk:
       successJobs++
-    case "warning":
+    case inspection.StatusWarn:
       warningJobs++
     default:
       failedJobs++
@@ -796,13 +795,11 @@ document.addEventListener('DOMContentLoaded', () => {
     for _, check := range r.Checks {
       totalChecks++
       switch check.Status {
-      case "ok":
+      case inspection.StatusOk:
         totalPassed++
-      case "warning":
+      case inspection.StatusWarn:
         totalWarnings++
-      case "critical":
-        totalCritical++
-      case "error":
+      case inspection.StatusError:
         totalErrors++
       }
     }
@@ -857,16 +854,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if len(result.Checks) > 0 {
         buf.WriteString("<button class=\"toggle-btn\">Show Checks</button>\n")
         buf.WriteString("<table class=\"checks-table\">\n")
-        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Message</th><th>Remediation</th></tr></thead>\n")
+        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Value</th><th>Message</th><th>Remediation</th></tr></thead>\n")
         buf.WriteString("<tbody>\n")
         for _, check := range result.Checks {
           var checkStatusBadge string
           switch check.Status {
-          case "ok":
+          case inspection.StatusOk:
             checkStatusBadge = `<span class="status-badge badge-ok">OK</span>`
-          case "warning":
+          case inspection.StatusWarn:
             checkStatusBadge = `<span class="status-badge badge-warning">WARN</span>`
-          case "critical", "error":
+          case inspection.StatusError:
             checkStatusBadge = `<span class="status-badge badge-error">FAIL</span>`
           default:
             checkStatusBadge = check.Status
@@ -879,10 +876,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if checkRemediation == "" {
             checkRemediation = "—"
           }
-          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
             check.Name,
             check.Type,
             checkStatusBadge,
+            common.ParseInterfaceToString(check.Value),
             checkMsg,
             checkRemediation,
           ))

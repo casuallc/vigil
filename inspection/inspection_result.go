@@ -4,7 +4,7 @@ import "time"
 
 const (
   StatusOk    = "ok"
-  StatusWarn  = "warn"
+  StatusWarn  = "warning"
   StatusError = "error"
 
   SeverityOk       = "ok"
@@ -42,16 +42,16 @@ type ResultMeta struct {
 }
 
 type CheckResult struct {
-  ID         string      `yaml:"id" json:"id"`
-  Name       string      `yaml:"name" json:"name"`
-  Type       string      `yaml:"type" json:"type"`
-  Value      interface{} `yaml:"value" json:"value"`
-  Unit       string      `yaml:"unit,omitempty" json:"unit,omitempty"`
-  Status     string      `yaml:"status" json:"status"`     // ok / warn / error
-  Severity   string      `yaml:"severity" json:"severity"` // info / warn / error / critical
-  Message    string      `yaml:"message" json:"message"`
-  DurationMs int64       `yaml:"duration_ms" json:"duration_ms"`
-  Remediation string     `yaml:"remediation,omitempty" json:"remediation,omitempty"` // 修复建议
+  ID          string      `yaml:"id" json:"id"`
+  Name        string      `yaml:"name" json:"name"`
+  Type        string      `yaml:"type" json:"type"`
+  Value       interface{} `yaml:"value" json:"value"`
+  Unit        string      `yaml:"unit,omitempty" json:"unit,omitempty"`
+  Status      string      `yaml:"status" json:"status"`     // ok / warn / error
+  Severity    string      `yaml:"severity" json:"severity"` // info / warn / error / critical
+  Message     string      `yaml:"message" json:"message"`
+  DurationMs  int64       `yaml:"duration_ms" json:"duration_ms"`
+  Remediation string      `yaml:"remediation,omitempty" json:"remediation,omitempty"` // 修复建议
 }
 
 type SummaryInfo struct {
