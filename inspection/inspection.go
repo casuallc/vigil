@@ -43,11 +43,12 @@ func ExecuteCheck(check Check, envVars []string) CheckResult {
 // executeScriptCheck 执行脚本检查
 func executeScriptCheck(check Check, envVars []string) CheckResult {
   result := CheckResult{
-    ID:       check.ID,
-    Name:     check.Name,
-    Type:     check.Type,
-    Status:   StatusOk,
-    Severity: "info",
+    ID:          check.ID,
+    Name:        check.Name,
+    Type:        check.Type,
+    Remediation: check.Remediation,
+    Status:      StatusOk,
+    Severity:    "info",
   }
 
   // 获取命令
