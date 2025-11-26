@@ -452,10 +452,9 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
       if len(result.Checks) > 0 {
         fmt.Fprintf(&buf, "\n  Checks (%d):\n", len(result.Checks))
 
-        tableData := [][]string{{"Name", "Type", "Status", "Severity", "Value", "Message", "Remediation"}}
+        tableData := [][]string{{"Name", "Status", "Severity", "Value", "Message", "Remediation"}}
         for _, check := range result.Checks {
           name := SplitStringByFixedWidth(check.Name, 30)
-          typ := SplitStringByFixedWidth(check.Type, 12)
           val := SplitStringByFixedWidth(common.ParseInterfaceToString(check.Value), 10)
           msg := SplitStringByFixedWidth(check.Message, 40)
           remediation := ""
@@ -487,7 +486,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
             severityStr = "N/A"
           }
 
-          tableData = append(tableData, []string{name, typ, statusStr, severityStr, val, msg, remediation})
+          tableData = append(tableData, []string{name, statusStr, severityStr, val, msg, remediation})
         }
 
         pterm.DefaultTable.
@@ -641,8 +640,8 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         continue
       }
       fmt.Fprintf(&buf, "#### Node: `%s:%d`\n\n", result.Host, result.Port)
-      fmt.Fprintf(&buf, "| Name | Type | Status | Severity | Message | Remediation |\n")
-      fmt.Fprintf(&buf, "|------|------|--------|----------|---------|-------------|\n")
+      fmt.Fprintf(&buf, "| Name | Status | Severity | Message | Remediation |\n")
+      fmt.Fprintf(&buf, "|------|--------|----------|---------|-------------|\n")
       for _, check := range result.Checks {
         checkStatusIcon := "❓"
         switch check.Status {
@@ -663,9 +662,8 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         if severity == "" {
           severity = "N/A"
         }
-        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s | %s |\n",
+        fmt.Fprintf(&buf, "| %s | %s %s | %s | %s | %s |\n",
           SplitStringByFixedWidth(check.Name, 25),
-          SplitStringByFixedWidth(check.Type, 12),
           checkStatusIcon,
           strings.ToUpper(check.Status),
           severity,
@@ -822,15 +820,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if len(result.Checks) > 0 {
         buf.WriteString("<button class=\"toggle-btn\">Show Checks</button>\n")
         buf.WriteString("<table class=\"checks-table\">\n")
-        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Severity</th><th>Value</th><th>Message</th><th>Remediation</th></tr></thead>\n")
+        buf.WriteString("<thead><tr><th>Name</th><th>Status</th><th>Severity</th><th>Value</th><th>Message</th><th>Remediation</th></tr></thead>\n")
         buf.WriteString("<tbody>\n")
         for _, check := range result.Checks {
           var checkStatusBadge string
           switch check.Status {
           case inspection.StatusOk:
-            checkStatusBadge = `<span class="status-badge badge-ok">OK</span>`
+            checkStatusBadge = `<span class=\"status-badge badge-ok\">OK</span>`
           case inspection.StatusError:
-            checkStatusBadge = `<span class="status-badge badge-error">FAIL</span>`
+            checkStatusBadge = `<span class=\"status-badge badge-error\">FAIL</span>`
           default:
             checkStatusBadge = check.Status
           }
@@ -846,9 +844,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if severity == "" {
             severity = "N/A"
           }
-          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
             check.Name,
-            check.Type,
             checkStatusBadge,
             severity,
             common.ParseInterfaceToString(check.Value),
