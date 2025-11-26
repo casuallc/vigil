@@ -86,6 +86,7 @@ start() {
             exec env ${APP_ENV} "$APP_BINARY" $APP_ARGS
             ;;
         *)
+            echo "Starting $APP_NAME in background mode..."
             echo "Starting $APP_NAME in background mode..." >> "$LOG_FILE"
             echo "Launch time: $(date)" >> "$LOG_FILE"
             echo "Command: env ${APP_ENV} $APP_BINARY $APP_ARGS" >> "$LOG_FILE"
@@ -108,6 +109,7 @@ start() {
 
             if kill -0 $APP_PID 2>/dev/null; then
                 echo "$APP_NAME started successfully, PID: $APP_PID"
+                echo "$APP_NAME started successfully, PID: $APP_PID" >> "$LOG_FILE"
                 echo "Status: RUNNING" >> "$LOG_FILE"
             else
                 # Process died quickly → startup failed

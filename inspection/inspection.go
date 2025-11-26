@@ -153,7 +153,7 @@ func handleExpectMatch(check Check, result *CheckResult) {
 
   if !matched {
     result.Status = StatusError
-    result.Message = fmt.Sprintf("Output does not match expected pattern(s), value: %s", output)
+    result.Message = fmt.Sprintf("Expect value: %v", expectLines)
   }
 }
 
