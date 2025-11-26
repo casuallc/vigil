@@ -16,7 +16,7 @@ PROJECT_NAME="${PROJECT_NAME:-apusic}"
 CMD_DIR="cmd"
 BUILD_DIR="pkg"
 RELEASE_DIR="release"
-BUILD_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S")
 GIT_COMMIT=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 GIT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "1.0")
 VERSION="${GIT_TAG}"
