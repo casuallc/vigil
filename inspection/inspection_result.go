@@ -4,10 +4,9 @@ import "time"
 
 const (
   StatusOk    = "ok"
-  StatusWarn  = "warning"
   StatusError = "error"
 
-  SeverityOk       = "ok"
+  SeverityInfo     = "info"
   SeverityWarn     = "warn"
   SeverityError    = "error"
   SeverityCritical = "critical"

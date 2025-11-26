@@ -173,20 +173,17 @@ func (c *CLI) handleCosmicInspect(configFile string, jobName string, envVars []s
     fmt.Printf("Software: %s\n", software)
     fmt.Printf("- Total nodes: %d\n", len(results))
 
-    var success, warning, errorCount int
+    var success, errorCount int
     for _, r := range results {
       switch r.Status {
       case inspection.StatusOk:
         success++
-      case inspection.StatusWarn:
-        warning++
       case inspection.StatusError:
         errorCount++
       }
     }
 
     fmt.Printf("- Success: %d\n", success)
-    fmt.Printf("- Warning: %d\n", warning)
     fmt.Printf("- Error: %d\n", errorCount)
   }
 
@@ -254,13 +251,11 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   }
 
   // 统计检查结果
-  var passed, warning, errorCount int
+  var passed, errorCount int
   for _, check := range result.Checks {
     switch check.Status {
     case inspection.StatusOk:
       passed++
-    case inspection.StatusWarn:
-      warning++
     case inspection.StatusError:
       errorCount++
     }
@@ -269,7 +264,6 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   fmt.Printf("Inspection results for node %s:\n", node.Name)
   fmt.Printf("- Total checks: %d\n", len(result.Checks))
   fmt.Printf("- Passed: %d\n", passed)
-  fmt.Printf("- Warning: %d\n", warning)
   fmt.Printf("- Error: %d\n", errorCount)
 
   return nil
@@ -315,7 +309,7 @@ func (c *CLI) performCosmicInspection(job inspection.Job, node inspection.Node, 
 
     // 如果没有规则，进行基本的连通性检查
     fmt.Printf("No rules specified for job '%s', performing basic connectivity check\n", job.Name)
-    result.Status = inspection.StatusWarn
+    result.Status = inspection.StatusOk
     result.Message = "Basic connectivity check: No inspection rules provided"
     return nil
   }
@@ -383,8 +377,8 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
 
   // === 收集统计信息 ===
   totalJobs := len(results)
-  successJobs, warningJobs, failedJobs := 0, 0, 0
-  totalChecks, totalPassed, totalWarnings, totalErrors := 0, 0, 0, 0
+  successJobs, failedJobs := 0, 0
+  totalChecks, totalPassed, totalErrors := 0, 0, 0
 
   softwareResults := make(map[string][]inspection.CosmicResult)
   for _, r := range results {
@@ -393,8 +387,6 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
     switch r.Status {
     case inspection.StatusOk:
       successJobs++
-    case inspection.StatusWarn:
-      warningJobs++
     default: // "error", "critical", etc.
       failedJobs++
     }
@@ -404,8 +396,6 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
       switch check.Status {
       case inspection.StatusOk:
         totalPassed++
-      case inspection.StatusWarn:
-        totalWarnings++
       case inspection.StatusError:
         totalErrors++
       }
@@ -415,16 +405,14 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
   // === 总体统计（自动适配终端/文件）===
   statsText := fmt.Sprintf(
     "• Total Jobs: %d\n"+
-      "• Success: %s | Warnings: %s | Failures: %s\n"+
+      "• Success: %s | Failures: %s\n"+
       "• Total Checks: %d\n"+
-      "• Passed: %s | Warnings: %s | Errors: %s",
+      "• Passed: %s | Errors: %s",
     totalJobs,
     pterm.Green(strconv.Itoa(successJobs)),
-    pterm.Yellow(strconv.Itoa(warningJobs)),
     pterm.Red(strconv.Itoa(failedJobs)),
     totalChecks,
     pterm.Green(strconv.Itoa(totalPassed)),
-    pterm.Yellow(strconv.Itoa(totalWarnings)),
     pterm.Red(strconv.Itoa(totalErrors)),
   )
 
@@ -446,10 +434,8 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
 
       var statusLine string
       switch result.Status {
-      case inspection.SeverityOk:
+      case inspection.StatusOk:
         statusLine = pterm.Success.Sprint("Status: OK")
-      case inspection.StatusWarn:
-        statusLine = pterm.Warning.Sprint("Status: WARNING")
       default:
         statusLine = pterm.Error.Sprint("Status: FAILED")
       }
@@ -483,8 +469,6 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
             switch check.Status {
             case inspection.StatusOk:
               statusStr = pterm.Green("OK")
-            case inspection.StatusWarn:
-              statusStr = pterm.Yellow("WARN")
             case inspection.StatusError:
               statusStr = pterm.Red("FAIL")
             }
@@ -492,8 +476,6 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
             switch check.Status {
             case inspection.StatusOk:
               statusStr = "OK"
-            case inspection.StatusWarn:
-              statusStr = "WARN"
             case inspection.StatusError:
               statusStr = "FAIL"
             }
@@ -538,8 +520,8 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
 
   // 收集统计
   totalJobs := len(results)
-  successJobs, warningJobs, failedJobs := 0, 0, 0
-  totalChecks, totalPassed, totalWarnings, totalErrors := 0, 0, 0, 0
+  successJobs, failedJobs := 0, 0
+  totalChecks, totalPassed, totalErrors := 0, 0, 0
 
   softwareResults := make(map[string][]inspection.CosmicResult)
   for _, r := range results {
@@ -547,8 +529,6 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
     switch r.Status {
     case inspection.StatusOk:
       successJobs++
-    case inspection.StatusWarn:
-      warningJobs++
     default:
       failedJobs++
     }
@@ -557,8 +537,6 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
       switch check.Status {
       case inspection.StatusOk:
         totalPassed++
-      case inspection.StatusWarn:
-        totalWarnings++
       case inspection.StatusError:
         totalErrors++
       }
@@ -571,11 +549,9 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
   fmt.Fprintf(&buf, "|--------|-------|\n")
   fmt.Fprintf(&buf, "| Total Jobs | %d |\n", totalJobs)
   fmt.Fprintf(&buf, "| Success | %d ✅ |\n", successJobs)
-  fmt.Fprintf(&buf, "| Warnings | %d ⚠️ |\n", warningJobs)
   fmt.Fprintf(&buf, "| Failures | %d ❌ |\n", failedJobs)
   fmt.Fprintf(&buf, "| Total Checks | %d |\n", totalChecks)
   fmt.Fprintf(&buf, "| Passed | %d ✅ |\n", totalPassed)
-  fmt.Fprintf(&buf, "| Warnings | %d ⚠️ |\n", totalWarnings)
   fmt.Fprintf(&buf, "| Errors | %d ❌ |\n", totalErrors)
   fmt.Fprintf(&buf, "\n")
 
@@ -601,9 +577,6 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
       case inspection.StatusOk:
         statusIcon = "✅"
         statusText = "OK"
-      case inspection.StatusWarn:
-        statusIcon = "⚠️"
-        statusText = "WARNING"
       default:
         statusIcon = "❌"
         statusText = "FAILED"
@@ -626,9 +599,6 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         case inspection.StatusOk:
           checkStatusIcon = "✅"
           checkStatusText = "OK"
-        case inspection.StatusWarn:
-          checkStatusIcon = "⚠️"
-          checkStatusText = "WARNING"
         default:
           checkStatusIcon = "❌"
           checkStatusText = "FAILED"
@@ -678,8 +648,6 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         switch check.Status {
         case inspection.StatusOk:
           checkStatusIcon = "✅"
-        case inspection.StatusWarn:
-          checkStatusIcon = "⚠️"
         case inspection.StatusError:
           checkStatusIcon = "❌"
         }
@@ -786,8 +754,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // === 统计卡片 ===
   totalJobs := len(results)
-  successJobs, warningJobs, failedJobs := 0, 0, 0
-  totalChecks, totalPassed, totalWarnings, totalErrors := 0, 0, 0, 0
+  successJobs, failedJobs := 0, 0
+  totalChecks, totalPassed, totalErrors := 0, 0, 0
 
   softwareResults := make(map[string][]inspection.CosmicResult)
   for _, r := range results {
@@ -795,8 +763,6 @@ document.addEventListener('DOMContentLoaded', () => {
     switch r.Status {
     case inspection.StatusOk:
       successJobs++
-    case inspection.StatusWarn:
-      warningJobs++
     default:
       failedJobs++
     }
@@ -805,8 +771,6 @@ document.addEventListener('DOMContentLoaded', () => {
       switch check.Status {
       case inspection.StatusOk:
         totalPassed++
-      case inspection.StatusWarn:
-        totalWarnings++
       case inspection.StatusError:
         totalErrors++
       }
@@ -816,7 +780,6 @@ document.addEventListener('DOMContentLoaded', () => {
   buf.WriteString("<div class=\"stats-grid\">\n")
   buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Total Jobs</div><div class=\"stat-value\">%d</div></div>\n", totalJobs))
   buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Success</div><div class=\"stat-value\" style=\"color:#198754\">%d ✅</div></div>\n", successJobs))
-  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Warnings</div><div class=\"stat-value\" style=\"color:#ffc107\">%d ⚠️</div></div>\n", warningJobs))
   buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Failures</div><div class=\"stat-value\" style=\"color:#dc3545\">%d ❌</div></div>\n", failedJobs))
   buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Total Checks</div><div class=\"stat-value\">%d</div></div>\n", totalChecks))
   buf.WriteString("</div>\n")
@@ -834,12 +797,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // 状态徽章
       var statusText string
       switch result.Status {
-      case "ok":
+      case inspection.StatusOk:
         //statusClass = "status-ok"
         statusText = `<span class="status-badge badge-ok">OK</span>`
-      case "warning":
-        //statusClass = "status-warning"
-        statusText = `<span class="status-badge badge-warning">WARNING</span>`
       default:
         //statusClass = "status-error"
         statusText = `<span class="status-badge badge-error">FAILED</span>`
@@ -869,8 +829,6 @@ document.addEventListener('DOMContentLoaded', () => {
           switch check.Status {
           case inspection.StatusOk:
             checkStatusBadge = `<span class="status-badge badge-ok">OK</span>`
-          case inspection.StatusWarn:
-            checkStatusBadge = `<span class="status-badge badge-warning">WARN</span>`
           case inspection.StatusError:
             checkStatusBadge = `<span class="status-badge badge-error">FAIL</span>`
           default:

@@ -19,7 +19,7 @@ func ExecuteCheck(check Check, envVars []string) CheckResult {
   // 计算执行时间
   result.DurationMs = int64(int(time.Since(startTime).Milliseconds()))
 
-  if result.Value == nil || result.Status == StatusError || result.Status == StatusWarn {
+  if result.Value == nil || result.Status == StatusError {
     return result
   }
 
@@ -34,7 +34,8 @@ func ExecuteCheck(check Check, envVars []string) CheckResult {
     // 处理阈值判断
     handleThresholds(check, &result)
   } else {
-    result.Status = StatusError
+    // 不需要比较
+    result.Status = StatusOk
   }
 
   return result
@@ -48,14 +49,13 @@ func executeScriptCheck(check Check, envVars []string) CheckResult {
     Type:        check.Type,
     Remediation: check.Remediation,
     Status:      StatusOk,
-    Severity:    SeverityOk,
+    Severity:    SeverityWarn,
   }
 
   // 获取命令
   commandLines, err := check.GetCommandLines()
   if err != nil || len(commandLines) == 0 {
     result.Status = StatusError
-    result.Severity = SeverityCritical
     result.Message = fmt.Sprintf("Failed to get command: %v", err)
     return result
   }
@@ -64,7 +64,6 @@ func executeScriptCheck(check Check, envVars []string) CheckResult {
   output, err := common.ExecuteCommand(commandLines[0], envVars)
   if err != nil {
     result.Status = StatusError
-    result.Severity = SeverityCritical
     result.Message = fmt.Sprintf("Command execution failed: %v, output: %s", err, output)
     return result
   }
@@ -78,9 +77,8 @@ func executeScriptCheck(check Check, envVars []string) CheckResult {
 // parseCheckOutput 解析检查输出
 func parseCheckOutput(check Check, output string, result CheckResult) CheckResult {
   var parseErr error
-  if check.Parse == nil {
-    result.Value = output
-  } else {
+  result.Value = output
+  if check.Parse != nil {
     switch check.Parse.Kind {
     case "regex":
       if check.Parse.Pattern != "" {
@@ -119,15 +117,15 @@ func parseCheckOutput(check Check, output string, result CheckResult) CheckResul
     default:
       result.Value = output
     }
-    // 获取不到值，则返回错误
-    if result.Value == nil {
-      errStr := ""
-      if parseErr != nil {
-        errStr = parseErr.Error()
-      }
-      result.Message = fmt.Sprintf("Can not parse value, error: %s", errStr)
-      result.Status = StatusError
+  }
+  // 获取不到值，则返回错误
+  if result.Value == nil || parseErr != nil {
+    errStr := ""
+    if parseErr != nil {
+      errStr = parseErr.Error()
     }
+    result.Message = fmt.Sprintf("Can not parse value, error: %s", errStr)
+    result.Status = StatusError
   }
 
   return result
@@ -140,7 +138,6 @@ func handleExpectMatch(check Check, result *CheckResult) {
   expectLines, err := check.GetExpectLines()
   if err != nil {
     result.Status = StatusError
-    result.Severity = SeverityCritical
     result.Message = fmt.Sprintf("Invalid expect configuration: %v", err)
     return
   }
@@ -156,11 +153,7 @@ func handleExpectMatch(check Check, result *CheckResult) {
 
   if !matched {
     result.Status = StatusError
-    result.Severity = string(check.Severity)
-    if result.Severity == "" {
-      result.Severity = SeverityWarn
-    }
-    result.Message = fmt.Sprintf("Output does not match expected pattern(s)")
+    result.Message = fmt.Sprintf("Output does not match expected pattern(s), value: %s", output)
   }
 }
 
@@ -169,7 +162,6 @@ func handleCompare(check Check, result *CheckResult) {
   value, err := common.ParseFloatValue(result.Value)
   if err != nil {
     result.Status = StatusError
-    result.Severity = SeverityCritical
     result.Message = fmt.Sprintf("Failed to parse value: %v", err)
     return
   }
@@ -188,11 +180,9 @@ func handleCompare(check Check, result *CheckResult) {
   // 如果表达式为真，则应用该阈值规则
   if match, ok := evalResult.(bool); ok && match {
     result.Status = StatusOk
-    result.Severity = SeverityOk
     result.Message = fmt.Sprintf("Threshold condition met: %s", check.Compare)
   } else {
     result.Status = StatusError
-    result.Severity = SeverityError
   }
 }
 
@@ -201,7 +191,6 @@ func handleThresholds(check Check, result *CheckResult) {
   value, err := common.ParseFloatValue(result.Value)
   if err != nil {
     result.Status = StatusError
-    result.Severity = SeverityCritical
     result.Message = fmt.Sprintf("Failed to parse value: %v", err)
     return
   }

@@ -3,7 +3,8 @@ meta:
   system: admq
   env: prod
   owner: apusic
-  tags: [admq]
+  tags: [admq, message-queue, rabbitmq-like]
+  description: "ADMQ 消息队列巡检: 服务状态、端口监听、连接数、消息积压、配置检查等"
 
 checks:
   # 1. 服务状态
@@ -233,3 +234,49 @@ checks:
     expect: "ok"
     severity: warn
     remediation: "在 storage_env.sh 中配置 STORAGE_MEM 包含 -Xmx2g"
+  
+  # 15. ADMQ 版本信息检查
+  - id: admq-version
+    name: "ADMQ 版本信息"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/bin/admqctl version 2>/dev/null || echo 'unknown'"
+    parse:
+      kind: string
+    severity: info
+    
+  # 16. ADMQ 存储服务磁盘使用率
+  - id: admq-storage-disk-usage
+    name: "ADMQ 存储服务磁盘使用率（%）"
+    type: script
+    command: |
+      STORAGE_DIR="${APUSIC_ADMQ_STORAGE_DIR:-${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/data}"
+      if [ -d "$STORAGE_DIR" ]; then
+        df -h "$STORAGE_DIR" | awk 'NR==2 {print $5}' | sed 's/%//'
+      else
+        echo "0"
+      fi
+    parse:
+      kind: int
+    thresholds:
+      - when: "> 90"
+        severity: critical
+        message: "ADMQ 存储目录磁盘使用率超过 90%"
+      - when: "> 80"
+        severity: warn
+        message: "ADMQ 存储目录磁盘使用率超过 80%"
+    remediation: "清理或扩展存储目录空间"
+  
+  # 17. ADMQ 配置文件关键参数检查
+  - id: admq-broker-config
+    name: "ADMQ Broker 配置文件关键参数检查"
+    type: script
+    command: |
+      CONFIG="${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/config/broker.conf"
+      if [ -f "$CONFIG" ]; then
+        grep -E '^brokerName|^zookeeperServers|^advertisedAddress' "$CONFIG" | tr '\n' ';' | sed 's/;$//'
+      else
+        echo "config_not_found"
+      fi
+    parse:
+      kind: string
+    severity: info

@@ -7,14 +7,7 @@ import (
   "os"
 )
 
-// SeverityType 定义严重级别
-type SeverityType string
-
 const (
-  Info     SeverityType = "info"
-  Warn     SeverityType = "warn"
-  Critical SeverityType = "critical"
-
   TypeProcess     = "process"
   TypeLog         = "log"
   TypePerformance = "performance"
@@ -41,9 +34,9 @@ type ParseConfig struct {
 
 // Threshold 定义阈值规则
 type Threshold struct {
-  When     string       `yaml:"when"`
-  Severity SeverityType `yaml:"severity"`
-  Message  string       `yaml:"message,omitempty"`
+  When     string `yaml:"when"`
+  Severity string `yaml:"severity"`
+  Message  string `yaml:"message,omitempty"`
   Value    float64
   Operator string
 }
@@ -68,7 +61,7 @@ type Check struct {
   Compare       string       `yaml:"compare,omitempty"`
   Timeout       int          `yaml:"timeout,omitempty"` // seconds
   Retries       int          `yaml:"retries,omitempty"`
-  Severity      SeverityType `yaml:"severity,omitempty"` // default: warn
+  Severity      string       `yaml:"severity,omitempty"` // default: warn
   Remediation   string       `yaml:"remediation,omitempty"`
   NotifyIfFound bool         `yaml:"notify_if_found,omitempty"` // log type only
   Children      []string     `yaml:"children,omitempty"`        // compound only
@@ -88,8 +81,8 @@ func (c *Check) Validate() error {
   }
 
   if c.Severity == "" {
-    c.Severity = Warn // 默认 warn
-  } else if c.Severity != Info && c.Severity != Warn && c.Severity != Critical {
+    c.Severity = SeverityWarn // 默认 warn
+  } else if c.Severity != SeverityInfo && c.Severity != SeverityWarn && c.Severity != SeverityError && c.Severity != SeverityCritical {
     return fmt.Errorf("check '%s': invalid severity '%s'", c.ID, c.Severity)
   }
 

@@ -4,6 +4,7 @@ meta:
   env: prod
   owner: log-platform-team
   tags: [elk, elasticsearch, kafka, logstash, logging]
+  description: "AILP ELK 日志平台巡检: Elasticsearch、Kafka、Logstash 服务状态、消息积压、索引健康等"
 
 checks:
   # === 服务进程状态检查 ===
@@ -132,3 +133,32 @@ checks:
     parse:
       kind: string
     # 如需告警，建议用 custom 类型解析多字段
+  
+  # === Elasticsearch 磁盘使用率 ===
+  - id: es-disk-usage
+    name: "Elasticsearch 磁盘使用率（%）"
+    type: script
+    command: |
+      curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/allocation?h=disk.percent" | awk '{sum += $1; count++} END {if(count>0) printf "%.2f", sum/count; else print 0}'
+    parse:
+      kind: float
+    thresholds:
+      - when: "> 90"
+        severity: critical
+        message: "Elasticsearch 磁盘使用率超过 90%"
+      - when: "> 80"
+        severity: warn
+        message: "Elasticsearch 磁盘使用率超过 80%"
+  
+  # === Logstash 健康状态 ===
+  - id: logstash-health
+    name: "Logstash 健康状态"
+    type: script
+    command: "curl -s http://localhost:9600/_node/stats/pipelines/main?pretty 2>/dev/null | grep -c '"pipeline"'"
+    parse:
+      kind: int
+    thresholds:
+      - when: "== 0"
+        severity: critical
+        message: "Logstash 服务异常或管道未运行"
+    remediation: "检查 Logstash 服务状态：systemctl restart ailp-logstash"

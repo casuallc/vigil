@@ -4,6 +4,7 @@ meta:
   env: prod
   owner: web-infra-team
   tags: [nginx, alb, load-balancer, reverse-proxy]
+  description: "ALB Nginx 负载均衡器巡检: 进程状态、端口监听、连接数、错误率、日志等"
 
 checks:
   # 1. ALB 主进程是否存在（"alb: main process"）
@@ -128,3 +129,29 @@ checks:
         severity: critical
         message: "4xx/5xx 错误率超过 1%"
     remediation: "检查后端服务健康状态及客户端请求合法性"
+  
+  # 9. ALB 配置语法检查
+  - id: alb-config-syntax
+    name: "ALB 配置文件语法检查"
+    type: script
+    command: "${APUSIC_HOME:-/kingdee/cosmic}/nginx-appstatic/alb/alb-2.0-light-x86/sbin/alb -t -c ${APUSIC_HOME:-/kingdee/cosmic}/nginx-appstatic/alb/alb-2.0-light-x86/conf/alb.conf 2>&1 | grep -c 'test is successful'"
+    parse:
+      kind: int
+    thresholds:
+      - when: "!= 1"
+        severity: critical
+        message: "ALB 配置文件语法错误"
+    remediation: "检查并修复 ALB 配置文件语法错误"
+  
+  # 10. ALB worker_connections 配置检查
+  - id: alb-worker-connections
+    name: "ALB 配置文件中的 worker_connections 设置"
+    type: script
+    command: "grep '^worker_connections' ${APUSIC_HOME:-/kingdee/cosmic}/nginx-appstatic/alb/alb-2.0-light-x86/conf/alb.conf | awk '{print $2}' | tr -d ';'"
+    parse:
+      kind: int
+    thresholds:
+      - when: "< 1024"
+        severity: warn
+        message: "worker_connections 设置过低（建议至少 1024）"
+    remediation: "在 alb.conf 中增加 worker_connections 设置"

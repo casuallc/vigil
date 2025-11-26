@@ -4,6 +4,7 @@ meta:
   env: prod
   owner: infra-team
   tags: [os, system, performance, kernel]
+  description: "Linux 服务器基本巡检: 内存、磁盘、负载、IO、内核参数等"
 
 checks:
   # 1. 内存使用率
@@ -89,7 +90,22 @@ checks:
       并重启会话或服务
 
 
-  # 6. 内核参数检查（逐项）
+  # 6. CPU 使用率检查
+  - id: cpu-usage
+    name: "系统 CPU 使用率（%）"
+    type: script
+    command: "top -b -n1 | grep '^%Cpu' | awk '{printf "%.2f", 100-$8}'"
+    parse:
+      kind: float
+    thresholds:
+      - when: "> 90"
+        severity: critical
+        message: "CPU 使用率超过 90%"
+      - when: "> 80"
+        severity: warn
+        message: "CPU 使用率超过 80%"
+
+  # 7. 内核参数检查（逐项）
   - id: kernel-ip-local-port-range
     name: "内核参数 net.ipv4.ip_local_port_range"
     type: script

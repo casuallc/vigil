@@ -4,6 +4,7 @@ meta:
   env: prod
   owner: middleware-team
   tags: [zookeeper, adcc, coordination-service]
+  description: "ADCC ZooKeeper 协调服务巡检: 进程状态、磁盘使用、健康检查、配置参数等"
 
 checks:
   # 1. ZooKeeper 服务进程状态
@@ -57,11 +58,73 @@ checks:
     command: "grep '^tickTime=' ${APUSIC_HOME:-/kingdee/cosmic}/common/adcc/adcc-server-1.0/conf/zoo.cfg | cut -d= -f2"
     parse:
       kind: int
-    # 可选：验证合理范围，例如 2000~5000
-    # thresholds:
-    #   - when: "< 2000"
-    #     severity: warn
-    #     message: "tickTime 过小，可能导致频繁心跳"
-    #   - when: "> 5000"
-    #     severity: warn
-    #     message: "tickTime 过大，故障检测延迟高"
+    thresholds:
+      - when: "< 2000"
+        severity: warn
+        message: "tickTime 过小，可能导致频繁心跳"
+      - when: "> 5000"
+        severity: warn
+        message: "tickTime 过大，故障检测延迟高"
+  
+  # 6. ZooKeeper 四字命令：stat 检查
+  - id: adcc-stat-check
+    name: "ADCC ZooKeeper 节点四字命令 'stat' 响应"
+    type: script
+    command: "echo stat | nc 127.0.0.1 2181 | grep -c 'Mode:'"
+    parse:
+      kind: int
+    thresholds:
+      - when: "== 0"
+        severity: critical
+        message: "ZooKeeper stat 命令响应异常"
+    remediation: "检查 ZooKeeper 服务状态和网络连接"
+  
+  # 7. ZooKeeper 连接数检查
+  - id: adcc-connections-check
+    name: "ADCC ZooKeeper 当前连接数"
+    type: script
+    command: "echo stat | nc 127.0.0.1 2181 | grep 'Connections:' | awk '{print $2}'"
+    parse:
+      kind: int
+    thresholds:
+      - when: "> 1000"
+        severity: warn
+        message: "ZooKeeper 连接数超过 1000，可能存在连接泄漏"
+    remediation: "检查客户端连接情况，优化连接管理"
+  
+  # 8. ZooKeeper 配置文件其他关键参数检查
+  - id: adcc-zoo-cfg-params
+    name: "ADCC ZooKeeper 配置文件关键参数"
+    type: script
+    command: |
+      CONFIG="${APUSIC_HOME:-/kingdee/cosmic}/common/adcc/adcc-server-1.0/conf/zoo.cfg"
+      if [ -f "$CONFIG" ]; then
+        grep -E '^initLimit|^syncLimit|^maxClientCnxns' "$CONFIG" | tr '\n' ';' | sed 's/;$//'
+      else
+        echo "config_not_found"
+      fi
+    parse:
+      kind: string
+    severity: info
+  
+  # 9. ZooKeeper 版本检查
+  - id: adcc-version-check
+    name: "ADCC ZooKeeper 版本信息"
+    type: script
+    command: "echo stat | nc 127.0.0.1 2181 | grep 'Version:' | head -1 || echo 'unknown'"
+    parse:
+      kind: string
+    severity: info
+  
+  # 10. ZooKeeper 日志目录大小检查
+  - id: adcc-log-size-check
+    name: "ADCC ZooKeeper 日志目录大小"
+    type: script
+    command: "du -sb ${APUSIC_HOME:-/kingdee/cosmic}/common/adcc/adcc-server-1.0/logs 2>/dev/null | awk '{print int($1/1024/1024)}' || echo 0"
+    parse:
+      kind: int
+    thresholds:
+      - when: "> 50000"
+        severity: warn
+        message: "ZooKeeper 日志目录超过 50GB，建议清理或配置日志轮转"
+    remediation: "清理历史日志或配置 logrotate 进行日志轮转"

@@ -318,8 +318,6 @@ func (s *Server) handleCosmicInspect(w http.ResponseWriter, r *http.Request) {
     switch strings.ToLower(result.Status) {
     case inspection.StatusOk:
       passedChecks++
-    case inspection.StatusWarn:
-      warningChecks++
     case inspection.StatusError:
       errorChecks++
     }
@@ -330,8 +328,6 @@ func (s *Server) handleCosmicInspect(w http.ResponseWriter, r *http.Request) {
   var overallStatus string = inspection.StatusOk
   if errorChecks > 0 {
     overallStatus = inspection.StatusError
-  } else if warningChecks > 0 {
-    overallStatus = inspection.StatusWarn
   }
 
   response := inspection.Result{
