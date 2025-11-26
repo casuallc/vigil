@@ -18,8 +18,8 @@ BUILD_DIR="pkg"
 RELEASE_DIR="release"
 BUILD_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
 GIT_COMMIT=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
-GIT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "dev")
-VERSION="${GIT_TAG}-${GIT_COMMIT}"
+GIT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "1.0")
+VERSION="${GIT_TAG}"
 
 # Colors
 GREEN='\033[0;32m'
@@ -96,8 +96,10 @@ main() {
 
     # ========== Check zip availability ==========
     if ! command -v zip >/dev/null 2>&1; then
-        error "zip command not found. Please install zip first."
-        exit 1
+        warn "zip command not found. Will skip release zip creation."
+        SKIP_ZIP=1
+    else
+        SKIP_ZIP=0
     fi
 
     # ========== Target Platforms ==========
@@ -134,11 +136,10 @@ main() {
 
             go build \
                 -ldflags "-s -w \
-                -X 'main.version=$VERSION' \
-                -X 'main.buildTime=$BUILD_TIME' \
-                -X 'main.gitCommit=$GIT_COMMIT' \
-                -X 'main.buildBy=$(uname -s)' \
-                -X 'main.command=$CMD'" \
+                -X 'github.com/casuallc/vigil/version.Version=$VERSION' \
+                -X 'github.com/casuallc/vigil/version.BuildTime=$BUILD_TIME' \
+                -X 'github.com/casuallc/vigil/version.GitCommit=$GIT_COMMIT' \
+                -X 'github.com/casuallc/vigil/version.GitBranch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")'" \
                 -o "$OUTPUT_PATH" \
                 "./$CMD_PATH"
 
@@ -210,10 +211,11 @@ EOF
     done
 
     # Package into release.zip
-    RELEASE_ZIP="$PROJECT_NAME-release-$VERSION.zip"
-    (cd "$RELEASE_DIR" && zip -rq "../$BUILD_DIR/$RELEASE_ZIP" .)
-
-    success "🎉 Unified release package created: ./$BUILD_DIR/$RELEASE_ZIP"
+    if [ $SKIP_ZIP -eq 0 ]; then
+        RELEASE_ZIP="$PROJECT_NAME-release-$VERSION.zip"
+        (cd "$RELEASE_DIR" && zip -rq "../$BUILD_DIR/$RELEASE_ZIP" .)
+        success "🎉 Unified release package created: ./$BUILD_DIR/$RELEASE_ZIP"
+    fi
     success "Release content located in: ./$RELEASE_DIR/"
 
     # List all build artifacts

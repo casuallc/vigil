@@ -4,6 +4,7 @@ import (
   "fmt"
 
   "github.com/casuallc/vigil/client"
+  "github.com/casuallc/vigil/version"
   "github.com/spf13/cobra"
 )
 
@@ -13,11 +14,28 @@ func (c *CLI) setupCommands() *cobra.Command {
   var apiHost string
 
   rootCmd := &cobra.Command{
-    Use:     "vigil",
+    Use:     "bbx-cli",
     Short:   "Process Management Program",
-    Long:    "Vigil - A powerful process management and monitoring tool",
-    Version: "1.0.0",
+    Long:    "BBX - A powerful process management and monitoring tool",
+    Version: version.Version,
   }
+
+  // 设置版本信息
+  rootCmd.SetVersionTemplate(fmt.Sprintf(`Version:   %s
+BuildTime: %s
+GitCommit: %s
+GitBranch: %s
+GoVersion: %s
+OS/Arch:   %s/%s
+`,
+    version.Version,
+    version.BuildTime,
+    version.GitCommit,
+    version.GitBranch,
+    version.GetVersionInfo().GoVersion,
+    version.GetVersionInfo().OS,
+    version.GetVersionInfo().Arch,
+  ))
 
   // Add subcommands
   procCmd := c.setupProcCommands()

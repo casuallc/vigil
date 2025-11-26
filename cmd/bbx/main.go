@@ -2,9 +2,11 @@ package main
 
 import (
   "flag"
+  "fmt"
   "github.com/casuallc/vigil/api"
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/proc"
+  "github.com/casuallc/vigil/version"
   "log"
   "os"
   "os/signal"
@@ -16,13 +18,21 @@ import (
 func main() {
   // Parse command line arguments
   var (
-    configPath string
-    apiAddr    string
+    configPath  string
+    apiAddr     string
+    showVersion bool
   )
 
   flag.StringVar(&configPath, "config", "", "Config file path")
   flag.StringVar(&apiAddr, "addr", ":8080", "API server address")
+  flag.BoolVar(&showVersion, "version", false, "Show version information")
   flag.Parse()
+
+  // Show version information if requested
+  if showVersion {
+    fmt.Println(version.GetVersionInfo())
+    return
+  }
 
   // Set default config file path
   if configPath == "" {
