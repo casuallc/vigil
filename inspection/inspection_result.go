@@ -51,6 +51,7 @@ type CheckResult struct {
   Severity   string      `yaml:"severity" json:"severity"` // info / warn / error / critical
   Message    string      `yaml:"message" json:"message"`
   DurationMs int64       `yaml:"duration_ms" json:"duration_ms"`
+  Remediation string     `yaml:"remediation,omitempty" json:"remediation,omitempty"` // 修复建议
 }
 
 type SummaryInfo struct {

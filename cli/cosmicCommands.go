@@ -236,15 +236,16 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   // 转换检查项
   for _, check := range checkResult.Results {
     result.Checks = append(result.Checks, inspection.CheckResult{
-      ID:         check.ID,
-      Name:       check.Name,
-      Type:       check.Type,
-      Value:      check.Value,
-      Unit:       check.Unit,
-      Status:     strings.ToLower(check.Status),
-      Severity:   strings.ToLower(check.Severity),
-      Message:    check.Message,
-      DurationMs: check.DurationMs,
+      ID:          check.ID,
+      Name:        check.Name,
+      Type:        check.Type,
+      Value:       check.Value,
+      Unit:        check.Unit,
+      Status:      strings.ToLower(check.Status),
+      Severity:    strings.ToLower(check.Severity),
+      Message:     check.Message,
+      DurationMs:  check.DurationMs,
+      Remediation: check.Remediation,
     })
   }
 
@@ -467,11 +468,15 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
       if len(result.Checks) > 0 {
         fmt.Fprintf(&buf, "\n  Checks (%d):\n", len(result.Checks))
 
-        tableData := [][]string{{"Name", "Type", "Status", "Message"}}
+        tableData := [][]string{{"Name", "Type", "Status", "Message", "Remediation"}}
         for _, check := range result.Checks {
-          name := SplitStringByFixedWidth(check.Name, 25)
+          name := SplitStringByFixedWidth(check.Name, 20)
           typ := SplitStringByFixedWidth(check.Type, 12)
-          msg := SplitStringByFixedWidth(check.Message, 40)
+          msg := SplitStringByFixedWidth(check.Message, 30)
+          remediation := ""
+          if check.Remediation != "" {
+            remediation = SplitStringByFixedWidth(check.Remediation, 20)
+          }
 
           statusStr := check.Status
           // 终端输出带颜色，文件输出用纯文本
@@ -495,7 +500,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
             }
           }
 
-          tableData = append(tableData, []string{name, typ, statusStr, msg})
+          tableData = append(tableData, []string{name, typ, statusStr, msg, remediation})
         }
 
         pterm.DefaultTable.
@@ -581,6 +586,11 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
     fmt.Fprintf(&buf, "| Node | Status | Duration | Message |\n")
     fmt.Fprintf(&buf, "|------|--------|----------|---------|\n")
 
+    // 每个节点的检查详情表格
+    fmt.Fprintf(&buf, "\n#### Node Checks\n\n")
+    fmt.Fprintf(&buf, "| Name | Type | Status | Message | Remediation |\n")
+    fmt.Fprintf(&buf, "|------|------|--------|---------|-------------|\n")
+
     for _, result := range jobResults {
       // 状态图标
       statusIcon := "❓"
@@ -598,6 +608,39 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
       }
 
       duration := "N/A"
+
+      // 输出节点级别的表格行
+      if result.Duration > 0 {
+        duration = fmt.Sprintf("%.2fs", result.Duration)
+      }
+      fmt.Fprintf(&buf, "| %s:%d | %s %s | %s | %s |\n",
+        result.Host, result.Port, statusIcon, statusText, duration, result.Message)
+
+      // 输出该节点的每个检查项
+      for _, check := range result.Checks {
+        checkStatusIcon := "❓"
+        checkStatusText := check.Status
+        switch check.Status {
+        case "ok":
+          checkStatusIcon = "✅"
+          checkStatusText = "OK"
+        case "warning":
+          checkStatusIcon = "⚠️"
+          checkStatusText = "WARNING"
+        default:
+          checkStatusIcon = "❌"
+          checkStatusText = "FAILED"
+        }
+
+        remediation := ""
+        if check.Remediation != "" {
+          remediation = check.Remediation
+        }
+
+        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s |\n",
+          check.Name, check.Type, checkStatusIcon, checkStatusText, check.Message, remediation)
+      }
+      fmt.Fprintf(&buf, "\n")
       if result.Duration > 0 {
         duration = fmt.Sprintf("%.2fs", result.Duration)
       }
@@ -626,8 +669,8 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         continue
       }
       fmt.Fprintf(&buf, "#### Node: `%s:%d`\n\n", result.Host, result.Port)
-      fmt.Fprintf(&buf, "| Name | Type | Status | Message |\n")
-      fmt.Fprintf(&buf, "|------|------|--------|---------|\n")
+      fmt.Fprintf(&buf, "| Name | Type | Status | Message | Remediation |\n")
+      fmt.Fprintf(&buf, "|------|------|--------|---------|-------------|\n")
       for _, check := range result.Checks {
         checkStatusIcon := "❓"
         switch check.Status {
@@ -638,16 +681,21 @@ func formatToMarkdown(results []inspection.CosmicResult, outputFile string) []by
         case "critical", "error":
           checkStatusIcon = "❌"
         }
-        checkMsg := SplitStringByFixedWidth(firstNonEmptyLine(check.Message), 60)
+        checkMsg := SplitStringByFixedWidth(firstNonEmptyLine(check.Message), 40)
         if checkMsg == "" {
           checkMsg = "—"
         }
-        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s |\n",
-          SplitStringByFixedWidth(check.Name, 30),
-          SplitStringByFixedWidth(check.Type, 15),
+        remediation := "—"
+        if check.Remediation != "" {
+          remediation = SplitStringByFixedWidth(check.Remediation, 30)
+        }
+        fmt.Fprintf(&buf, "| %s | %s | %s %s | %s | %s |\n",
+          SplitStringByFixedWidth(check.Name, 25),
+          SplitStringByFixedWidth(check.Type, 12),
           checkStatusIcon,
           strings.ToUpper(check.Status),
           checkMsg,
+          remediation,
         )
       }
       fmt.Fprintf(&buf, "\n")
@@ -809,7 +857,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if len(result.Checks) > 0 {
         buf.WriteString("<button class=\"toggle-btn\">Show Checks</button>\n")
         buf.WriteString("<table class=\"checks-table\">\n")
-        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Message</th></tr></thead>\n")
+        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Message</th>th>Remediation</th></tr></thead>\n")
         buf.WriteString("<tbody>\n")
         for _, check := range result.Checks {
           var checkStatusBadge string
@@ -827,11 +875,16 @@ document.addEventListener('DOMContentLoaded', () => {
           if checkMsg == "" {
             checkMsg = "—"
           }
-          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+          checkRemediation := firstNonEmptyLine(check.Remediation)
+          if checkRemediation == "" {
+            checkRemediation = "—"
+          }
+          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
             check.Name,
             check.Type,
             checkStatusBadge,
             checkMsg,
+            checkRemediation,
           ))
         }
         buf.WriteString("</tbody>\n</table>\n")
@@ -856,10 +909,7 @@ func formatToPdf(results []inspection.CosmicResult, outputFile string) error {
   }
 
   // 1. 渲染 HTML
-  htmlContent, err := renderCosmicReportHTML(results)
-  if err != nil {
-    return fmt.Errorf("failed to render HTML: %w", err)
-  }
+  htmlContent := string(formatToHtml(results, ""))
 
   // 2. 检查 wkhtmltopdf
   if _, err := exec.LookPath("wkhtmltopdf"); err != nil {
@@ -887,167 +937,4 @@ func formatToPdf(results []inspection.CosmicResult, outputFile string) error {
 
   pterm.Success.Printf("PDF report saved to: %s\n", outputFile)
   return nil
-}
-
-// renderCosmicReportHTML 生成完整的 HTML 报告内容（不含 DOCTYPE 等？不，含完整 HTML）
-func renderCosmicReportHTML(results []inspection.CosmicResult) (string, error) {
-  var buf bytes.Buffer
-
-  css := `
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f8f9fa; color: #212529; }
-.container { max-width: 1200px; margin: 0 auto; }
-.header { background: #0d6efd; color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px; }
-.header h1 { margin: 0; font-size: 28px; }
-.meta { text-align: center; color: #6c757d; margin-bottom: 24px; font-style: italic; }
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 32px; }
-.stat-card { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
-.stat-value { font-size: 24px; font-weight: bold; margin: 8px 0; }
-.stat-label { font-size: 14px; color: #6c757d; }
-.software-section { background: white; margin-bottom: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
-.software-header { background: #e9ecef; padding: 16px 20px; font-size: 20px; font-weight: bold; color: #495057; }
-.node-item { border-bottom: 1px solid #eee; padding: 16px 20px; }
-.node-item:last-child { border-bottom: none; }
-.node-title { font-weight: bold; margin-bottom: 8px; color: #0d6efd; }
-.status-ok { color: #198754; }
-.status-warning { color: #ffc107; }
-.status-error { color: #dc3545; }
-.checks-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-.checks-table th, .checks-table td { text-align: left; padding: 10px; border-bottom: 1px solid #dee2e6; font-size: 14px; }
-.checks-table th { background: #f8f9fa; }
-.footer { text-align: center; margin-top: 32px; color: #6c757d; font-size: 14px; }
-.status-badge { padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; color: white; }
-.badge-ok { background: #198754; }
-.badge-warning { background: #ffc107; color: #212529; }
-.badge-error { background: #dc3545; }
-</style>
-`
-
-  // 开始 HTML
-  buf.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
-  buf.WriteString("<meta charset=\"UTF-8\">\n")
-  buf.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
-  buf.WriteString("<title>COSMIC Inspection Report</title>\n")
-  buf.WriteString(css)
-  buf.WriteString("</head>\n<body>\n")
-  buf.WriteString("<div class=\"container\">\n")
-
-  // 标题
-  buf.WriteString("<div class=\"header\">\n")
-  buf.WriteString("<h1>Cosmic Middleware Inspection Report</h1>\n")
-  buf.WriteString("</div>\n")
-  buf.WriteString(fmt.Sprintf("<div class=\"meta\">Generated at: %s</div>\n", time.Now().Format("2006-01-02 15:04:05")))
-
-  // === 统计 ===
-  totalJobs := len(results)
-  successJobs, warningJobs, failedJobs := 0, 0, 0
-  totalChecks := 0
-  totalPassed, totalWarnings, totalCritical, totalErrors := 0, 0, 0, 0
-
-  softwareResults := make(map[string][]inspection.CosmicResult)
-  for _, r := range results {
-    softwareResults[r.JobName] = append(softwareResults[r.JobName], r)
-    switch r.Status {
-    case "ok":
-      successJobs++
-    case "warning":
-      warningJobs++
-    default:
-      failedJobs++
-    }
-    for _, check := range r.Checks {
-      totalChecks++
-      switch check.Status {
-      case "ok":
-        totalPassed++
-      case "warning":
-        totalWarnings++
-      case "critical":
-        totalCritical++
-      case "error":
-        totalErrors++
-      }
-    }
-  }
-
-  buf.WriteString("<div class=\"stats-grid\">\n")
-  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Total Jobs</div><div class=\"stat-value\">%d</div></div>\n", totalJobs))
-  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Success</div><div class=\"stat-value\" style=\"color:#198754\">%d ✅</div></div>\n", successJobs))
-  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Warnings</div><div class=\"stat-value\" style=\"color:#ffc107\">%d ⚠️</div></div>\n", warningJobs))
-  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Failures</div><div class=\"stat-value\" style=\"color:#dc3545\">%d ❌</div></div>\n", failedJobs))
-  buf.WriteString(fmt.Sprintf("<div class=\"stat-card\"><div class=\"stat-label\">Total Checks</div><div class=\"stat-value\">%d</div></div>\n", totalChecks))
-  buf.WriteString("</div>\n")
-
-  // === 软件分组 ===
-  buf.WriteString("<h2>Software Details</h2>\n")
-  for software, jobResults := range softwareResults {
-    buf.WriteString("<div class=\"software-section\">\n")
-    buf.WriteString(fmt.Sprintf("<div class=\"software-header\">📦 %s</div>\n", software))
-
-    for _, result := range jobResults {
-      buf.WriteString("<div class=\"node-item\">\n")
-      buf.WriteString(fmt.Sprintf("<div class=\"node-title\">Node: %s:%d</div>\n", result.Host, result.Port))
-
-      var statusBadge string
-      switch result.Status {
-      case "ok":
-        statusBadge = `<span class="status-badge badge-ok">OK</span>`
-      case "warning":
-        statusBadge = `<span class="status-badge badge-warning">WARNING</span>`
-      default:
-        statusBadge = `<span class="status-badge badge-error">FAILED</span>`
-      }
-
-      duration := "N/A"
-      if result.Duration > 0 {
-        duration = fmt.Sprintf("%.2f s", result.Duration)
-      }
-
-      message := SplitStringByFixedWidth(result.Message, 120)
-      if message == "" {
-        message = "—"
-      }
-
-      buf.WriteString(fmt.Sprintf("<div>Status: %s | Duration: %s</div>\n", statusBadge, duration))
-      buf.WriteString(fmt.Sprintf("<div>Message: %s</div>\n", message))
-
-      if len(result.Checks) > 0 {
-        buf.WriteString("<table class=\"checks-table\">\n")
-        buf.WriteString("<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Message</th></tr></thead>\n")
-        buf.WriteString("<tbody>\n")
-        for _, check := range result.Checks {
-          var checkBadge string
-          switch check.Status {
-          case "ok":
-            checkBadge = `<span class="status-badge badge-ok">OK</span>`
-          case "warning":
-            checkBadge = `<span class="status-badge badge-warning">WARN</span>`
-          case "critical", "error":
-            checkBadge = `<span class="status-badge badge-error">FAIL</span>`
-          default:
-            checkBadge = check.Status
-          }
-          checkMsg := SplitStringByFixedWidth(firstNonEmptyLine(check.Message), 80)
-          if checkMsg == "" {
-            checkMsg = "—"
-          }
-          buf.WriteString(fmt.Sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-            SplitStringByFixedWidth(check.Name, 30),
-            SplitStringByFixedWidth(check.Type, 15),
-            checkBadge,
-            checkMsg,
-          ))
-        }
-        buf.WriteString("</tbody>\n</table>\n")
-      }
-
-      buf.WriteString("</div>\n")
-    }
-    buf.WriteString("</div>\n")
-  }
-
-  buf.WriteString("<div class=\"footer\">End of Report</div>\n")
-  buf.WriteString("</div>\n</body>\n</html>")
-
-  return buf.String(), nil
 }
