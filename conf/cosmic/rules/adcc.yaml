@@ -40,17 +40,6 @@ checks:
     severity: critical
     remediation: "检查 ZooKeeper 是否正常运行，网络是否可达"
 
-
-  # 4. 自定义服务状态脚本（adccServer.sh status）
-  - id: adcc-server-status
-    name: "ADCC 自定义状态脚本输出"
-    type: script
-    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/adcc/adcc-server-1.0/bin/adccServer.sh status"
-    # 此项主要用于采集，若脚本有标准成功标识（如 'running'），可加 expect
-    # 例如：
-    # expect: "running"
-
-
   # 5. 配置文件关键参数：tickTime
   - id: adcc-zoo-cfg-ticktime
     name: "ADCC ZooKeeper 配置 tickTime 值"
@@ -103,15 +92,6 @@ checks:
       else
         echo "config_not_found"
       fi
-    parse:
-      kind: string
-    severity: info
-  
-  # 9. ZooKeeper 版本检查
-  - id: adcc-version-check
-    name: "ADCC ZooKeeper 版本信息"
-    type: script
-    command: "echo stat | nc 127.0.0.1 2181 | grep 'Version:' | head -1 || echo 'unknown'"
     parse:
       kind: string
     severity: info

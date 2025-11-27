@@ -371,7 +371,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
   const lineWidth = 120
 
   // === 报告标题 ===
-  headerText := pterm.DefaultHeader.WithFullWidth().Sprint("\nCosmic Middleware Inspection Report")
+  headerText := pterm.DefaultHeader.WithFullWidth().Sprint("Cosmic Middleware Inspection Report")
   fmt.Fprintf(&buf, "%s", headerText)
   fmt.Fprintf(&buf, "Generated at: %s\n\n", time.Now().Format("2006-01-02 15:04:05"))
 
@@ -426,7 +426,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
 
   // === 按软件分组输出详情 ===
   for software, jobResults := range softwareResults {
-    softwareHeader := pterm.DefaultHeader.WithFullWidth().Sprintf("\nSoftware: %s", software)
+    softwareHeader := pterm.DefaultHeader.WithFullWidth().Sprintf("Software: %s", software)
     fmt.Fprintf(&buf, "%s\n\n", softwareHeader)
 
     for _, result := range jobResults {
@@ -504,7 +504,7 @@ func formatToText(results []inspection.CosmicResult, outputFile string) []byte {
   }
 
   // === 结束标记 ===
-  endText := pterm.DefaultHeader.WithFullWidth().Sprint("\nEND OF REPORT")
+  endText := pterm.DefaultHeader.WithFullWidth().Sprint("END OF REPORT")
   fmt.Fprintf(&buf, "\n%s\n", endText)
   return buf.Bytes()
 }

@@ -79,7 +79,7 @@ checks:
     name: "ADMQ Broker CPU 使用率（%）"
     type: script
     command: |
-      PID=$(cat ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/bin/broker.pid 2>/dev/null)
+      PID=$(systemctl show -p MainPID --value admq-broker)
       if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
         top -b -n1 -p "$PID" | tail -n1 | awk '{print $9+0}'
       else
@@ -98,7 +98,7 @@ checks:
     name: "ADMQ Broker 内存使用率（%）"
     type: script
     command: |
-      PID=$(cat ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/bin/broker.pid 2>/dev/null)
+      PID=$(systemctl show -p MainPID --value admq-broker)
       if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
         top -b -n1 -p "$PID" | tail -n1 | awk '{print $10+0}'
       else

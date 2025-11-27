@@ -9,7 +9,7 @@ meta:
 checks:
   # 1. 内存使用率
   - id: memory-usage
-    name: "系统内存使用率"
+    name: "系统内存使用率（%）"
     type: script
     command: "free | awk '/Mem:/ {printf \"%.2f\", $3/$2 * 100}'"
     parse:
@@ -25,7 +25,7 @@ checks:
 
   # 2. 磁盘使用率（支持自定义路径）
   - id: disk-usage
-    name: "系统磁盘使用率（${APUSIC_DISK_PATH:-/}）"
+    name: "系统磁盘使用率（%）"
     type: script
     command: "df -h ${APUSIC_DISK_PATH:-/} | awk 'NR==2 {print $5}' | sed 's/%//'"
     parse:
@@ -94,7 +94,7 @@ checks:
   - id: cpu-usage
     name: "系统 CPU 使用率（%）"
     type: script
-    command: "top -b -n1 | grep '^%Cpu' | awk '{printf "%.2f", 100-$8}'"
+    command: "top -b -n1 | grep '^%Cpu' | awk '{printf \"%.2f\", 100-$8}'"
     parse:
       kind: float
     thresholds:

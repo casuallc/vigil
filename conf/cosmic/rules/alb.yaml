@@ -11,13 +11,9 @@ checks:
   - id: alb-main-process
     name: "ALB 主进程（alb: main process）是否存在"
     type: script
-    command: "ps aux | grep 'alb: main process' | grep -v grep | wc -l"
-    parse:
-      kind: int
-    thresholds:
-      - when: "!= 1"
-        severity: critical
-        message: "ALB 主进程异常（应有且仅有1个）"
+    command: "systemctl is-active alb"
+    expect: "active"
+    severity: critical
     remediation: "检查 ALB 是否启动：systemctl restart alb 或手动启动"
 
 

@@ -213,8 +213,8 @@ func handleThresholds(check Check, result *CheckResult) {
 
     // 如果表达式为真，则应用该阈值规则
     if match, ok := evalResult.(bool); ok && match {
-      result.Status = string(threshold.Severity)
-      result.Severity = string(threshold.Severity)
+      result.Status = StatusError
+      result.Severity = threshold.Severity
       if threshold.Message != "" {
         result.Message = threshold.Message
       } else {
