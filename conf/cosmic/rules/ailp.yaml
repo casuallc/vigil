@@ -45,7 +45,7 @@ checks:
   - id: ailp-disk-usage
     name: "AILP 数据目录磁盘使用量"
     type: script
-    command: "du -sb ${APUSIC_AILP_DATA_DIR:-${APUSIC_HOME:-/kingdee/cosmic}/ailp} | awk '{print int($1/1024/1024)}'"
+    command: "sed -e; du -sb ${APUSIC_AILP_DATA_DIR:-${APUSIC_HOME:-/kingdee/cosmic}/ailp} | awk '{print int($1/1024/1024)}'"
     parse:
       kind: int
     # 可选阈值：例如 > 500,000 MB (500GB)
@@ -60,6 +60,7 @@ checks:
     name: "Kafka logstash 消费组消息积压量"
     type: script
     command: |
+      sed -e; 
       cd ${APUSIC_HOME:-/kingdee/cosmic}/ailp/kafka/kafka_2.12-2.7.0
       BACKLOG=$(bin/kafka-consumer-groups.sh --bootstrap-server ${APUSIC_IP:-127.0.0.1}:9092 --group logstash --describe 2>/dev/null | awk 'NR>2 {sum += $6} END {print sum+0}')
       echo "$BACKLOG"
@@ -79,6 +80,7 @@ checks:
     name: "Logstash 输入与输出事件差值（潜在积压）"
     type: script
     command: |
+      sed -e; 
       curl -s http://localhost:9600/_node/stats/pipelines/main?pretty 2>/dev/null | \
       awk '/"in"/ {in_val=$3} /"out"/ {out_val=$3} END {gsub(/,/, "", in_val); gsub(/,/, "", out_val); if(in_val+0 > 0) print in_val - out_val; else print 0}'
     parse:
@@ -93,7 +95,7 @@ checks:
   - id: es-cluster-health
     name: "Elasticsearch 集群健康状态"
     type: script
-    command: "curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} http://127.0.0.1:9200/_cat/health?h=status | tr -d ' '"
+    command: "sed -e; curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} http://127.0.0.1:9200/_cat/health?h=status | tr -d ' '"
     parse:
       kind: string
     # ES 健康状态：green > yellow > red
@@ -111,6 +113,7 @@ checks:
     name: "Elasticsearch 是否存在今日/昨日日志索引"
     type: script
     command: |
+      sed -e; 
       DATE_STR=$([ $(date +%H) -ge 8 ] && date +"%Y-%m-%d" || date -d "yesterday" +"%Y-%m-%d")
       INDEX_COUNT=$(curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/indices?h=index" | grep -c "$DATE_STR")
       echo "$INDEX_COUNT"
@@ -128,6 +131,7 @@ checks:
     name: "Elasticsearch 索引摘要（文档数、存储大小）"
     type: script
     command: |
+      sed -e; 
       curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/indices?h=docs.count,store.size" | \
       awk '{sum_docs += $1; sum_size += ($2 ~ /[0-9]/ ? $2 : 0)} END {print "docs_total=" sum_docs ", size_total_bytes=" sum_size}'
     parse:
@@ -139,6 +143,7 @@ checks:
     name: "Elasticsearch 磁盘使用率（%）"
     type: script
     command: |
+      sed -e; 
       curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/allocation?h=disk.percent" | awk '{sum += $1; count++} END {if(count>0) printf "%.2f", sum/count; else print 0}'
     parse:
       kind: float
@@ -154,7 +159,7 @@ checks:
   - id: logstash-health
     name: "Logstash 健康状态"
     type: script
-    command: "curl -s http://localhost:9600/_node/stats/pipelines/main?pretty 2>/dev/null | grep -c '"pipeline"'"
+    command: "sed -e; curl -s http://localhost:9600/_node/stats/pipelines/main?pretty 2>/dev/null | grep -c '"pipeline"'"
     parse:
       kind: int
     thresholds:

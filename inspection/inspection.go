@@ -43,13 +43,18 @@ func ExecuteCheck(check Check, envVars []string) CheckResult {
 
 // executeScriptCheck 执行脚本检查
 func executeScriptCheck(check Check, envVars []string) CheckResult {
+  severity := check.Severity
+  if severity == "" {
+    severity = SeverityWarn
+  }
+
   result := CheckResult{
     ID:          check.ID,
     Name:        check.Name,
     Type:        check.Type,
     Remediation: check.Remediation,
     Status:      StatusOk,
-    Severity:    SeverityWarn,
+    Severity:    severity,
   }
 
   // 获取命令

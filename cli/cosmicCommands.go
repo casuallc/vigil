@@ -826,9 +826,9 @@ document.addEventListener('DOMContentLoaded', () => {
           var checkStatusBadge string
           switch check.Status {
           case inspection.StatusOk:
-            checkStatusBadge = `<span class=\"status-badge badge-ok\">OK</span>`
+            checkStatusBadge = `<span class="status-badge badge-ok">OK</span>`
           case inspection.StatusError:
-            checkStatusBadge = `<span class=\"status-badge badge-error\">FAIL</span>`
+            checkStatusBadge = `<span class="status-badge badge-error">FAIL</span>`
           default:
             checkStatusBadge = check.Status
           }

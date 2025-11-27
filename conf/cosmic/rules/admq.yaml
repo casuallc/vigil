@@ -37,7 +37,7 @@ checks:
   - id: admq-port-5672
     name: "ADMQ 5672 端口监听状态"
     type: script
-    command: "ss -tlnp | grep ':5672 ' | wc -l"
+    command: "set -e; ss -tlnp | grep ':5672 ' | wc -l"
     parse:
       kind: int
     thresholds:
@@ -51,7 +51,7 @@ checks:
   - id: admq-connection-count
     name: "ADMQ 当前 ESTABLISHED 连接数"
     type: script
-    command: "netstat -ant | grep ':5672 ' | grep ESTABLISHED | wc -l"
+    command: "set -e; netstat -ant | grep ':5672 ' | grep ESTABLISHED | wc -l"
     parse:
       kind: int
     thresholds:
@@ -64,7 +64,7 @@ checks:
   - id: admq-disk-usage
     name: "ADMQ 数据目录磁盘使用量"
     type: script
-    command: "du -sb ${APUSIC_ADMQ_DATA_DIR:-${APUSIC_HOME:-/kingdee/cosmic}/common/admq} | awk '{print int($1/1024/1024)}'"
+    command: "set -e; du -sb ${APUSIC_ADMQ_DATA_DIR:-${APUSIC_HOME:-/kingdee/cosmic}/common/admq} | awk '{print int($1/1024/1024)}'"
     parse:
       kind: int
     # 可选：添加阈值（如 > 50000 MB = 50GB）
@@ -79,6 +79,7 @@ checks:
     name: "ADMQ Broker CPU 使用率（%）"
     type: script
     command: |
+      set -e
       PID=$(systemctl show -p MainPID --value admq-broker)
       if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
         top -b -n1 -p "$PID" | tail -n1 | awk '{print $9+0}'
@@ -98,6 +99,7 @@ checks:
     name: "ADMQ Broker 内存使用率（%）"
     type: script
     command: |
+      set -e
       PID=$(systemctl show -p MainPID --value admq-broker)
       if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
         top -b -n1 -p "$PID" | tail -n1 | awk '{print $10+0}'
@@ -116,7 +118,7 @@ checks:
   - id: admq-topic-count
     name: "ADMQ amqp-data/ierp 下 Topic 数量"
     type: script
-    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/bin/admqctl admin topics list amqp-data/ierp 2>/dev/null | wc -l"
+    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/bin/admqctl admin topics list amqp-data/ierp 2>/dev/null | wc -l"
     parse:
       kind: int
     thresholds:
@@ -130,6 +132,7 @@ checks:
     name: "存在消息积压的队列数量"
     type: script
     command: |
+      set -e
       cd ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4
       if [ -f .queue.stats ]; then
         awk -F',' '$4>0' .queue.stats | wc -l
@@ -149,6 +152,7 @@ checks:
     name: "存在未确认消息的队列数量"
     type: script
     command: |
+      set -e
       cd ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4
       if [ -f .queue.stats ]; then
         awk -F',' '$5>0' .queue.stats | wc -l
@@ -167,7 +171,7 @@ checks:
   - id: admq-auto-topic-creation
     name: "ADMQ 是否禁用自动创建 Topic"
     type: script
-    command: "grep '^allowAutoTopicCreation=' ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/config/broker.conf | cut -d= -f2"
+    command: "set -e; grep '^allowAutoTopicCreation=' ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/config/broker.conf | cut -d= -f2"
     expect: "false"
     severity: warn
     remediation: "设置 allowAutoTopicCreation=false 以避免意外 Topic 创建"
@@ -178,6 +182,7 @@ checks:
     name: "ADMQ 数据副本策略（Ensemble/Write/Ack Quorum）"
     type: script
     command: |
+      set -e
       cd ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4
       e=$(grep '^managedLedgerDefaultEnsembleSize=' config/broker.conf | cut -d= -f2)
       w=$(grep '^managedLedgerDefaultWriteQuorum=' config/broker.conf | cut -d= -f2)
@@ -196,7 +201,7 @@ checks:
   - id: admq-storage-sync
     name: "ADMQ Storage 是否关闭同步刷盘（journalSyncData）"
     type: script
-    command: "grep '^journalSyncData=' ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/config/storage.conf | cut -d= -f2"
+    command: "set -e; grep '^journalSyncData=' ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/config/storage.conf | cut -d= -f2"
     expect: "false"
     severity: warn
     remediation: "设置 journalSyncData=false 以提升写入性能（需确保磁盘可靠）"
@@ -211,6 +216,7 @@ checks:
     # 无法直接用 expect 做子串匹配，故用 custom 或脚本判断
     # workaround: 输出 yes/no
     command: |
+      set -e
       if grep -q 'ADMQ_MEM.*-Xmx2g' ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/config/broker_env.sh; then
         echo "ok"
       else
@@ -226,6 +232,7 @@ checks:
     name: "ADMQ Storage JVM 内存配置是否包含 -Xmx2g"
     type: script
     command: |
+      set -e
       if grep -q 'STORAGE_MEM.*-Xmx2g' ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/config/storage_env.sh; then
         echo "ok"
       else
@@ -239,7 +246,7 @@ checks:
   - id: admq-version
     name: "ADMQ 版本信息"
     type: script
-    command: "${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/bin/admqctl version 2>/dev/null || echo 'unknown'"
+    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/bin/admqctl version 2>/dev/null || echo 'unknown'"
     parse:
       kind: string
     severity: info
@@ -249,6 +256,7 @@ checks:
     name: "ADMQ 存储服务磁盘使用率（%）"
     type: script
     command: |
+      set -e
       STORAGE_DIR="${APUSIC_ADMQ_STORAGE_DIR:-${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/data}"
       if [ -d "$STORAGE_DIR" ]; then
         df -h "$STORAGE_DIR" | awk 'NR==2 {print $5}' | sed 's/%//'
@@ -271,6 +279,7 @@ checks:
     name: "ADMQ Broker 配置文件关键参数检查"
     type: script
     command: |
+      set -e
       CONFIG="${APUSIC_HOME:-/kingdee/cosmic}/common/admq/admq-V2.5.4/config/broker.conf"
       if [ -f "$CONFIG" ]; then
         grep -E '^brokerName|^zookeeperServers|^advertisedAddress' "$CONFIG" | tr '\n' ';' | sed 's/;$//'

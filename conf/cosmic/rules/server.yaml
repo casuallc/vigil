@@ -11,7 +11,7 @@ checks:
   - id: memory-usage
     name: "系统内存使用率（%）"
     type: script
-    command: "free | awk '/Mem:/ {printf \"%.2f\", $3/$2 * 100}'"
+    command: "set -e; free | awk '/Mem:/ {printf \"%.2f\", $3/$2 * 100}'"
     parse:
       kind: float
     thresholds:
@@ -27,7 +27,7 @@ checks:
   - id: disk-usage
     name: "系统磁盘使用率（%）"
     type: script
-    command: "df -h ${APUSIC_DISK_PATH:-/} | awk 'NR==2 {print $5}' | sed 's/%//'"
+    command: "set -e; df -h ${APUSIC_DISK_PATH:-/} | awk 'NR==2 {print $5}' | sed 's/%//'"
     parse:
       kind: int
     thresholds:
@@ -43,7 +43,7 @@ checks:
   - id: system-load
     name: "系统1分钟负载"
     type: script
-    command: "uptime | awk -F'load average:' '{print $2}' | cut -d, -f1 | tr -d ' '"
+    command: "set -e; uptime | awk -F'load average:' '{print $2}' | cut -d, -f1 | tr -d ' '"
     parse:
       kind: float
     thresholds:
@@ -60,6 +60,7 @@ checks:
     name: "磁盘 IO 利用率（设备: ${APUSIC_DEVICE:-vdb}）"
     type: script
     command: |
+      set -e
       iostat -x 1 2 2>/dev/null | awk -v dev="${APUSIC_DEVICE:-vdb}" '$1 == dev {print $NF}' | tail -n1
     parse:
       kind: float
@@ -76,7 +77,7 @@ checks:
   - id: fd-limit
     name: "当前用户文件描述符限制（ulimit -n）"
     type: script
-    command: "ulimit -n"
+    command: "set -e; ulimit -n"
     parse:
       kind: int
     thresholds:
@@ -94,7 +95,7 @@ checks:
   - id: cpu-usage
     name: "系统 CPU 使用率（%）"
     type: script
-    command: "top -b -n1 | grep '^%Cpu' | awk '{printf \"%.2f\", 100-$8}'"
+    command: "set -e; top -b -n1 | grep '^%Cpu' | awk '{printf \"%.2f\", 100-$8}'"
     parse:
       kind: float
     thresholds:
@@ -109,7 +110,7 @@ checks:
   - id: kernel-ip-local-port-range
     name: "内核参数 net.ipv4.ip_local_port_range"
     type: script
-    command: "sysctl -n net.ipv4.ip_local_port_range"
+    command: "set -e; sysctl -n net.ipv4.ip_local_port_range"
     expect: "1024 65000"
     severity: warn
     remediation: "sysctl -w net.ipv4.ip_local_port_range='1024 65000'"
@@ -117,7 +118,7 @@ checks:
   - id: kernel-somaxconn
     name: "内核参数 net.core.somaxconn"
     type: script
-    command: "sysctl -n net.core.somaxconn"
+    command: "set -e; sysctl -n net.core.somaxconn"
     expect: "65535"
     severity: warn
     remediation: "sysctl -w net.core.somaxconn=65535"
@@ -125,7 +126,7 @@ checks:
   - id: kernel-tcp-tw-reuse
     name: "内核参数 net.ipv4.tcp_tw_reuse"
     type: script
-    command: "sysctl -n net.ipv4.tcp_tw_reuse"
+    command: "set -e; sysctl -n net.ipv4.tcp_tw_reuse"
     expect: "1"
     severity: warn
     remediation: "sysctl -w net.ipv4.tcp_tw_reuse=1"
@@ -133,7 +134,7 @@ checks:
   - id: kernel-tcp-fin-timeout
     name: "内核参数 net.ipv4.tcp_fin_timeout"
     type: script
-    command: "sysctl -n net.ipv4.tcp_fin_timeout"
+    command: "set -e; sysctl -n net.ipv4.tcp_fin_timeout"
     expect: "15"
     severity: warn
     remediation: "sysctl -w net.ipv4.tcp_fin_timeout=15"
@@ -141,7 +142,7 @@ checks:
   - id: kernel-tcp-syncookies
     name: "内核参数 net.ipv4.tcp_syncookies"
     type: script
-    command: "sysctl -n net.ipv4.tcp_syncookies"
+    command: "set -e; sysctl -n net.ipv4.tcp_syncookies"
     expect: "1"
     severity: warn
     remediation: "sysctl -w net.ipv4.tcp_syncookies=1"
