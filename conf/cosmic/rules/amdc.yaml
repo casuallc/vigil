@@ -7,10 +7,6 @@ meta:
   description: "AMDC Redis 巡检: 进程状态、端口监听、服务响应、内存使用、连接数等"
 
 checks:
-  # --- Redis 实例通用配置 ---
-  # 定义端口列表（可由引擎或模板展开，此处显式列出）
-  # 建议：实际使用中可通过变量或生成脚本展开，但 YAML 需显式写
-
   # === 实例 6379 ===
   - id: amdc-6379-process
     name: "AMDC Redis 6379 进程状态"
@@ -23,7 +19,7 @@ checks:
   - id: amdc-6379-port
     name: "AMDC Redis 6379 端口监听状态"
     type: script
-    command: "set -e; ss -tlnp | grep ':6379 ' | wc -l"
+    command: "set -e; ss -tln | awk '$4 ~ /:6379$/ {count++} END {print count+0}'"
     parse:
       kind: int
     thresholds:
@@ -45,7 +41,6 @@ checks:
     command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication | grep '^role:' | cut -d: -f2"
     parse:
       kind: string
-    # 可选：期望值 master/slave，但角色可能动态变化，故仅采集
 
   - id: amdc-6379-memory
     name: "AMDC Redis 6379 内存使用量（human readable）"
@@ -53,12 +48,22 @@ checks:
     command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | grep '^used_memory_human:' | cut -d: -f2"
     parse:
       kind: string
-    # 如需数值告警，可提取字节数（used_memory）并设阈值
-  
+
   - id: amdc-6379-memory-usage
     name: "AMDC Redis 6379 内存使用率（%）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | awk '/used_memory:/ {used=$2} /maxmemory:/ {max=$2} END {if(max==0) print 0; else printf \"%.2f\", used/max*100}'"
+    command: |
+      set -e
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | awk -F: '
+        /^used_memory:[0-9]/ { used = $2 }
+        /^maxmemory:[0-9]/   { max = $2 }
+        END {
+          if (max == 0 || max == "" || used == "") {
+            printf "0.00"
+          } else {
+            printf "%.2f", (used / max) * 100
+          }
+        }'
     parse:
       kind: float
     thresholds:
@@ -93,7 +98,7 @@ checks:
   - id: amdc-6380-port
     name: "AMDC Redis 6380 端口监听状态"
     type: script
-    command: "set -e; ss -tlnp | grep ':6380 ' | wc -l"
+    command: "set -e; ss -tln | awk '$4 ~ /:6380$/ {count++} END {print count+0}'"
     parse:
       kind: int
     thresholds:
@@ -121,11 +126,22 @@ checks:
     command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | grep '^used_memory_human:' | cut -d: -f2"
     parse:
       kind: string
-  
+
   - id: amdc-6380-memory-usage
     name: "AMDC Redis 6380 内存使用率（%）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | awk '/used_memory:/ {used=$2} /maxmemory:/ {max=$2} END {if(max==0) print 0; else printf \"%.2f\", used/max*100}'"
+    command: |
+      set -e
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | awk -F: '
+        /^used_memory:[0-9]/ { used = $2 }
+        /^maxmemory:[0-9]/   { max = $2 }
+        END {
+          if (max == 0 || max == "" || used == "") {
+            printf "0.00"
+          } else {
+            printf "%.2f", (used / max) * 100
+          }
+        }'
     parse:
       kind: float
     thresholds:
@@ -160,7 +176,7 @@ checks:
   - id: amdc-6381-port
     name: "AMDC Redis 6381 端口监听状态"
     type: script
-    command: "set -e; ss -tlnp | grep ':6381 ' | wc -l"
+    command: "set -e; ss -tln | awk '$4 ~ /:6381$/ {count++} END {print count+0}'"
     parse:
       kind: int
     thresholds:
@@ -188,11 +204,22 @@ checks:
     command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | grep '^used_memory_human:' | cut -d: -f2"
     parse:
       kind: string
-  
+
   - id: amdc-6381-memory-usage
     name: "AMDC Redis 6381 内存使用率（%）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | awk '/used_memory:/ {used=$2} /maxmemory:/ {max=$2} END {if(max==0) print 0; else printf \"%.2f\", used/max*100}'"
+    command: |
+      set -e
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory | awk -F: '
+        /^used_memory:[0-9]/ { used = $2 }
+        /^maxmemory:[0-9]/   { max = $2 }
+        END {
+          if (max == 0 || max == "" || used == "") {
+            printf "0.00"
+          } else {
+            printf "%.2f", (used / max) * 100
+          }
+        }'
     parse:
       kind: float
     thresholds:
@@ -213,4 +240,3 @@ checks:
       - when: "> 0"
         severity: warn
         message: "存在被拒绝的连接"
-
