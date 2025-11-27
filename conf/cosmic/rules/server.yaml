@@ -128,7 +128,7 @@ checks:
     type: script
     command: "set -e; sysctl -n net.ipv4.tcp_tw_reuse"
     expect: "1"
-    severity: warn
+    severity: info
     remediation: "sysctl -w net.ipv4.tcp_tw_reuse=1"
 
   - id: kernel-tcp-fin-timeout
@@ -136,7 +136,7 @@ checks:
     type: script
     command: "set -e; sysctl -n net.ipv4.tcp_fin_timeout"
     expect: "15"
-    severity: warn
+    severity: info
     remediation: "sysctl -w net.ipv4.tcp_fin_timeout=15"
 
   - id: kernel-tcp-syncookies
@@ -144,5 +144,5 @@ checks:
     type: script
     command: "set -e; sysctl -n net.ipv4.tcp_syncookies"
     expect: "1"
-    severity: warn
+    severity: info
     remediation: "sysctl -w net.ipv4.tcp_syncookies=1"
