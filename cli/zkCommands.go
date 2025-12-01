@@ -3,8 +3,8 @@ package cli
 import (
   "context"
   "fmt"
+  "github.com/casuallc/vigil/client/zookeeper"
 
-  "github.com/casuallc/vigil/zookeeper"
   "github.com/spf13/cobra"
 )
 

@@ -3,7 +3,7 @@ package cli
 import (
   "context"
   "fmt"
-  "github.com/casuallc/vigil/rabbitmq"
+  "github.com/casuallc/vigil/client/rabbitmq"
   "github.com/spf13/cobra"
   "strings"
 )

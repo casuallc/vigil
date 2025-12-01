@@ -3,7 +3,7 @@ package cli
 import (
   "context"
   "fmt"
-  "github.com/casuallc/vigil/kafka"
+  "github.com/casuallc/vigil/client/kafka"
   "github.com/spf13/cobra"
 )
 

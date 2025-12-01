@@ -3,7 +3,7 @@ package cli
 import (
   "context"
   "fmt"
-  "github.com/casuallc/vigil/pulsar"
+  "github.com/casuallc/vigil/client/pulsar"
   "github.com/spf13/cobra"
   "time"
 )

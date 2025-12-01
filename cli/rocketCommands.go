@@ -4,7 +4,7 @@ import (
   "context"
   "fmt"
   "github.com/apache/rocketmq-client-go/v2/primitive"
-  "github.com/casuallc/vigil/rocketmq"
+  "github.com/casuallc/vigil/client/rocketmq"
   "github.com/spf13/cobra"
 )
 

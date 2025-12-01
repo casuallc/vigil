@@ -4,7 +4,7 @@ import (
   "bytes"
   "encoding/json"
   "fmt"
-  "github.com/casuallc/vigil/client"
+  "github.com/casuallc/vigil/api"
   "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/inspection"
   "github.com/pterm/pterm"
@@ -220,7 +220,7 @@ func (c *CLI) performRuleBasedInspection(job inspection.Job, node inspection.Nod
   fmt.Printf("- Rules count: %d\n", len(rules.Checks))
 
   // 为每个节点创建客户端
-  nodeClient := client.NewClient(fmt.Sprintf("http://%s:%d", node.IP, node.Port))
+  nodeClient := api.NewClient(fmt.Sprintf("http://%s:%d", node.IP, node.Port))
 
   // 执行远程检查
   checkResult, err := nodeClient.ExecuteInspection(checkRequest)

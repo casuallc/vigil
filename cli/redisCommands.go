@@ -3,7 +3,7 @@ package cli
 import (
   "context"
   "fmt"
-  "github.com/casuallc/vigil/redis"
+  "github.com/casuallc/vigil/client/redis"
   "github.com/spf13/cobra"
 )
 

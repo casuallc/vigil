@@ -2,8 +2,8 @@ package cli
 
 import (
   "fmt"
+  "github.com/casuallc/vigil/api"
 
-  "github.com/casuallc/vigil/client"
   "github.com/casuallc/vigil/version"
   "github.com/spf13/cobra"
 )
@@ -57,7 +57,7 @@ OS/Arch:   %s/%s
   rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
     // Only create a new client if we're not in the proc command
     if cmd == procCmd || cmd == resourceCmd || cmd == configCmd || cmd == execCmd {
-      c.client = client.NewClient(apiHost)
+      c.client = api.NewClient(apiHost)
     }
     return nil
   }

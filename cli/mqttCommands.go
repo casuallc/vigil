@@ -3,7 +3,7 @@ package cli
 import (
   "context"
   "fmt"
-  "github.com/casuallc/vigil/mqtt"
+  mqtt2 "github.com/casuallc/vigil/client/mqtt"
   "github.com/spf13/cobra"
 )
 
@@ -16,7 +16,7 @@ func (c *CLI) setupMqttCommands() *cobra.Command {
   }
 
   // 为父命令添加持久化标志
-  var config mqtt.ServerConfig
+  var config mqtt2.ServerConfig
   mqttCmd.PersistentFlags().StringVar(&config.Server, "server", "localhost", "MQTT server address")
   mqttCmd.PersistentFlags().IntVar(&config.Port, "port", 1883, "MQTT server port")
   mqttCmd.PersistentFlags().StringVar(&config.User, "user", "", "Username for authentication")
@@ -51,7 +51,7 @@ func (c *CLI) setupMqttPublishCommand() *cobra.Command {
     Use:   "publish",
     Short: "Publish a message to an MQTT topic",
     RunE: func(cmd *cobra.Command, args []string) error {
-      config := cmd.Context().Value("mqttConfig").(*mqtt.ServerConfig)
+      config := cmd.Context().Value("mqttConfig").(*mqtt2.ServerConfig)
       return c.handleMqttPublish(config, topic, qos, message, repeat, interval, retained, printLog)
     },
   }
@@ -70,9 +70,9 @@ func (c *CLI) setupMqttPublishCommand() *cobra.Command {
 }
 
 // handleMqttPublish 处理发布消息
-func (c *CLI) handleMqttPublish(config *mqtt.ServerConfig, topic string, qos int, message string, repeat int, interval int, retained bool, printLog bool) error {
+func (c *CLI) handleMqttPublish(config *mqtt2.ServerConfig, topic string, qos int, message string, repeat int, interval int, retained bool, printLog bool) error {
   // 创建客户端
-  client := mqtt.NewClient(config)
+  client := mqtt2.NewClient(config)
   defer client.Close()
 
   // 连接到MQTT服务器
@@ -81,7 +81,7 @@ func (c *CLI) handleMqttPublish(config *mqtt.ServerConfig, topic string, qos int
   }
 
   // 创建发布配置
-  publishConfig := &mqtt.PublishConfig{
+  publishConfig := &mqtt2.PublishConfig{
     Topic:    topic,
     QoS:      qos,
     Message:  message,
@@ -111,7 +111,7 @@ func (c *CLI) setupMqttSubscribeCommand() *cobra.Command {
     Use:   "subscribe",
     Short: "Subscribe to an MQTT topic",
     RunE: func(cmd *cobra.Command, args []string) error {
-      config := cmd.Context().Value("mqttConfig").(*mqtt.ServerConfig)
+      config := cmd.Context().Value("mqttConfig").(*mqtt2.ServerConfig)
       return c.handleMqttSubscribe(config, topic, qos, timeout, printLog)
     },
   }
@@ -126,9 +126,9 @@ func (c *CLI) setupMqttSubscribeCommand() *cobra.Command {
 }
 
 // handleMqttSubscribe 处理订阅消息
-func (c *CLI) handleMqttSubscribe(config *mqtt.ServerConfig, topic string, qos int, timeout int, printLog bool) error {
+func (c *CLI) handleMqttSubscribe(config *mqtt2.ServerConfig, topic string, qos int, timeout int, printLog bool) error {
   // 创建客户端
-  client := mqtt.NewClient(config)
+  client := mqtt2.NewClient(config)
   defer client.Close()
 
   // 连接到MQTT服务器
@@ -137,12 +137,12 @@ func (c *CLI) handleMqttSubscribe(config *mqtt.ServerConfig, topic string, qos i
   }
 
   // 创建订阅配置
-  subscribeConfig := &mqtt.SubscribeConfig{
+  subscribeConfig := &mqtt2.SubscribeConfig{
     Topic:    topic,
     QoS:      qos,
     Timeout:  timeout,
     PrintLog: printLog,
-    Handler: func(msg *mqtt.Message) bool {
+    Handler: func(msg *mqtt2.Message) bool {
       fmt.Printf("\nReceived message:\n")
       fmt.Printf("  Topic: %s\n", msg.Topic)
       fmt.Printf("  QoS: %d\n", msg.QoS)

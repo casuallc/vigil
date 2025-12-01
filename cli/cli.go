@@ -1,18 +1,18 @@
 package cli
 
 import (
-  "github.com/casuallc/vigil/client"
+  "github.com/casuallc/vigil/api"
 )
 
 // CLI provides command line interface
 type CLI struct {
-  client *client.Client
+  client *api.Client
 }
 
 // NewCLI creates a new command line interface
 func NewCLI(apiHost string) *CLI {
   return &CLI{
-    client: client.NewClient(apiHost),
+    client: api.NewClient(apiHost),
   }
 }
 
