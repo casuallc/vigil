@@ -206,40 +206,28 @@ func (c *Client) SubscribeMessage(config *SubscribeConfig) error {
     return fmt.Errorf("failed to subscribe to topic '%s': %w", config.Topic, token.Error())
   }
 
-  if config.PrintLog {
-    log.Printf("Subscribed to topic '%s' with QoS %d", config.Topic, config.QoS)
-  }
+  log.Printf("Subscribed to topic '%s' with QoS %d", config.Topic, config.QoS)
 
   // 设置超时
   if config.Timeout > 0 {
     timer := time.NewTimer(time.Duration(config.Timeout) * time.Second)
     select {
     case <-timer.C:
-      if config.PrintLog {
-        log.Printf("Subscription timeout after %d seconds", config.Timeout)
-      }
+      log.Printf("Subscription timeout after %d seconds", config.Timeout)
     case <-c.ctx.Done():
-      if config.PrintLog {
-        log.Printf("Subscription canceled")
-      }
+      log.Printf("Subscription canceled")
     }
   } else {
     // 如果没有设置超时，一直运行直到被中断
-    if config.PrintLog {
-      log.Printf("Subscribed and waiting for messages. Press Ctrl+C to stop...")
-    }
+    log.Printf("Subscribed and waiting for messages. Press Ctrl+C to stop...")
 
     sigChan := make(chan os.Signal, 1)
     signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
     select {
     case <-sigChan:
-      if config.PrintLog {
-        log.Printf("Subscription interrupted by signal")
-      }
+      log.Printf("Subscription interrupted by signal")
     case <-c.ctx.Done():
-      if config.PrintLog {
-        log.Printf("Subscription canceled")
-      }
+      log.Printf("Subscription canceled")
     }
   }
 

@@ -143,13 +143,10 @@ func (c *CLI) handleMqttSubscribe(config *mqtt2.ServerConfig, topic string, qos 
     Timeout:  timeout,
     PrintLog: printLog,
     Handler: func(msg *mqtt2.Message) bool {
-      fmt.Printf("\nReceived message:\n")
-      fmt.Printf("  Topic: %s\n", msg.Topic)
-      fmt.Printf("  QoS: %d\n", msg.QoS)
-      fmt.Printf("  Retained: %v\n", msg.Retained)
-      fmt.Printf("  MessageID: %d\n", msg.MessageID)
-      fmt.Printf("  Received At: %s\n", msg.ReceivedAt.Format("2006-01-02 15:04:05.000"))
-      fmt.Printf("  Payload: %s\n", msg.Payload)
+      if printLog {
+        fmt.Printf("Received message: Topic: %s, QoS: %d, Retained: %v, MessageID: %d, Payload: %s",
+          msg.Topic, msg.QoS, msg.Retained, msg.MessageID, msg.Payload)
+      }
       return true
     },
   }
