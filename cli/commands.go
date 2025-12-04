@@ -55,9 +55,15 @@ OS/Arch:   %s/%s
 
   // Override PreRun to create client with the provided host
   rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-    // Only create a new client if we're not in the proc command
-    if cmd == procCmd || cmd == resourceCmd || cmd == configCmd || cmd == execCmd {
-      c.client = api.NewClient(apiHost)
+    // Create a new client if we're in any of the main commands or their subcommands
+    // Check if the command or any of its parents is one of the main commands
+    currentCmd := cmd
+    for currentCmd != nil {
+      if currentCmd == procCmd || currentCmd == resourceCmd || currentCmd == configCmd || currentCmd == execCmd {
+        c.client = api.NewClient(apiHost)
+        break
+      }
+      currentCmd = currentCmd.Parent()
     }
     return nil
   }
