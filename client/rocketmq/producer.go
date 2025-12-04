@@ -154,6 +154,7 @@ func (c *Client) SendMessage(config *ProducerConfig) error {
   }
 
   wg.Wait()
+  c.producedCount += int64(config.Repeat)
   log.Printf("Total messages sent: %d", config.Repeat)
   return nil
 }
@@ -216,6 +217,7 @@ func (c *Client) sendBatchMessages(config *ProducerConfig) error {
     }
   }
 
+  c.producedCount += int64(config.Repeat)
   log.Printf("Total batch messages sent: %d", config.Repeat)
   return nil
 }

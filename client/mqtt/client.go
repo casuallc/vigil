@@ -15,11 +15,13 @@ import (
 
 // Client 定义MQTT客户端
 type Client struct {
-  client mqtt.Client
-  Config *ServerConfig
-  mu     sync.Mutex
-  ctx    context.Context
-  cancel context.CancelFunc
+  client        mqtt.Client
+  Config        *ServerConfig
+  mu            sync.Mutex
+  ctx           context.Context
+  cancel        context.CancelFunc
+  producedCount int64 // AI Modified: 记录生产的消息总数
+  consumedCount int64 // AI Modified: 记录消费的消息总数
 }
 
 // NewClient 创建新的MQTT客户端
@@ -101,6 +103,8 @@ func (c *Client) Close() {
   if c.client != nil && c.client.IsConnected() {
     c.client.Disconnect(250)
   }
+  // AI Modified: 打印消息计数
+  log.Printf("MQTT Client Stats - Produced: %d, Consumed: %d", c.producedCount, c.consumedCount)
 }
 
 // PublishMessage 发布消息
@@ -153,6 +157,7 @@ func (c *Client) PublishMessage(config *PublishConfig) error {
   }
 
   wg.Wait()
+  c.producedCount += int64(config.Repeat)
   log.Printf("Total messages published: %d", config.Repeat)
   return nil
 }
@@ -171,6 +176,9 @@ func (c *Client) SubscribeMessage(config *SubscribeConfig) error {
 
   // 创建消息处理函数
   messageHandler := func(client mqtt.Client, msg mqtt.Message) {
+    // AI Modified: 记录消费的消息总数
+    c.consumedCount++
+    
     mqttMsg := &Message{
       Topic:      msg.Topic(),
       QoS:        int(msg.Qos()),

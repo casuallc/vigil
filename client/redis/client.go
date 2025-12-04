@@ -5,12 +5,15 @@ import (
   "fmt"
   "github.com/redis/go-redis/v9"
   "strings"
+  "time"
 )
 
 type Client struct {
-  client *redis.Client
-  Config *ServerConfig
-  ctx    context.Context
+  client         *redis.Client
+  Config         *ServerConfig
+  ctx            context.Context
+  producedCount  int64 // AI Modified: 记录生产的消息总数
+  consumedCount  int64 // AI Modified: 记录消费的消息总数
 }
 
 func (r *Client) Connect() error {
@@ -32,6 +35,8 @@ func (r *Client) Disconnect() {
   if err != nil {
     return
   }
+  // AI Modified: 打印消息计数
+  fmt.Printf("Redis Client Stats - Produced: %d, Consumed: %d\n", r.producedCount, r.consumedCount)
 }
 
 func (r *Client) Get(key string) (string, error) {
@@ -78,15 +83,51 @@ func (r *Client) Info() (*Info, error) {
   return &redisInfo, nil
 }
 
+// Publish 发布消息到指定频道
+func (r *Client) Publish(channel string, message string) error {
+  _, err := r.client.Publish(r.ctx, channel, message).Result()
+  if err != nil {
+    return err
+  }
+  r.producedCount++
+  return nil
+}
+
+// Subscribe 订阅指定频道的消息
+func (r *Client) Subscribe(channel string, handler func(string, string) bool, timeout int) error {
+  pubsub := r.client.Subscribe(r.ctx, channel)
+  defer pubsub.Close()
+
+  // 设置超时
+  var timer <-chan time.Time
+  if timeout > 0 {
+    timer = time.NewTimer(time.Duration(timeout) * time.Second).C
+  }
+
+  for {
+    select {
+    case msg := <-pubsub.Channel():
+      r.consumedCount++
+      if !handler(msg.Channel, msg.Payload) {
+        return nil
+      }
+    case <-timer:
+      return nil
+    case <-r.ctx.Done():
+      return nil
+    }
+  }
+}
+
 func parseInfo(info string) map[string]string {
   result := make(map[string]string)
   lines := strings.Split(info, "\n")
   for _, line := range lines {
-    if strings.HasPrefix(line, "#") || !strings.Contains(info, ":") {
+    if strings.HasPrefix(line, "#") || !strings.Contains(line, ":") {
       continue
     }
 
-    params := strings.Split(info, ":")
+    params := strings.Split(line, ":")
     if len(params) != 2 {
       continue
     }

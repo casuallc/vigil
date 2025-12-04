@@ -5,6 +5,7 @@ import (
   "fmt"
   mqtt2 "github.com/casuallc/vigil/client/mqtt"
   "github.com/spf13/cobra"
+  "log"
 )
 
 // setupMqttCommands 设置MQTT相关命令
@@ -144,7 +145,7 @@ func (c *CLI) handleMqttSubscribe(config *mqtt2.ServerConfig, topic string, qos 
     PrintLog: printLog,
     Handler: func(msg *mqtt2.Message) bool {
       if printLog {
-        fmt.Printf("Received message: Topic: %s, QoS: %d, Retained: %v, MessageID: %d, Payload: %s",
+        log.Printf("Received message: Topic: %s, QoS: %d, Retained: %v, MessageID: %d, Payload: %s\n",
           msg.Topic, msg.QoS, msg.Retained, msg.MessageID, msg.Payload)
       }
       return true

@@ -15,12 +15,14 @@ import (
 
 // Client 表示 Pulsar 客户端
 type Client struct {
-  config    *ServerConfig
-  client    pulsar.Client
-  producers map[string]pulsar.Producer
-  consumers map[string]pulsar.Consumer
-  mu        sync.Mutex
-  ctx       context.Context
+  config         *ServerConfig
+  client         pulsar.Client
+  producers      map[string]pulsar.Producer
+  consumers      map[string]pulsar.Consumer
+  mu             sync.Mutex
+  ctx            context.Context
+  producedCount  int64 // AI Modified: 记录生产的消息总数
+  consumedCount  int64 // AI Modified: 记录消费的消息总数
 }
 
 // NewClient 创建一个新的 Pulsar 客户端
@@ -110,6 +112,8 @@ func (c *Client) Close() {
     c.client.Close()
     c.client = nil
   }
+  // AI Modified: 打印消息计数
+  log.Printf("Pulsar Client Stats - Produced: %d, Consumed: %d", c.producedCount, c.consumedCount)
   log.Println("Pulsar client closed")
 }
 
@@ -262,6 +266,7 @@ func (c *Client) SendMessage(config ProducerConfig) error {
     }
   }
 
+  c.producedCount += int64(config.Repeat)
   log.Printf("Total messages sent: %d", config.Repeat)
 
   return nil
@@ -393,6 +398,9 @@ func (c *Client) ReceiveMessage(config ConsumerConfig, handler func(*Message) bo
           Properties:  msg.Properties(),
         }
 
+        // AI Modified: 记录消费的消息总数
+        c.consumedCount++
+        
         // 调用处理函数
         continueProcessing := handler(message)
         if !continueProcessing {

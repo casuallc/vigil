@@ -22,6 +22,8 @@ type Client struct {
   config        *ServerConfig
   mu            sync.Mutex
   ctx           context.Context
+  producedCount int64 // AI Modified: 记录生产的消息总数
+  consumedCount int64 // AI Modified: 记录消费的消息总数
 }
 
 // NewClient 创建新的Kafka客户端
@@ -101,6 +103,8 @@ func (c *Client) Close() {
   if c.client != nil {
     _ = c.client.Close()
   }
+  // AI Modified: 打印消息计数
+  log.Printf("Kafka Client Stats - Produced: %d, Consumed: %d", c.producedCount, c.consumedCount)
 }
 
 // CreateProducer 创建生产者
@@ -215,6 +219,7 @@ func (c *Client) SendMessage(config *ProducerConfig) error {
   }
 
   wg.Wait()
+  c.producedCount += int64(config.Repeat)
   log.Printf("Total messages sent: %d", config.Repeat)
   return nil
 }
@@ -276,6 +281,9 @@ func (h *kafkaGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, cl
     currentCount := h.messageCount
     h.mu.Unlock()
 
+    // AI Modified: 更新client的消费计数
+    h.client.consumedCount++
+
     // 检查是否已经达到最大消息数
     if h.config.MaxMessages > 0 && currentCount >= h.config.MaxMessages {
       return nil
@@ -297,6 +305,7 @@ func (c *Client) ReceiveMessage(config *ConsumerConfig) error {
   handler := &kafkaGroupHandler{
     config:       config,
     messageCount: 0,
+    client:       c, // AI Modified: 传递client指针
   }
 
   // 设置上下文

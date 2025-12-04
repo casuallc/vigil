@@ -9,10 +9,12 @@ import (
 )
 
 type RabbitClient struct {
-  conn    *amqp.Connection
-  channel *amqp.Channel
-  Config  *ServerConfig
-  mu      sync.Mutex
+  conn            *amqp.Connection
+  channel         *amqp.Channel
+  Config          *ServerConfig
+  mu              sync.Mutex
+  producedCount   int64 // AI Modified: 记录生产的消息总数
+  consumedCount   int64 // AI Modified: 记录消费的消息总数
 }
 
 func (r *RabbitClient) Connect() error {
@@ -48,6 +50,8 @@ func (r *RabbitClient) Close() {
   if r.conn != nil {
     _ = r.conn.Close()
   }
+  // AI Modified: 打印消息计数
+  log.Printf("RabbitMQ Client Stats - Produced: %d, Consumed: %d", r.producedCount, r.consumedCount)
 }
 
 func (r *RabbitClient) DeclareExchange(exchange *ExchangeConfig) error {
@@ -198,6 +202,7 @@ func (r *RabbitClient) PublishMessage(publish *PublishConfig) error {
     }
   }
 
+  r.producedCount += int64(publish.Repeat)
   log.Printf("Total messages sent: %d", publish.Repeat)
   return nil
 }
@@ -253,6 +258,9 @@ func (r *RabbitClient) ConsumeMessage(consume *ConsumeConfig) error {
       }
       idleTimer.Reset(time.Duration(consume.Timeout) * time.Second)
 
+      // AI Modified: 记录消费的消息总数
+      r.consumedCount++
+      
       // 处理消息
       if consume.Handler != nil {
         consume.Handler(msg)

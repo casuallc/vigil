@@ -4,7 +4,6 @@ import (
   "context"
   "github.com/apache/rocketmq-client-go/v2"
   "log"
-  "sync"
 )
 
 // Client 定义RocketMQ客户端
@@ -13,8 +12,9 @@ type Client struct {
   consumer            rocketmq.PushConsumer
   transactionProducer rocketmq.TransactionProducer
   Config              *ServerConfig
-  mu                  sync.Mutex
   ctx                 context.Context
+  producedCount       int64 // AI Modified: 记录生产的消息总数
+  consumedCount       int64 // AI Modified: 记录消费的消息总数
 }
 
 // NewClient 创建新的RocketMQ客户端
@@ -47,4 +47,7 @@ func (c *Client) Close() {
   if c.transactionProducer != nil {
     _ = c.transactionProducer.Shutdown()
   }
+
+  // AI Modified: 打印消息计数
+  log.Printf("RocketMQ Client Stats - Produced: %d, Consumed: %d", c.producedCount, c.consumedCount)
 }

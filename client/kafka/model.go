@@ -56,4 +56,5 @@ type kafkaGroupHandler struct {
   config       *ConsumerConfig
   messageCount int
   mu           sync.Mutex
+  client       *Client // AI Modified: 添加指向Client的指针，用于更新消费计数
 }

@@ -130,6 +130,9 @@ func (c *Client) ReceiveMessage(config *ConsumerConfig) error {
 
 // handleMessages 处理接收到的消息
 func (c *Client) handleMessages(msgs []*primitive.MessageExt, config *ConsumerConfig) (consumer.ConsumeResult, error) {
+  // AI Modified: 记录消费的消息总数
+  c.consumedCount += int64(len(msgs))
+  
   for _, msg := range msgs {
     rocketMsg := &Message{
       Topic:         msg.Topic,
