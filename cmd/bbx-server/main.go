@@ -24,7 +24,7 @@ func main() {
   )
 
   flag.StringVar(&configPath, "config", "", "Config file path")
-  flag.StringVar(&apiAddr, "addr", ":8080", "API server address")
+  flag.StringVar(&apiAddr, "addr", ":8181", "API server address")
   flag.BoolVar(&showVersion, "version", false, "Show version information")
   flag.Parse()
 

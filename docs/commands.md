@@ -3,7 +3,7 @@
 Vigil 是一个进程管理与监控工具。本文档覆盖 CLI 中的所有命令、用途与参数，帮助你快速定位命令用法。
 
 - 根命令：`vigil`
-- 全局选项：`--host, -H` 指定 API 服务地址，默认 `http://localhost:8080`
+- 全局选项：`--host, -H` 指定 API 服务地址，默认 `http://localhost:8181`
 - 版本：设置了 `Version: 1.0.0`，可使用 `vigil --version`
 
 ## 进程管理：`vigil proc`

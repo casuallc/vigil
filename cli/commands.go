@@ -51,7 +51,7 @@ OS/Arch:   %s/%s
   rootCmd.AddCommand(execCmd)
 
   // Global flags
-  rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://localhost:8080", "API server host address")
+  rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://localhost:8181", "API server host address")
 
   // Override PreRun to create client with the provided host
   rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {

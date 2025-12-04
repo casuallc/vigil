@@ -129,7 +129,7 @@ func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
     // 解析地址和端口
     addressPort := fields[7]
     // 格式通常为：协议->地址:端口
-    // 例如：TCP->127.0.0.1:8080
+    // 例如：TCP->127.0.0.1:8181
 
     // 简单解析端口信息
     re := regexp.MustCompile(`:([0-9]+)`)

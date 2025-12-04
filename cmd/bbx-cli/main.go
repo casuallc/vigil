@@ -1,18 +1,18 @@
 package main
 
 import (
-	"fmt"
-	"github.com/casuallc/vigil/cli"
-	"os"
+  "fmt"
+  "github.com/casuallc/vigil/cli"
+  "os"
 )
 
 func main() {
-	// Create CLI with default API host
-	cli := cli.NewCLI("http://localhost:8080")
+  // Create CLI with default API host
+  cli := cli.NewCLI("http://localhost:8181")
 
-	// Execute CLI commands
-	if err := cli.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+  // Execute CLI commands
+  if err := cli.Execute(); err != nil {
+    fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+    os.Exit(1)
+  }
 }
