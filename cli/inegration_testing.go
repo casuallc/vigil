@@ -23,12 +23,16 @@ func (c *CLI) setupIntegrationTestingCommands() *cobra.Command {
 	testingCmd := &cobra.Command{
 		Use:   "test",
 		Short: "Run integration tests",
-		Long:  "Run integration tests for various services including MQTT",
+		Long:  "Run integration tests for various services including MQTT and RabbitMQ",
 	}
 
 	// Add MQTT test commands
 	mqttTestCmd := c.setupMqttTestCommands()
 	testingCmd.AddCommand(mqttTestCmd)
+
+	// Add RabbitMQ test commands
+	rabbitTestCmd := c.setupRabbitTestCommands()
+	testingCmd.AddCommand(rabbitTestCmd)
 
 	return testingCmd
 }

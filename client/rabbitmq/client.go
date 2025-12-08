@@ -59,6 +59,11 @@ func (r *RabbitClient) Connect() error {
   return nil
 }
 
+// Channel returns the underlying AMQP channel
+func (r *RabbitClient) Channel() *amqp.Channel {
+  return r.channel
+}
+
 func (r *RabbitClient) Close() {
   if r.channel != nil {
     _ = r.channel.Close()
