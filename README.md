@@ -35,6 +35,7 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 - **配置管理**：查看和管理系统配置
 - **命令执行**：执行命令或脚本
 - **批量扫描**：从配置文件加载并扫描多个进程
+- **集成测试**：支持多种服务的集成测试，如MQTT测试
 
 ## 项目结构
 
@@ -147,6 +148,22 @@ bbx-cli mqtt [command]
 bbx-cli pulsar [command]
 bbx-cli zk [command]
 ```
+
+### 集成测试命令
+
+使用集成测试命令可以测试各种服务的功能：
+
+```
+bbx-cli test [service]
+```
+
+目前支持的测试服务：
+
+- **mqtt**：MQTT消息队列集成测试
+  - `bbx-cli test mqtt all`：运行所有 MQTT 测试
+  - `bbx-cli test mqtt v3`：运行MQTT 3.1.1 测试
+  - `bbx-cli test mqtt v5`：运行MQTT 5.0 测试
+  - `bbx-cli test mqtt emqx`：运行 EMQX 特定测试
 
 ## 配置文件
 

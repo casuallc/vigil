@@ -99,7 +99,7 @@ OS/Arch:   %s/%s
   cosmicCmd := c.setupCosmicCommands()
   rootCmd.AddCommand(cosmicCmd)
 
-  // Add Test commands using the test package
+  // Add Test commands
   testCmd := c.setupIntegrationTestingCommands()
   rootCmd.AddCommand(testCmd)
 

@@ -2,11 +2,11 @@ package cli
 
 import (
   "fmt"
-  "github.com/spf13/cobra"
   "sync"
   "time"
 
   "github.com/casuallc/vigil/client/mqtt"
+  "github.com/spf13/cobra"
 )
 
 // setupMqttTestCommands 设置MQTT测试命令
@@ -23,18 +23,33 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Run all MQTT tests",
     Long:  "Run all MQTT integration tests",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestAll()
+      return c.handleMqttTestAll()
     },
   }
   mqttTestCmd.AddCommand(allCmd)
 
-  // MQTT 3.1.1 Test Commands
+  // Add MQTT 3.1.1 test commands
+  mqtt311Cmd := c.setupMqtt311TestCommands()
+  mqttTestCmd.AddCommand(mqtt311Cmd)
+
+  // Add MQTT 5.0 test commands
+  mqtt50Cmd := c.setupMqtt50TestCommands()
+  mqttTestCmd.AddCommand(mqtt50Cmd)
+
+  // Add EMQX specific test commands
+  emqxCmd := c.setupEmqxTestCommands()
+  mqttTestCmd.AddCommand(emqxCmd)
+
+  return mqttTestCmd
+}
+
+// setupMqtt311TestCommands 设置MQTT 3.1.1测试命令
+func (c *CLI) setupMqtt311TestCommands() *cobra.Command {
   mqtt311Cmd := &cobra.Command{
-    Use:   "3.1.1",
+    Use:   "v3",
     Short: "Run MQTT 3.1.1 tests",
     Long:  "Run tests for MQTT 3.1.1 functionality",
   }
-  mqttTestCmd.AddCommand(mqtt311Cmd)
 
   // Test MQTT connection with clean session
   connectCmd := &cobra.Command{
@@ -42,7 +57,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT connection",
     Long:  "Test MQTT client connection functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestConnect()
+      return c.handleMqttTestConnect()
     },
   }
   mqtt311Cmd.AddCommand(connectCmd)
@@ -53,7 +68,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT publish/subscribe",
     Long:  "Test MQTT publish and subscribe functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestPubSub()
+      return c.handleMqttTestPubSub()
     },
   }
   mqtt311Cmd.AddCommand(pubsubCmd)
@@ -64,7 +79,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT QoS levels",
     Long:  "Test MQTT QoS 0/1/2 message delivery",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestQoS()
+      return c.handleMqttTestQoS()
     },
   }
   mqtt311Cmd.AddCommand(qosCmd)
@@ -75,7 +90,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT retained messages",
     Long:  "Test MQTT retained message functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestRetained()
+      return c.handleMqttTestRetained()
     },
   }
   mqtt311Cmd.AddCommand(retainedCmd)
@@ -86,7 +101,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT wildcard subscriptions",
     Long:  "Test MQTT wildcard subscription matching",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestWildcard()
+      return c.handleMqttTestWildcard()
     },
   }
   mqtt311Cmd.AddCommand(wildcardCmd)
@@ -97,7 +112,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT keep alive functionality",
     Long:  "Test MQTT keep alive timeout disconnection",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestKeepAlive()
+      return c.handleMqttTestKeepAlive()
     },
   }
   mqtt311Cmd.AddCommand(keepaliveCmd)
@@ -108,7 +123,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT ACL control",
     Long:  "Test MQTT ACL control functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestACL()
+      return c.handleMqttTestACL()
     },
   }
   mqtt311Cmd.AddCommand(aclCmd)
@@ -119,18 +134,21 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT TLS connection",
     Long:  "Test MQTT TLS encrypted connection",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestTLS()
+      return c.handleMqttTestTLS()
     },
   }
   mqtt311Cmd.AddCommand(tlsCmd)
 
-  // MQTT 5.0 Test Commands
+  return mqtt311Cmd
+}
+
+// setupMqtt50TestCommands 设置MQTT 5.0测试命令
+func (c *CLI) setupMqtt50TestCommands() *cobra.Command {
   mqtt50Cmd := &cobra.Command{
-    Use:   "5.0",
+    Use:   "v5",
     Short: "Run MQTT 5.0 tests",
     Long:  "Run tests for MQTT 5.0 functionality",
   }
-  mqttTestCmd.AddCommand(mqtt50Cmd)
 
   // Test MQTT 5.0 Session Expiry Interval
   sessionExpiryCmd := &cobra.Command{
@@ -138,7 +156,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 session expiry interval",
     Long:  "Test MQTT 5.0 session expiry interval functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestSessionExpiry()
+      return c.handleMqttTestSessionExpiry()
     },
   }
   mqtt50Cmd.AddCommand(sessionExpiryCmd)
@@ -149,7 +167,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 message expiry interval",
     Long:  "Test MQTT 5.0 message expiry interval functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestMessageExpiry()
+      return c.handleMqttTestMessageExpiry()
     },
   }
   mqtt50Cmd.AddCommand(messageExpiryCmd)
@@ -160,7 +178,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 reason code and reason string",
     Long:  "Test MQTT 5.0 reason code and reason string functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestReasonCode()
+      return c.handleMqttTestReasonCode()
     },
   }
   mqtt50Cmd.AddCommand(reasonCodeCmd)
@@ -171,7 +189,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 user properties",
     Long:  "Test MQTT 5.0 user properties functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestUserProperties()
+      return c.handleMqttTestUserProperties()
     },
   }
   mqtt50Cmd.AddCommand(userPropertiesCmd)
@@ -182,7 +200,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 response topic and correlation data",
     Long:  "Test MQTT 5.0 response topic and correlation data functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestResponseTopic()
+      return c.handleMqttTestResponseTopic()
     },
   }
   mqtt50Cmd.AddCommand(responseTopicCmd)
@@ -193,7 +211,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 shared subscription",
     Long:  "Test MQTT 5.0 shared subscription functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestSharedSubscription()
+      return c.handleMqttTestSharedSubscription()
     },
   }
   mqtt50Cmd.AddCommand(sharedSubCmd)
@@ -204,7 +222,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 subscription identifier",
     Long:  "Test MQTT 5.0 subscription identifier functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestSubscriptionIdentifier()
+      return c.handleMqttTestSubscriptionIdentifier()
     },
   }
   mqtt50Cmd.AddCommand(subscriptionIdCmd)
@@ -215,7 +233,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 no local",
     Long:  "Test MQTT 5.0 no local functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestNoLocal()
+      return c.handleMqttTestNoLocal()
     },
   }
   mqtt50Cmd.AddCommand(noLocalCmd)
@@ -226,7 +244,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 retain handling",
     Long:  "Test MQTT 5.0 retain handling functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestRetainHandling()
+      return c.handleMqttTestRetainHandling()
     },
   }
   mqtt50Cmd.AddCommand(retainHandlingCmd)
@@ -237,7 +255,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 maximum packet size",
     Long:  "Test MQTT 5.0 maximum packet size functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestMaxPacketSize()
+      return c.handleMqttTestMaxPacketSize()
     },
   }
   mqtt50Cmd.AddCommand(maxPacketSizeCmd)
@@ -248,18 +266,21 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test MQTT 5.0 receive maximum",
     Long:  "Test MQTT 5.0 receive maximum functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestReceiveMax()
+      return c.handleMqttTestReceiveMax()
     },
   }
   mqtt50Cmd.AddCommand(receiveMaxCmd)
 
-  // EMQX Specific Test Commands
+  return mqtt50Cmd
+}
+
+// setupEmqxTestCommands 设置EMQX特定测试命令
+func (c *CLI) setupEmqxTestCommands() *cobra.Command {
   emqxCmd := &cobra.Command{
     Use:   "emqx",
     Short: "Run EMQX specific tests",
     Long:  "Run tests for EMQX specific functionality",
   }
-  mqttTestCmd.AddCommand(emqxCmd)
 
   // Test EMQX QoS 2 message persistence and deduplication
   qos2PersistenceCmd := &cobra.Command{
@@ -267,7 +288,7 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test EMQX QoS 2 message persistence and deduplication",
     Long:  "Test EMQX QoS 2 message persistence and deduplication functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestQoS2Persistence()
+      return c.handleMqttTestQoS2Persistence()
     },
   }
   emqxCmd.AddCommand(qos2PersistenceCmd)
@@ -278,16 +299,16 @@ func (c *CLI) setupMqttTestCommands() *cobra.Command {
     Short: "Test EMQX offline message queue length limit",
     Long:  "Test EMQX offline message queue length limit functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return RunMqttTestOfflineQueue()
+      return c.handleMqttTestOfflineQueue()
     },
   }
   emqxCmd.AddCommand(offlineQueueCmd)
 
-  return mqttTestCmd
+  return emqxCmd
 }
 
-// RunMqttTestAll 运行所有MQTT测试
-func RunMqttTestAll() error {
+// handleMqttTestAll 运行所有MQTT测试
+func (c *CLI) handleMqttTestAll() error {
   fmt.Println("Running all MQTT tests...")
 
   // 运行所有MQTT测试
@@ -296,31 +317,31 @@ func RunMqttTestAll() error {
     fn   func() error
   }{
     // MQTT 3.1.1 Tests
-    {"Connect Test", RunMqttTestConnect},
-    {"PubSub Test", RunMqttTestPubSub},
-    {"QoS Test", RunMqttTestQoS},
-    {"Retained Message Test", RunMqttTestRetained},
-    {"Wildcard Subscription Test", RunMqttTestWildcard},
-    {"Keep Alive Test", RunMqttTestKeepAlive},
-    {"ACL Test", RunMqttTestACL},
-    {"TLS Test", RunMqttTestTLS},
+    {"Connect Test", c.handleMqttTestConnect},
+    {"PubSub Test", c.handleMqttTestPubSub},
+    {"QoS Test", c.handleMqttTestQoS},
+    {"Retained Message Test", c.handleMqttTestRetained},
+    {"Wildcard Subscription Test", c.handleMqttTestWildcard},
+    {"Keep Alive Test", c.handleMqttTestKeepAlive},
+    {"ACL Test", c.handleMqttTestACL},
+    {"TLS Test", c.handleMqttTestTLS},
 
     // MQTT 5.0 Tests
-    {"Session Expiry Test", RunMqttTestSessionExpiry},
-    {"Message Expiry Test", RunMqttTestMessageExpiry},
-    {"Reason Code Test", RunMqttTestReasonCode},
-    {"User Properties Test", RunMqttTestUserProperties},
-    {"Response Topic Test", RunMqttTestResponseTopic},
-    {"Shared Subscription Test", RunMqttTestSharedSubscription},
-    {"Subscription Identifier Test", RunMqttTestSubscriptionIdentifier},
-    {"No Local Test", RunMqttTestNoLocal},
-    {"Retain Handling Test", RunMqttTestRetainHandling},
-    {"Maximum Packet Size Test", RunMqttTestMaxPacketSize},
-    {"Receive Maximum Test", RunMqttTestReceiveMax},
+    {"Session Expiry Test", c.handleMqttTestSessionExpiry},
+    {"Message Expiry Test", c.handleMqttTestMessageExpiry},
+    {"Reason Code Test", c.handleMqttTestReasonCode},
+    {"User Properties Test", c.handleMqttTestUserProperties},
+    {"Response Topic Test", c.handleMqttTestResponseTopic},
+    {"Shared Subscription Test", c.handleMqttTestSharedSubscription},
+    {"Subscription Identifier Test", c.handleMqttTestSubscriptionIdentifier},
+    {"No Local Test", c.handleMqttTestNoLocal},
+    {"Retain Handling Test", c.handleMqttTestRetainHandling},
+    {"Maximum Packet Size Test", c.handleMqttTestMaxPacketSize},
+    {"Receive Maximum Test", c.handleMqttTestReceiveMax},
 
     // EMQX Specific Tests
-    {"QoS 2 Persistence Test", RunMqttTestQoS2Persistence},
-    {"Offline Queue Test", RunMqttTestOfflineQueue},
+    {"QoS 2 Persistence Test", c.handleMqttTestQoS2Persistence},
+    {"Offline Queue Test", c.handleMqttTestOfflineQueue},
   }
 
   var successCount, failCount int
@@ -344,8 +365,8 @@ func RunMqttTestAll() error {
   return nil
 }
 
-// RunMqttTestConnect 测试MQTT连接
-func RunMqttTestConnect() error {
+// handleMqttTestConnect 测试MQTT连接
+func (c *CLI) handleMqttTestConnect() error {
   fmt.Println("Testing MQTT connection...")
 
   // 测试连接参数
@@ -388,8 +409,8 @@ func RunMqttTestConnect() error {
   return nil
 }
 
-// RunMqttTestPubSub 测试MQTT发布/订阅
-func RunMqttTestPubSub() error {
+// handleMqttTestPubSub 测试MQTT发布/订阅
+func (c *CLI) handleMqttTestPubSub() error {
   fmt.Println("Testing MQTT publish/subscribe...")
 
   // 创建MQTT客户端配置
@@ -465,8 +486,8 @@ func RunMqttTestPubSub() error {
   return nil
 }
 
-// RunMqttTestQoS 测试MQTT QoS级别
-func RunMqttTestQoS() error {
+// handleMqttTestQoS 测试MQTT QoS级别
+func (c *CLI) handleMqttTestQoS() error {
   fmt.Println("Testing MQTT QoS levels...")
 
   // 创建MQTT客户端配置
@@ -553,8 +574,8 @@ func RunMqttTestQoS() error {
   return nil
 }
 
-// RunMqttTestRetained 测试MQTT保留消息
-func RunMqttTestRetained() error {
+// handleMqttTestRetained 测试MQTT保留消息
+func (c *CLI) handleMqttTestRetained() error {
   fmt.Println("Testing MQTT retained messages...")
 
   // 创建MQTT客户端配置
@@ -670,8 +691,8 @@ func RunMqttTestRetained() error {
   return nil
 }
 
-// RunMqttTestWildcard 测试MQTT通配符订阅
-func RunMqttTestWildcard() error {
+// handleMqttTestWildcard 测试MQTT通配符订阅
+func (c *CLI) handleMqttTestWildcard() error {
   fmt.Println("Testing MQTT wildcard subscriptions...")
 
   // 创建MQTT客户端配置
@@ -765,8 +786,8 @@ func RunMqttTestWildcard() error {
   return nil
 }
 
-// RunMqttTestKeepAlive 测试MQTT Keep Alive
-func RunMqttTestKeepAlive() error {
+// handleMqttTestKeepAlive 测试MQTT Keep Alive
+func (c *CLI) handleMqttTestKeepAlive() error {
   fmt.Println("Testing MQTT Keep Alive...")
 
   // 创建MQTT客户端配置，设置较短的Keep Alive时间
@@ -817,8 +838,8 @@ func RunMqttTestKeepAlive() error {
   return nil
 }
 
-// RunMqttTestACL 测试MQTT ACL控制
-func RunMqttTestACL() error {
+// handleMqttTestACL 测试MQTT ACL控制
+func (c *CLI) handleMqttTestACL() error {
   fmt.Println("Testing MQTT ACL control...")
 
   // 注意：ACL测试需要MQTT服务器配置了适当的ACL规则
@@ -828,8 +849,8 @@ func RunMqttTestACL() error {
   return nil
 }
 
-// RunMqttTestTLS 测试MQTT TLS连接
-func RunMqttTestTLS() error {
+// handleMqttTestTLS 测试MQTT TLS连接
+func (c *CLI) handleMqttTestTLS() error {
   fmt.Println("Testing MQTT TLS connection...")
 
   // 注意：TLS测试需要MQTT服务器配置了TLS证书
@@ -839,8 +860,8 @@ func RunMqttTestTLS() error {
   return nil
 }
 
-// RunMqttTestSessionExpiry 测试MQTT 5.0会话过期
-func RunMqttTestSessionExpiry() error {
+// handleMqttTestSessionExpiry 测试MQTT 5.0会话过期
+func (c *CLI) handleMqttTestSessionExpiry() error {
   fmt.Println("Testing MQTT 5.0 session expiry...")
 
   // 注意：会话过期测试需要MQTT 5.0支持
@@ -850,8 +871,8 @@ func RunMqttTestSessionExpiry() error {
   return nil
 }
 
-// RunMqttTestMessageExpiry 测试MQTT 5.0消息过期
-func RunMqttTestMessageExpiry() error {
+// handleMqttTestMessageExpiry 测试MQTT 5.0消息过期
+func (c *CLI) handleMqttTestMessageExpiry() error {
   fmt.Println("Testing MQTT 5.0 message expiry...")
 
   // 注意：消息过期测试需要MQTT 5.0支持
@@ -861,8 +882,8 @@ func RunMqttTestMessageExpiry() error {
   return nil
 }
 
-// RunMqttTestReasonCode 测试MQTT 5.0原因码
-func RunMqttTestReasonCode() error {
+// handleMqttTestReasonCode 测试MQTT 5.0原因码
+func (c *CLI) handleMqttTestReasonCode() error {
   fmt.Println("Testing MQTT 5.0 reason code...")
 
   // 注意：原因码测试需要MQTT 5.0支持
@@ -872,8 +893,8 @@ func RunMqttTestReasonCode() error {
   return nil
 }
 
-// RunMqttTestUserProperties 测试MQTT 5.0用户属性
-func RunMqttTestUserProperties() error {
+// handleMqttTestUserProperties 测试MQTT 5.0用户属性
+func (c *CLI) handleMqttTestUserProperties() error {
   fmt.Println("Testing MQTT 5.0 user properties...")
 
   // 注意：用户属性测试需要MQTT 5.0支持
@@ -883,8 +904,8 @@ func RunMqttTestUserProperties() error {
   return nil
 }
 
-// RunMqttTestResponseTopic 测试MQTT 5.0响应主题
-func RunMqttTestResponseTopic() error {
+// handleMqttTestResponseTopic 测试MQTT 5.0响应主题
+func (c *CLI) handleMqttTestResponseTopic() error {
   fmt.Println("Testing MQTT 5.0 response topic...")
 
   // 注意：响应主题测试需要MQTT 5.0支持
@@ -894,8 +915,8 @@ func RunMqttTestResponseTopic() error {
   return nil
 }
 
-// RunMqttTestSharedSubscription 测试MQTT 5.0共享订阅
-func RunMqttTestSharedSubscription() error {
+// handleMqttTestSharedSubscription 测试MQTT 5.0共享订阅
+func (c *CLI) handleMqttTestSharedSubscription() error {
   fmt.Println("Testing MQTT 5.0 shared subscription...")
 
   // 创建MQTT客户端配置
@@ -979,8 +1000,8 @@ func RunMqttTestSharedSubscription() error {
   return nil
 }
 
-// RunMqttTestSubscriptionIdentifier 测试MQTT 5.0订阅标识符
-func RunMqttTestSubscriptionIdentifier() error {
+// handleMqttTestSubscriptionIdentifier 测试MQTT 5.0订阅标识符
+func (c *CLI) handleMqttTestSubscriptionIdentifier() error {
   fmt.Println("Testing MQTT 5.0 subscription identifier...")
 
   // 注意：订阅标识符测试需要MQTT 5.0支持
@@ -990,8 +1011,8 @@ func RunMqttTestSubscriptionIdentifier() error {
   return nil
 }
 
-// RunMqttTestNoLocal 测试MQTT 5.0 No Local
-func RunMqttTestNoLocal() error {
+// handleMqttTestNoLocal 测试MQTT 5.0 No Local
+func (c *CLI) handleMqttTestNoLocal() error {
   fmt.Println("Testing MQTT 5.0 No Local...")
 
   // 注意：No Local测试需要MQTT 5.0支持
@@ -1001,8 +1022,8 @@ func RunMqttTestNoLocal() error {
   return nil
 }
 
-// RunMqttTestRetainHandling 测试MQTT 5.0 Retain Handling
-func RunMqttTestRetainHandling() error {
+// handleMqttTestRetainHandling 测试MQTT 5.0 Retain Handling
+func (c *CLI) handleMqttTestRetainHandling() error {
   fmt.Println("Testing MQTT 5.0 Retain Handling...")
 
   // 注意：Retain Handling测试需要MQTT 5.0支持
@@ -1012,8 +1033,8 @@ func RunMqttTestRetainHandling() error {
   return nil
 }
 
-// RunMqttTestMaxPacketSize 测试MQTT 5.0 Maximum Packet Size
-func RunMqttTestMaxPacketSize() error {
+// handleMqttTestMaxPacketSize 测试MQTT 5.0 Maximum Packet Size
+func (c *CLI) handleMqttTestMaxPacketSize() error {
   fmt.Println("Testing MQTT 5.0 Maximum Packet Size...")
 
   // 注意：Maximum Packet Size测试需要MQTT 5.0支持
@@ -1023,8 +1044,8 @@ func RunMqttTestMaxPacketSize() error {
   return nil
 }
 
-// RunMqttTestReceiveMax 测试MQTT 5.0 Receive Maximum
-func RunMqttTestReceiveMax() error {
+// handleMqttTestReceiveMax 测试MQTT 5.0 Receive Maximum
+func (c *CLI) handleMqttTestReceiveMax() error {
   fmt.Println("Testing MQTT 5.0 Receive Maximum...")
 
   // 注意：Receive Maximum测试需要MQTT 5.0支持
@@ -1034,8 +1055,8 @@ func RunMqttTestReceiveMax() error {
   return nil
 }
 
-// RunMqttTestQoS2Persistence 测试EMQX QoS 2消息持久化与去重
-func RunMqttTestQoS2Persistence() error {
+// handleMqttTestQoS2Persistence 测试EMQX QoS 2消息持久化与去重
+func (c *CLI) handleMqttTestQoS2Persistence() error {
   fmt.Println("Testing EMQX QoS 2 message persistence and deduplication...")
 
   // 注意：QoS 2持久化测试需要EMQX特定配置
@@ -1045,8 +1066,8 @@ func RunMqttTestQoS2Persistence() error {
   return nil
 }
 
-// RunMqttTestOfflineQueue 测试EMQX离线消息队列长度限制
-func RunMqttTestOfflineQueue() error {
+// handleMqttTestOfflineQueue 测试EMQX离线消息队列长度限制
+func (c *CLI) handleMqttTestOfflineQueue() error {
   fmt.Println("Testing EMQX offline message queue length limit...")
 
   // 注意：离线消息队列测试需要EMQX特定配置
