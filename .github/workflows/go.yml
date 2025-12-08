@@ -28,7 +28,7 @@ jobs:
 
     - name: Build and package
       run: 
-        sh build_all.sh && sh package.sh
+        bash build_all.sh && bash package.sh
 
     - name: List release directory
       run: ls -la release/
