@@ -60,8 +60,6 @@ jobs:
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run:
-          ls -la release/
 
       - name: Create Release
         id: create_release
