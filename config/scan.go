@@ -13,7 +13,7 @@ type ScanConfig struct {
 // ProcessConfig represents a process to be scanned
 type ProcessConfig struct {
   Name   string        `yaml:"name"`
-  Query  string        `yaml:"pidCmd"`
+  Query  string        `yaml:"query"`
   Labels []LabelConfig `yaml:"labels"`
 }
 
