@@ -300,4 +300,4 @@ Total messages consumed: 5
 
 ## 许可证
 
-[MIT License](LICENSE)
+[Apache License](LICENSE)
