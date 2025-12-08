@@ -3,7 +3,6 @@ package cli
 import (
   "fmt"
   "github.com/casuallc/vigil/api"
-
   "github.com/casuallc/vigil/version"
   "github.com/spf13/cobra"
 )
@@ -99,6 +98,10 @@ OS/Arch:   %s/%s
   // Add Cosmic commands
   cosmicCmd := c.setupCosmicCommands()
   rootCmd.AddCommand(cosmicCmd)
+
+  // Add Test commands using the test package
+  testCmd := c.setupIntegrationTestingCommands()
+  rootCmd.AddCommand(testCmd)
 
   return rootCmd
 }
