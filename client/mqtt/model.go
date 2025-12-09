@@ -22,14 +22,18 @@ import (
 
 // ServerConfig 定义MQTT服务器配置
 type ServerConfig struct {
-  Server     string
-  Port       int
-  User       string
-  Password   string
-  ClientID   string
-  CleanStart bool
-  KeepAlive  int
-  Timeout    int
+	Server     string
+	Port       int
+	User       string
+	Password   string
+	ClientID   string
+	CleanStart bool
+	KeepAlive  int
+	Timeout    int
+	WillTopic  string
+	WillPayload string
+	WillQoS    int
+	WillRetain bool
 }
 
 // PublishConfig 定义发布消息配置

@@ -78,18 +78,23 @@ func (c *Client) Connect() error {
   opts.SetCleanSession(c.Config.CleanStart)
 
   // 设置KeepAlive
-  if c.Config.KeepAlive > 0 {
-    opts.SetKeepAlive(time.Duration(c.Config.KeepAlive) * time.Second)
-  } else {
-    opts.SetKeepAlive(60 * time.Second)
-  }
+	if c.Config.KeepAlive > 0 {
+		opts.SetKeepAlive(time.Duration(c.Config.KeepAlive) * time.Second)
+	} else {
+		opts.SetKeepAlive(60 * time.Second)
+	}
 
-  // 设置超时时间
-  if c.Config.Timeout > 0 {
-    opts.SetConnectTimeout(time.Duration(c.Config.Timeout) * time.Second)
-  } else {
-    opts.SetConnectTimeout(30 * time.Second)
-  }
+	// 设置超时时间
+	if c.Config.Timeout > 0 {
+		opts.SetConnectTimeout(time.Duration(c.Config.Timeout) * time.Second)
+	} else {
+		opts.SetConnectTimeout(30 * time.Second)
+	}
+
+	// 设置遗嘱消息
+	if c.Config.WillTopic != "" {
+		opts.SetWill(c.Config.WillTopic, c.Config.WillPayload, byte(c.Config.WillQoS), c.Config.WillRetain)
+	}
 
   // 设置连接回调
   opts.SetOnConnectHandler(func(client mqtt.Client) {
