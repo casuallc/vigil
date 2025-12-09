@@ -540,8 +540,12 @@ func (c *CLI) handleMqttTestQoS(config *mqtt.ServerConfig) error {
       QoS:     qos,
       Timeout: 5,
       Handler: func(msg *mqtt.Message) bool {
-        fmt.Printf("    Received QoS %d message: %s\n", msg.QoS, msg.Payload)
-        received = true
+        if msg.QoS == qos {
+          fmt.Printf("    QoS mismatch: expected %d, got %d\n", qos, msg.QoS)
+          received = true
+        } else {
+          fmt.Printf("    Received QoS %d message: %s\n", msg.QoS, msg.Payload)
+        }
         return true
       },
       PrintLog: false,
@@ -593,69 +597,69 @@ func (c *CLI) handleMqttTestQoS(config *mqtt.ServerConfig) error {
 func (c *CLI) handleMqttTestRetained(config *mqtt.ServerConfig) error {
   fmt.Println("Testing MQTT retained messages...")
 
-  // 创建MQTT客户端配置
-  clientConfig := *config
-  clientConfig.ClientID = fmt.Sprintf("test-retained-client-%d", time.Now().UnixNano())
-  clientConfig.CleanStart = true
-  clientConfig.KeepAlive = 60
-  clientConfig.Timeout = 10
-
-  // 创建并连接客户端
-  client := mqtt.NewClient(&clientConfig)
-  err := client.Connect()
-  if err != nil {
-    client.Close()
-    return fmt.Errorf("failed to connect to MQTT server: %v", err)
-  }
-  defer client.Close()
-
   testTopic := "test/retained"
 
-  // 发布保留消息
-  fmt.Println("  Publishing retained message...")
+  // 1. 发布保留消息
+  fmt.Println("  1. Publishing retained message...")
+  publisherConfig := *config
+  publisherConfig.ClientID = fmt.Sprintf("test-retained-publisher-%d", time.Now().UnixNano())
+  publisherConfig.CleanStart = true
+  publisherConfig.KeepAlive = 60
+  publisherConfig.Timeout = 10
+
+  publisher := mqtt.NewClient(&publisherConfig)
+  err := publisher.Connect()
+  if err != nil {
+    publisher.Close()
+    return fmt.Errorf("failed to connect publisher: %v", err)
+  }
+
+  // 发布一条retained=true的消息
   publishConfig := &mqtt.PublishConfig{
     Topic:    testTopic,
-    QoS:      0,
-    Message:  "Retained message",
+    QoS:      1,
+    Message:  "Hello, this is a retained message!",
     Repeat:   1,
     Interval: 0,
     Retained: true,
     PrintLog: false,
   }
 
-  err = client.PublishMessage(publishConfig)
+  err = publisher.PublishMessage(publishConfig)
   if err != nil {
+    publisher.Close()
     return fmt.Errorf("failed to publish retained message: %v", err)
   }
+  publisher.Close()
 
-  // 关闭并重新连接客户端
-  client.Close()
+  // 2. 新订阅者应该立即收到保留消息
+  fmt.Println("  2. Testing new subscriber receives retained message...")
+  subscriber1Config := *config
+  subscriber1Config.ClientID = fmt.Sprintf("test-retained-subscriber-1-%d", time.Now().UnixNano())
+  subscriber1Config.CleanStart = true
+  subscriber1Config.KeepAlive = 60
+  subscriber1Config.Timeout = 10
 
-  // 创建新客户端以测试保留消息
-  newClientConfig := *config
-  newClientConfig.ClientID = fmt.Sprintf("test-retained-client-new-%d", time.Now().UnixNano())
-  newClientConfig.CleanStart = true
-  newClientConfig.KeepAlive = 60
-  newClientConfig.Timeout = 10
-
-  newClient := mqtt.NewClient(&newClientConfig)
-  err = newClient.Connect()
+  subscriber1 := mqtt.NewClient(&subscriber1Config)
+  err = subscriber1.Connect()
   if err != nil {
-    newClient.Close()
-    return fmt.Errorf("failed to reconnect to MQTT server: %v", err)
+    subscriber1.Close()
+    return fmt.Errorf("failed to connect subscriber1: %v", err)
   }
-  defer newClient.Close()
 
-  // 订阅主题，应该立即收到保留消息
   receivedRetained := false
+  retainedMessage := ""
+
   subscribeConfig := &mqtt.SubscribeConfig{
     Topic:   testTopic,
-    QoS:     0,
+    QoS:     1,
     Timeout: 5,
     Handler: func(msg *mqtt.Message) bool {
       if msg.Retained {
-        fmt.Printf("  Received retained message: %s\n", msg.Payload)
+        fmt.Printf("  ✅ Subscriber 1 received retained message: %s\n", msg.Payload)
         receivedRetained = true
+        retainedMessage = msg.Payload
+        return false // 只需要接收一条保留消息
       }
       return true
     },
@@ -666,7 +670,7 @@ func (c *CLI) handleMqttTestRetained(config *mqtt.ServerConfig) error {
   wg.Add(1)
   go func() {
     defer wg.Done()
-    err := newClient.SubscribeMessage(subscribeConfig)
+    err := subscriber1.SubscribeMessage(subscribeConfig)
     if err != nil {
       fmt.Printf("  Subscription error: %v\n", err)
     }
@@ -674,16 +678,34 @@ func (c *CLI) handleMqttTestRetained(config *mqtt.ServerConfig) error {
 
   // 等待订阅完成
   wg.Wait()
+  subscriber1.Close()
 
   if !receivedRetained {
-    return fmt.Errorf("failed to receive retained message")
+    return fmt.Errorf("subscriber 1 failed to receive retained message")
   }
 
-  // 清除保留消息
-  fmt.Println("  Clearing retained message...")
+  if retainedMessage == "" {
+    return fmt.Errorf("received empty retained message")
+  }
+
+  // 3. 发布空payload + retained=true 清除保留消息
+  fmt.Println("  3. Publishing empty payload to clear retained message...")
+  publisher2Config := *config
+  publisher2Config.ClientID = fmt.Sprintf("test-retained-publisher-2-%d", time.Now().UnixNano())
+  publisher2Config.CleanStart = true
+  publisher2Config.KeepAlive = 60
+  publisher2Config.Timeout = 10
+
+  publisher2 := mqtt.NewClient(&publisher2Config)
+  err = publisher2.Connect()
+  if err != nil {
+    publisher2.Close()
+    return fmt.Errorf("failed to connect publisher2: %v", err)
+  }
+
   clearConfig := &mqtt.PublishConfig{
     Topic:    testTopic,
-    QoS:      0,
+    QoS:      1,
     Message:  "",
     Repeat:   1,
     Interval: 0,
@@ -691,11 +713,63 @@ func (c *CLI) handleMqttTestRetained(config *mqtt.ServerConfig) error {
     PrintLog: false,
   }
 
-  err = newClient.PublishMessage(clearConfig)
+  err = publisher2.PublishMessage(clearConfig)
   if err != nil {
+    publisher2.Close()
     return fmt.Errorf("failed to clear retained message: %v", err)
   }
+  publisher2.Close()
 
+  // 4. 验证后续订阅者不再收到保留消息
+  fmt.Println("  4. Testing new subscriber does NOT receive retained message after clearing...")
+  subscriber2Config := *config
+  subscriber2Config.ClientID = fmt.Sprintf("test-retained-subscriber-2-%d", time.Now().UnixNano())
+  subscriber2Config.CleanStart = true
+  subscriber2Config.KeepAlive = 60
+  subscriber2Config.Timeout = 5 // 缩短超时时间，因为我们不期望收到消息
+
+  subscriber2 := mqtt.NewClient(&subscriber2Config)
+  err = subscriber2.Connect()
+  if err != nil {
+    subscriber2.Close()
+    return fmt.Errorf("failed to connect subscriber2: %v", err)
+  }
+
+  receivedAnyMessage := false
+
+  subscribeConfig2 := &mqtt.SubscribeConfig{
+    Topic:   testTopic,
+    QoS:     1,
+    Timeout: 3, // 3秒超时，足够判断是否收到保留消息
+    Handler: func(msg *mqtt.Message) bool {
+      if msg.Retained {
+        fmt.Printf("  ❌ Subscriber 2 unexpectedly received retained message: %s\n", msg.Payload)
+        receivedAnyMessage = true
+      }
+      return true
+    },
+    PrintLog: false,
+  }
+
+  wg.Add(1)
+  go func() {
+    defer wg.Done()
+    err := subscriber2.SubscribeMessage(subscribeConfig2)
+    // 超时错误是预期的，因为我们不期望收到消息
+    if err != nil && err.Error() != "timeout" {
+      fmt.Printf("  Subscription error: %v\n", err)
+    }
+  }()
+
+  // 等待订阅完成
+  wg.Wait()
+  subscriber2.Close()
+
+  if receivedAnyMessage {
+    return fmt.Errorf("subscriber 2 unexpectedly received retained message after clearing")
+  }
+
+  fmt.Println("  ✅ Subscriber 2 correctly received no retained message after clearing")
   fmt.Println("  ✅ Retained message test completed successfully")
   return nil
 }
