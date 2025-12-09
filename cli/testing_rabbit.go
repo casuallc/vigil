@@ -34,21 +34,14 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Long:  "Run integration tests for RabbitMQ functionality",
   }
 
-  // 为RabbitMQ测试命令添加ServerConfig参数
-  var (
-    server   string
-    port     int
-    vhost    string
-    user     string
-    password string
-  )
+  config := &rabbitmq.ServerConfig{}
 
   // 全局RabbitMQ测试参数
-  rabbitTestCmd.PersistentFlags().StringVarP(&server, "server", "s", "localhost", "RabbitMQ server address")
-  rabbitTestCmd.PersistentFlags().IntVarP(&port, "port", "p", 5672, "RabbitMQ server port")
-  rabbitTestCmd.PersistentFlags().StringVarP(&vhost, "vhost", "V", "/", "RabbitMQ vhost")
-  rabbitTestCmd.PersistentFlags().StringVarP(&user, "user", "u", "guest", "RabbitMQ username")
-  rabbitTestCmd.PersistentFlags().StringVarP(&password, "password", "P", "guest", "RabbitMQ password")
+  rabbitTestCmd.PersistentFlags().StringVarP(&config.Server, "server", "s", "localhost", "RabbitMQ server address")
+  rabbitTestCmd.PersistentFlags().IntVarP(&config.Port, "port", "p", 5672, "RabbitMQ server port")
+  rabbitTestCmd.PersistentFlags().StringVarP(&config.Vhost, "vhost", "V", "/", "RabbitMQ vhost")
+  rabbitTestCmd.PersistentFlags().StringVarP(&config.User, "user", "u", "guest", "RabbitMQ username")
+  rabbitTestCmd.PersistentFlags().StringVarP(&config.Password, "password", "P", "guest", "RabbitMQ password")
 
   // Test all RabbitMQ functionality
   allCmd := &cobra.Command{
@@ -56,7 +49,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Run all RabbitMQ tests",
     Long:  "Run all RabbitMQ integration tests",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestAll(server, port, vhost, user, password)
+      return c.handleRabbitTestAll(config)
     },
   }
   rabbitTestCmd.AddCommand(allCmd)
@@ -67,7 +60,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Test message publish reliability",
     Long:  "Test message publish reliability to RabbitMQ",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestPublish(server, port, vhost, user, password)
+      return c.handleRabbitTestPublish(config)
     },
   }
   rabbitTestCmd.AddCommand(publishCmd)
@@ -78,7 +71,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Test exchange routing rules",
     Long:  "Test different exchange types routing rules",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestRouting(server, port, vhost, user, password)
+      return c.handleRabbitTestRouting(config)
     },
   }
   rabbitTestCmd.AddCommand(routingCmd)
@@ -89,7 +82,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Test queue binding correctness",
     Long:  "Test queue binding and unbinding functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestBinding(server, port, vhost, user, password)
+      return c.handleRabbitTestBinding(config)
     },
   }
   rabbitTestCmd.AddCommand(bindingCmd)
@@ -100,7 +93,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Test message consume and ack/nack",
     Long:  "Test message consumption and acknowledgment functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestConsume(server, port, vhost, user, password)
+      return c.handleRabbitTestConsume(config)
     },
   }
   rabbitTestCmd.AddCommand(consumeCmd)
@@ -111,7 +104,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Test dead letter queue mechanism",
     Long:  "Test dead letter queue functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestDLQ(server, port, vhost, user, password)
+      return c.handleRabbitTestDLQ(config)
     },
   }
   rabbitTestCmd.AddCommand(dlqCmd)
@@ -122,7 +115,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Test message TTL",
     Long:  "Test message time-to-live functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestTTL(server, port, vhost, user, password)
+      return c.handleRabbitTestTTL(config)
     },
   }
   rabbitTestCmd.AddCommand(ttlCmd)
@@ -133,7 +126,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Test consumer concurrency",
     Long:  "Test consumer concurrency and fair dispatch",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestConcurrency(server, port, vhost, user, password)
+      return c.handleRabbitTestConcurrency(config)
     },
   }
   rabbitTestCmd.AddCommand(concurrencyCmd)
@@ -144,7 +137,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
     Short: "Test publisher confirms",
     Long:  "Test publisher confirms functionality",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleRabbitTestConfirms(server, port, vhost, user, password)
+      return c.handleRabbitTestConfirms(config)
     },
   }
   rabbitTestCmd.AddCommand(confirmsCmd)
@@ -153,7 +146,7 @@ func (c *CLI) setupRabbitTestCommands() *cobra.Command {
 }
 
 // handleRabbitTestAll 运行所有RabbitMQ测试
-func (c *CLI) handleRabbitTestAll(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestAll(config *rabbitmq.ServerConfig) error {
   fmt.Println("Running all RabbitMQ tests...")
 
   // 运行所有RabbitMQ测试
@@ -162,28 +155,28 @@ func (c *CLI) handleRabbitTestAll(server string, port int, vhost string, user st
     fn   func() error
   }{{
     name: "Publish Reliability Test",
-    fn:   func() error { return c.handleRabbitTestPublish(server, port, vhost, user, password) },
+    fn:   func() error { return c.handleRabbitTestPublish(config) },
   }, {
     name: "Exchange Routing Test",
-    fn:   func() error { return c.handleRabbitTestRouting(server, port, vhost, user, password) },
+    fn:   func() error { return c.handleRabbitTestRouting(config) },
   }, {
     name: "Queue Binding Test",
-    fn:   func() error { return c.handleRabbitTestBinding(server, port, vhost, user, password) },
+    fn:   func() error { return c.handleRabbitTestBinding(config) },
   }, {
     name: "Message Consume Test",
-    fn:   func() error { return c.handleRabbitTestConsume(server, port, vhost, user, password) },
+    fn:   func() error { return c.handleRabbitTestConsume(config) },
   }, {
     name: "Dead Letter Queue Test",
-    fn:   func() error { return c.handleRabbitTestDLQ(server, port, vhost, user, password) },
+    fn:   func() error { return c.handleRabbitTestDLQ(config) },
   }, {
     name: "Message TTL Test",
-    fn:   func() error { return c.handleRabbitTestTTL(server, port, vhost, user, password) },
+    fn:   func() error { return c.handleRabbitTestTTL(config) },
   }, {
     name: "Consumer Concurrency Test",
-    fn:   func() error { return c.handleRabbitTestConcurrency(server, port, vhost, user, password) },
+    fn:   func() error { return c.handleRabbitTestConcurrency(config) },
   }, {
     name: "Publisher Confirms Test",
-    fn:   func() error { return c.handleRabbitTestConfirms(server, port, vhost, user, password) },
+    fn:   func() error { return c.handleRabbitTestConfirms(config) },
   }}
 
   var successCount, failCount int
@@ -208,17 +201,8 @@ func (c *CLI) handleRabbitTestAll(server string, port int, vhost string, user st
 }
 
 // handleRabbitTestPublish 测试消息发布可靠性
-func (c *CLI) handleRabbitTestPublish(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestPublish(config *rabbitmq.ServerConfig) error {
   fmt.Println("Testing message publish reliability...")
-
-  // 创建RabbitMQ客户端配置
-  config := &rabbitmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    Vhost:    vhost,
-    User:     user,
-    Password: password,
-  }
 
   // 创建并连接客户端
   client := &rabbitmq.RabbitClient{Config: config}
@@ -283,17 +267,8 @@ func (c *CLI) handleRabbitTestPublish(server string, port int, vhost string, use
 }
 
 // handleRabbitTestRouting 测试交换器路由规则
-func (c *CLI) handleRabbitTestRouting(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestRouting(config *rabbitmq.ServerConfig) error {
   fmt.Println("Testing exchange routing rules...")
-
-  // 创建RabbitMQ客户端配置
-  config := &rabbitmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    Vhost:    vhost,
-    User:     user,
-    Password: password,
-  }
 
   // 创建并连接客户端
   client := &rabbitmq.RabbitClient{Config: config}
@@ -348,17 +323,8 @@ func (c *CLI) handleRabbitTestRouting(server string, port int, vhost string, use
 }
 
 // handleRabbitTestBinding 测试队列绑定
-func (c *CLI) handleRabbitTestBinding(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestBinding(config *rabbitmq.ServerConfig) error {
   fmt.Println("Testing queue binding correctness...")
-
-  // 创建RabbitMQ客户端配置
-  config := &rabbitmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    Vhost:    vhost,
-    User:     user,
-    Password: password,
-  }
 
   // 创建并连接客户端
   client := &rabbitmq.RabbitClient{Config: config}
@@ -417,17 +383,8 @@ func (c *CLI) handleRabbitTestBinding(server string, port int, vhost string, use
 }
 
 // handleRabbitTestConsume 测试消息消费和确认
-func (c *CLI) handleRabbitTestConsume(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestConsume(config *rabbitmq.ServerConfig) error {
   fmt.Println("Testing message consume and ack/nack...")
-
-  // 创建RabbitMQ客户端配置
-  config := &rabbitmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    Vhost:    vhost,
-    User:     user,
-    Password: password,
-  }
 
   // 创建并连接客户端
   client := &rabbitmq.RabbitClient{Config: config}
@@ -516,17 +473,8 @@ func (c *CLI) handleRabbitTestConsume(server string, port int, vhost string, use
 }
 
 // handleRabbitTestDLQ 测试死信队列
-func (c *CLI) handleRabbitTestDLQ(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestDLQ(config *rabbitmq.ServerConfig) error {
   fmt.Println("Testing dead letter queue mechanism...")
-
-  // 创建RabbitMQ客户端配置
-  config := &rabbitmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    Vhost:    vhost,
-    User:     user,
-    Password: password,
-  }
 
   // 创建并连接客户端
   client := &rabbitmq.RabbitClient{Config: config}
@@ -668,17 +616,8 @@ func (c *CLI) handleRabbitTestDLQ(server string, port int, vhost string, user st
 }
 
 // handleRabbitTestTTL 测试消息TTL
-func (c *CLI) handleRabbitTestTTL(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestTTL(config *rabbitmq.ServerConfig) error {
   fmt.Println("Testing message TTL...")
-
-  // 创建RabbitMQ客户端配置
-  config := &rabbitmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    Vhost:    vhost,
-    User:     user,
-    Password: password,
-  }
 
   // 创建并连接客户端
   client := &rabbitmq.RabbitClient{Config: config}
@@ -798,17 +737,8 @@ func (c *CLI) handleRabbitTestTTL(server string, port int, vhost string, user st
 }
 
 // handleRabbitTestConcurrency 测试消费者并发
-func (c *CLI) handleRabbitTestConcurrency(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestConcurrency(config *rabbitmq.ServerConfig) error {
   fmt.Println("Testing consumer concurrency...")
-
-  // 创建RabbitMQ客户端配置
-  config := &rabbitmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    Vhost:    vhost,
-    User:     user,
-    Password: password,
-  }
 
   // 创建并连接客户端
   client := &rabbitmq.RabbitClient{Config: config}
@@ -880,15 +810,8 @@ func (c *CLI) handleRabbitTestConcurrency(server string, port int, vhost string,
       defer wg.Done()
 
       // 创建新的客户端连接用于每个消费者
-      consumerConfig := &rabbitmq.ServerConfig{
-        Server:   server,
-        Port:     port,
-        Vhost:    vhost,
-        User:     user,
-        Password: password,
-      }
 
-      consumerClient := &rabbitmq.RabbitClient{Config: consumerConfig}
+      consumerClient := &rabbitmq.RabbitClient{Config: config}
       if err := consumerClient.Connect(); err != nil {
         fmt.Printf("  Consumer %d failed to connect: %v\n", consumerID, err)
         return
@@ -931,17 +854,8 @@ func (c *CLI) handleRabbitTestConcurrency(server string, port int, vhost string,
 }
 
 // handleRabbitTestConfirms 测试发布者确认
-func (c *CLI) handleRabbitTestConfirms(server string, port int, vhost string, user string, password string) error {
+func (c *CLI) handleRabbitTestConfirms(config *rabbitmq.ServerConfig) error {
   fmt.Println("Testing publisher confirms...")
-
-  // 创建RabbitMQ客户端配置
-  config := &rabbitmq.ServerConfig{
-    Server:   server,
-    Port:     port,
-    Vhost:    vhost,
-    User:     user,
-    Password: password,
-  }
 
   // 创建并连接客户端
   client := &rabbitmq.RabbitClient{Config: config}
