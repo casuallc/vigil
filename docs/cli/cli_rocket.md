@@ -12,7 +12,7 @@ bbx-cli rocket [command] [flags]
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--namesrv` | `-n` | NameServer地址 | localhost:9876 |
+| `--namesrv` | `-n` | NameServer地址 | 127.0.0.1:9876 |
 | `--group` | `-g` | 消费者组名 | default_group |
 
 ## 命令列表
@@ -50,8 +50,8 @@ bbx-cli rocket consume [flags]
 
 ```bash
 # 发送消息到主题
-./bbx-cli rocket send -t topic1 -m "hello rocketmq" -n localhost:9876
+./bbx-cli rocket send -t topic1 -m "hello rocketmq" -n 127.0.0.1:9876
 
 # 消费消息
-./bbx-cli rocket consume -t topic1 -c 5 -g my_group -n localhost:9876
+./bbx-cli rocket consume -t topic1 -c 5 -g my_group -n 127.0.0.1:9876
 ```

@@ -29,13 +29,13 @@ bbx-cli proc scan [flags]
 **示例：**
 ```bash
 # 扫描包含 "java" 的进程
-./bbx-cli proc scan -q "java" -H http://localhost:8181
+./bbx-cli proc scan -q "java" -H http://127.0.0.1:8181
 
 # 扫描并注册进程
-./bbx-cli proc scan -q "java" -r -H http://localhost:8181
+./bbx-cli proc scan -q "java" -r -H http://127.0.0.1:8181
 
 # 批量扫描
-./bbx-cli proc scan -b -c conf/scan.yaml -r -H http://localhost:8181
+./bbx-cli proc scan -b -c conf/scan.yaml -r -H http://127.0.0.1:8181
 ```
 
 ### create - 创建进程

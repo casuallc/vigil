@@ -19,14 +19,14 @@ bbx-cli exec [command/script] [flags]
 
 ```bash
 # 执行简单命令
-./bbx-cli exec "ls -la" -H http://localhost:8181
+./bbx-cli exec "ls -la" -H http://127.0.0.1:8181
 
 # 执行脚本文件
-./bbx-cli exec "/path/to/script.sh" -f -H http://localhost:8181
+./bbx-cli exec "/path/to/script.sh" -f -H http://127.0.0.1:8181
 
 # 执行带环境变量的命令
-./bbx-cli exec "echo $MY_VAR" -e MY_VAR=value -H http://localhost:8181
+./bbx-cli exec "echo $MY_VAR" -e MY_VAR=value -H http://127.0.0.1:8181
 
 # 将结果输出到文件
-./bbx-cli exec "cat /etc/passwd" -r result.txt -H http://localhost:8181
+./bbx-cli exec "cat /etc/passwd" -r result.txt -H http://127.0.0.1:8181
 ```

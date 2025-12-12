@@ -2,7 +2,7 @@
 
 # === 配置 ===
 TOPIC=${TOPIC:-"topic01"}
-BOOTSTRAP_SERVER=${BOOTSTRAP_SERVER:-"localhost:9092"}
+BOOTSTRAP_SERVER=${BOOTSTRAP_SERVER:-"127.0.0.1:9092"}
 KAFKA_DIR=${KAFKA_DIR:-"/opt/kafka"}
 # ============
 

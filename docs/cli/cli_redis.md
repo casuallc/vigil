@@ -12,7 +12,7 @@ bbx-cli redis [command] [flags]
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--server` | `-s` | Redis服务器地址 | localhost |
+| `--server` | `-s` | Redis服务器地址 | 127.0.0.1 |
 | `--port` | `-p` | Redis服务器端口 | 6379 |
 | `--password` | `-P` | Redis密码 |  |
 | `--db` | `-d` | Redis数据库 | 0 |
@@ -69,14 +69,14 @@ bbx-cli redis info
 
 ```bash
 # 连接到Redis并获取值
-./bbx-cli redis get -k mykey -s localhost -p 6379
+./bbx-cli redis get -k mykey -s 127.0.0.1 -p 6379
 
 # 设置Redis值
-./bbx-cli redis set -k mykey -v myvalue -s localhost -p 6379
+./bbx-cli redis set -k mykey -v myvalue -s 127.0.0.1 -p 6379
 
 # 删除Redis键
-./bbx-cli redis delete -k mykey -s localhost -p 6379
+./bbx-cli redis delete -k mykey -s 127.0.0.1 -p 6379
 
 # 获取Redis信息
-./bbx-cli redis info -s localhost -p 6379
+./bbx-cli redis info -s 127.0.0.1 -p 6379
 ```

@@ -12,8 +12,8 @@ bbx-cli pulsar [command] [flags]
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--service-url` | `-s` | Pulsar服务URL | pulsar://localhost:6650 |
-| `--admin-url` | `-a` | Pulsar管理API URL | http://localhost:8080 |
+| `--service-url` | `-s` | Pulsar服务URL | pulsar://127.0.0.1:6650 |
+| `--admin-url` | `-a` | Pulsar管理API URL | http://127.0.0.1:8080 |
 | `--topic` | `-t` | 主题名称 |  |
 
 ## 命令列表
@@ -48,8 +48,8 @@ bbx-cli pulsar receive [flags]
 
 ```bash
 # 发送消息到主题
-./bbx-cli pulsar send -t topic1 -m "hello pulsar" -s pulsar://localhost:6650
+./bbx-cli pulsar send -t topic1 -m "hello pulsar" -s pulsar://127.0.0.1:6650
 
 # 接收消息
-./bbx-cli pulsar receive -t topic1 -c 10 -s my_subscription -s pulsar://localhost:6650
+./bbx-cli pulsar receive -t topic1 -c 10 -s my_subscription -s pulsar://127.0.0.1:6650
 ```

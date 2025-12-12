@@ -12,7 +12,7 @@ bbx-cli mqtt [command] [flags]
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--server` | `-s` | MQTT服务器地址 | localhost |
+| `--server` | `-s` | MQTT服务器地址 | 127.0.0.1 |
 | `--port` | `-p` | MQTT服务器端口 | 1883 |
 | `--client-id` | `-c` | 客户端ID | 自动生成 |
 | `--username` | `-u` | MQTT用户名 |  |
@@ -55,8 +55,8 @@ bbx-cli mqtt subscribe [flags]
 
 ```bash
 # 发布消息到主题
-./bbx-cli mqtt publish -t topic1 -m "hello mqtt" -q 1 -s localhost -p 1883
+./bbx-cli mqtt publish -t topic1 -m "hello mqtt" -q 1 -s 127.0.0.1 -p 1883
 
 # 订阅主题接收消息
-./bbx-cli mqtt subscribe -t topic1 -q 0 -c 5 -s localhost -p 1883
+./bbx-cli mqtt subscribe -t topic1 -q 0 -c 5 -s 127.0.0.1 -p 1883
 ```

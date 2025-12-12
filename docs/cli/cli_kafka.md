@@ -12,7 +12,7 @@ bbx-cli kafka [command] [flags]
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--brokers` | `-b` | Kafka brokers地址 | localhost:9092 |
+| `--brokers` | `-b` | Kafka brokers地址 | 127.0.0.1:9092 |
 | `--group` | `-g` | 消费者组名 | default_group |
 
 ## 命令列表
@@ -49,8 +49,8 @@ bbx-cli kafka consume [flags]
 
 ```bash
 # 发送消息到主题
-./bbx-cli kafka send -t topic1 -m "hello kafka" -b localhost:9092
+./bbx-cli kafka send -t topic1 -m "hello kafka" -b 127.0.0.1:9092
 
 # 消费消息
-./bbx-cli kafka consume -t topic1 -c 10 -g my_group -b localhost:9092
+./bbx-cli kafka consume -t topic1 -c 10 -g my_group -b 127.0.0.1:9092
 ```

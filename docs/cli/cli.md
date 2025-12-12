@@ -18,7 +18,7 @@ Vigil CLI 命令采用层级结构，主要分为以下几类：
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--host` | `-H` | API 服务器地址 | http://localhost:8181 |
+| `--host` | `-H` | API 服务器地址 | http://127.0.0.1:8181 |
 | `--help` | `-h` | 显示命令帮助信息 | - |
 | `--version` | - | 显示版本信息 | - |
 
@@ -155,10 +155,10 @@ bbx-cli cosmic [subcommand]
 ./bbx-cli version
 
 # 扫描包含 "java" 的进程
-./bbx-cli proc scan -q "java" -H http://localhost:8181
+./bbx-cli proc scan -q "java" -H http://127.0.0.1:8181
 
 # 扫描并注册进程
-./bbx-cli proc scan -q "java" -r -H http://localhost:8181
+./bbx-cli proc scan -q "java" -r -H http://127.0.0.1:8181
 
 # 列出所有托管进程
 ./bbx-cli proc list

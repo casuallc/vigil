@@ -24,7 +24,7 @@ import (
 
 func main() {
   // Create CLI with default API host
-  cli := cli.NewCLI("http://localhost:8181")
+  cli := cli.NewCLI("http://127.0.0.1:8181")
 
   // Execute CLI commands
   if err := cli.Execute(); err != nil {

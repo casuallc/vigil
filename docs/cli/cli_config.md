@@ -22,5 +22,5 @@ bbx-cli config get
 **示例：**
 ```bash
 # 查看当前配置
-./bbx-cli config get -H http://localhost:8181
+./bbx-cli config get -H http://127.0.0.1:8181
 ```

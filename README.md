@@ -89,7 +89,7 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 ./bbx-cli help
 
 # 扫描进程
-./bbx-cli proc scan -q "MQ" -H http://localhost:8181
+./bbx-cli proc scan -q "MQ" -H http://127.0.0.1:8181
 
 # 列出所有托管进程
 ./bbx-cli proc list
@@ -243,10 +243,10 @@ go build -o bbx-server ./cmd/bbx-server
 
 ```bash
 # 扫描包含 "java" 的进程并注册
-./bbx-cli proc scan -q "java" -r -H http://localhost:8181
+./bbx-cli proc scan -q "java" -r -H http://127.0.0.1:8181
 
 # 批量扫描并注册进程
-./bbx-cli proc scan -b -c conf/scan.yaml -r -H http://localhost:8181
+./bbx-cli proc scan -b -c conf/scan.yaml -r -H http://127.0.0.1:8181
 ```
 
 ### 管理进程

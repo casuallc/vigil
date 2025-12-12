@@ -12,7 +12,7 @@ bbx-cli rabbit [command] [flags]
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--server` | `-s` | RabbitMQ服务器地址 | localhost |
+| `--server` | `-s` | RabbitMQ服务器地址 | 127.0.0.1 |
 | `--port` | `-p` | RabbitMQ服务器端口 | 5672 |
 | `--username` | `-u` | RabbitMQ用户名 | guest |
 | `--password` | `-P` | RabbitMQ密码 | guest |
@@ -52,8 +52,8 @@ bbx-cli rabbit receive [flags]
 
 ```bash
 # 发送消息到队列
-./bbx-cli rabbit send -t queue1 -m "hello world" -s localhost -p 5672
+./bbx-cli rabbit send -t queue1 -m "hello world" -s 127.0.0.1 -p 5672
 
 # 从队列接收消息
-./bbx-cli rabbit receive -t queue1 -c 3 -s localhost -p 5672
+./bbx-cli rabbit receive -t queue1 -c 3 -s 127.0.0.1 -p 5672
 ```

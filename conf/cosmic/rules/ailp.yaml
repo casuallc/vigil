@@ -81,7 +81,7 @@ checks:
     type: script
     command: |
       sed -e; 
-      curl -s http://localhost:9600/_node/stats/pipelines/main?pretty 2>/dev/null | \
+      curl -s http://127.0.0.1:9600/_node/stats/pipelines/main?pretty 2>/dev/null | \
       awk '/"in"/ {in_val=$3} /"out"/ {out_val=$3} END {gsub(/,/, "", in_val); gsub(/,/, "", out_val); if(in_val+0 > 0) print in_val - out_val; else print 0}'
     parse:
       kind: int
@@ -115,7 +115,7 @@ checks:
     command: |
       sed -e; 
       DATE_STR=$([ $(date +%H) -ge 8 ] && date +"%Y-%m-%d" || date -d "yesterday" +"%Y-%m-%d")
-      INDEX_COUNT=$(curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/indices?h=index" | grep -c "$DATE_STR")
+      INDEX_COUNT=$(curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://127.0.0.1:9200/_cat/indices?h=index" | grep -c "$DATE_STR")
       echo "$INDEX_COUNT"
     parse:
       kind: int
@@ -132,7 +132,7 @@ checks:
     type: script
     command: |
       sed -e; 
-      curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/indices?h=docs.count,store.size" | \
+      curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://127.0.0.1:9200/_cat/indices?h=docs.count,store.size" | \
       awk '{sum_docs += $1; sum_size += ($2 ~ /[0-9]/ ? $2 : 0)} END {print "docs_total=" sum_docs ", size_total_bytes=" sum_size}'
     parse:
       kind: string
@@ -144,7 +144,7 @@ checks:
     type: script
     command: |
       sed -e; 
-      curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://localhost:9200/_cat/allocation?h=disk.percent" | awk '{sum += $1; count++} END {if(count>0) printf "%.2f", sum/count; else print 0}'
+      curl -s -u ${APUSIC_ES_USER:-elastic}:${APUSIC_ES_PASSWORD:-Cosmic@2020} "http://127.0.0.1:9200/_cat/allocation?h=disk.percent" | awk '{sum += $1; count++} END {if(count>0) printf "%.2f", sum/count; else print 0}'
     parse:
       kind: float
     thresholds:
@@ -159,7 +159,7 @@ checks:
   - id: logstash-health
     name: "Logstash 健康状态"
     type: script
-    command: "sed -e; curl -s http://localhost:9600/_node/stats/pipelines/main?pretty 2>/dev/null | grep -c '"pipeline"'"
+    command: "sed -e; curl -s http://127.0.0.1:9600/_node/stats/pipelines/main?pretty 2>/dev/null | grep -c '"pipeline"'"
     parse:
       kind: int
     thresholds:
