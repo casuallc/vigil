@@ -119,6 +119,10 @@ OS/Arch:   %s/%s
   testCmd := c.setupIntegrationTestingCommands()
   rootCmd.AddCommand(testCmd)
 
+  // Add VM commands
+  vmCmd := c.setupVMCommands()
+  rootCmd.AddCommand(vmCmd)
+
   return rootCmd
 }
 

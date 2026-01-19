@@ -52,5 +52,26 @@ func (s *Server) Router() *mux.Router {
   // Cosmic inspection endpoint
   r.HandleFunc("/api/inspect", s.handleCosmicInspect).Methods("POST")
 
+  // VM Management endpoints
+  r.HandleFunc("/api/vms", s.handleAddVM).Methods("POST")
+  r.HandleFunc("/api/vms", s.handleListVMs).Methods("GET")
+  r.HandleFunc("/api/vms/{name}", s.handleGetVM).Methods("GET")
+  r.HandleFunc("/api/vms/{name}", s.handleDeleteVM).Methods("DELETE")
+
+  // SSH endpoints
+  r.HandleFunc("/api/vms/ssh/connect", s.handleSSHConnect).Methods("POST")
+  r.HandleFunc("/api/vms/ssh/execute", s.handleSSHExecute).Methods("POST")
+
+  // File Management endpoints
+  r.HandleFunc("/api/vms/file/upload", s.handleFileUpload).Methods("POST")
+  r.HandleFunc("/api/vms/file/download", s.handleFileDownload).Methods("POST")
+  r.HandleFunc("/api/vms/file/list", s.handleFileList).Methods("POST")
+
+  // Permission endpoints
+  r.HandleFunc("/api/vms/permissions", s.handleAddPermission).Methods("POST")
+  r.HandleFunc("/api/vms/permissions", s.handleRemovePermission).Methods("DELETE")
+  r.HandleFunc("/api/vms/{name}/permissions", s.handleListPermissions).Methods("GET")
+  r.HandleFunc("/api/vms/permissions/check", s.handleCheckPermission).Methods("POST")
+
   return r
 }
