@@ -612,7 +612,8 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
 // handleFileList 处理列出文件的请求
 func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
 	type FileListRequest struct {
-		Path string `json:"path"`
+		Path     string `json:"path"`
+		MaxDepth int    `json:"max_depth"`
 	}
 
 	var req FileListRequest
@@ -621,11 +622,26 @@ func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 在Windows系统上，确保路径格式正确
+	if runtime.GOOS == "windows" {
+		// 如果路径以/tmp/开头，转换为Windows临时目录
+		if strings.HasPrefix(req.Path, "/tmp/") {
+			tmpDir := os.TempDir()
+			req.Path = filepath.Join(tmpDir, filepath.Base(req.Path))
+		} else if req.Path == "/tmp" {
+			// 如果路径正好是/tmp，直接转换为Windows临时目录
+			req.Path = os.TempDir()
+		} else {
+			// 替换正斜杠为反斜杠
+			req.Path = strings.ReplaceAll(req.Path, "/", "\\")
+		}
+	}
+
 	// 创建文件管理器
 	fileManager := vm.NewFileManager()
 
 	// 获取文件列表
-	files, err := fileManager.ListFiles(req.Path)
+	files, err := fileManager.ListFiles(req.Path, req.MaxDepth)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

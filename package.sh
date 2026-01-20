@@ -31,6 +31,8 @@ package_arch() {
     mkdir -p "$temp_pkg/bin" "$temp_pkg/logs"
 
     # 拷贝配置和脚本
+    cp upgrade.sh "$temp_pkg/"
+    cp LICENSE "$temp_pkg/"
     cp -r conf "$temp_pkg/"
     cp scripts/appctl.sh "$temp_pkg/bin/"
     chmod +x "$temp_pkg/bin/appctl.sh"

@@ -24,6 +24,20 @@ import (
 	"path/filepath"
 )
 
+// FormatFileSize 将文件大小转换为人类可读的格式
+func FormatFileSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
+}
+
 // FileManager 表示文件管理功能
 type FileManager struct {
 	// 不再需要SSHClient，直接操作本地文件
@@ -121,37 +135,55 @@ func (fm *FileManager) DownloadFile(sourcePath, targetPath string) error {
 }
 
 // ListFiles 列出VM上的文件列表
-func (fm *FileManager) ListFiles(path string) ([]*FileInfo, error) {
-	// 读取目录内容
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read directory: %v", err)
-	}
-
-	var files []*FileInfo
-	for _, entry := range entries {
-		// 获取文件信息
-		info, err := entry.Info()
+func (fm *FileManager) ListFiles(path string, maxDepth int) ([]*FileInfo, error) {
+	// 定义一个递归函数来列出文件和子目录
+	var listFilesRecursive func(string, int) ([]*FileInfo, error)
+	listFilesRecursive = func(currentPath string, currentDepth int) ([]*FileInfo, error) {
+		// 读取目录内容
+		entries, err := os.ReadDir(currentPath)
 		if err != nil {
-			log.Printf("Warning: failed to get file info for %s: %v", entry.Name(), err)
-			continue
+			return nil, fmt.Errorf("failed to read directory: %v", err)
 		}
 
-		// 构建完整路径
-		fullPath := filepath.Join(path, entry.Name())
+		var files []*FileInfo
+		for _, entry := range entries {
+			// 获取文件信息
+			info, err := entry.Info()
+			if err != nil {
+				log.Printf("Warning: failed to get file info for %s: %v", entry.Name(), err)
+				continue
+			}
 
-		// 构建FileInfo对象
-		file := &FileInfo{
-			Name:    entry.Name(),
-			Path:    fullPath,
-			Size:    info.Size(),
-			IsDir:   entry.IsDir(),
-			Mode:    info.Mode().String(),
-			ModTime: info.ModTime().Format("2006-01-02 15:04:05"),
+			// 构建完整路径
+			fullPath := filepath.Join(currentPath, entry.Name())
+
+			// 构建FileInfo对象
+			file := &FileInfo{
+				Name:    entry.Name(),
+				Path:    fullPath,
+				Size:    info.Size(),
+				IsDir:   entry.IsDir(),
+				Mode:    info.Mode().String(),
+				ModTime: info.ModTime().Format("2006-01-02 15:04:05"),
+				Depth:   currentDepth,
+			}
+
+			files = append(files, file)
+
+			// 如果是目录且还未达到最大深度，递归列出子目录
+			if entry.IsDir() && currentDepth < maxDepth {
+				subFiles, err := listFilesRecursive(fullPath, currentDepth+1)
+				if err != nil {
+					log.Printf("Warning: failed to list subdirectory %s: %v", fullPath, err)
+					continue
+				}
+				files = append(files, subFiles...)
+			}
 		}
 
-		files = append(files, file)
+		return files, nil
 	}
 
-	return files, nil
+	// 从深度0开始递归列出文件
+	return listFilesRecursive(path, 0)
 }

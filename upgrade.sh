@@ -41,7 +41,7 @@ esac
 
 echo "🔧 检测到系统架构: $ARCH"
 
-# === 动态构造文件名 ===
+# === 动态构造预期文件名 ===
 VERSION="1.0"
 OS="linux"
 
@@ -49,20 +49,6 @@ NEW_CLI="bbx-cli-${VERSION}-${OS}-${ARCH}"
 NEW_SRV="bbx-server-${VERSION}-${OS}-${ARCH}"
 CURRENT_CLI="bbx-cli"
 CURRENT_SRV="bbx-server"
-
-# 检查新文件是否存在
-for f in "$NEW_CLI" "$NEW_SRV"; do
-    if [ ! -f "$f" ]; then
-        echo "❌ 错误：缺少新版本文件 $f"
-        exit 1
-    fi
-done
-
-if [ ! -f "bin/appctl.sh" ]; then
-    echo "❌ 错误：bin/appctl.sh 不存在"
-    exit 1
-fi
-chmod +x bin/appctl.sh
 
 # 创建备份目录
 BACKUP_DIR="backups"
@@ -81,29 +67,87 @@ get_md5() {
     fi
 }
 
-# 判断是否需要更新
-need_update_cli=false
-need_update_srv=false
+# 初始化更新标志
+updated_any=false
 
-if [ ! -f "$CURRENT_CLI" ] || [ "$(get_md5 "$NEW_CLI")" != "$(get_md5 "$CURRENT_CLI")" ]; then
-    need_update_cli=true
-    echo "🔄 bbx-cli 需要更新"
+# ===== 处理 CLI =====
+if [ -f "$NEW_CLI" ]; then
+    echo "🔍 发现 CLI 新版本: $NEW_CLI"
+    need_update_cli=false
+    if [ ! -f "$CURRENT_CLI" ] || [ "$(get_md5 "$NEW_CLI")" != "$(get_md5 "$CURRENT_CLI")" ]; then
+        need_update_cli=true
+        echo "🔄 bbx-cli 需要更新"
+    else
+        echo "✅ bbx-cli 无变化，跳过"
+    fi
+
+    if [ "$need_update_cli" = true ]; then
+        # 备份并更新
+        if [ -f "$CURRENT_CLI" ]; then
+            backup_name="${CURRENT_CLI}.${BACKUP_SUFFIX}"
+            echo "📦 备份 bbx-cli -> $BACKUP_DIR/$backup_name"
+            cp "$CURRENT_CLI" "$BACKUP_DIR/$backup_name"
+        fi
+        cp "$NEW_CLI" "$CURRENT_CLI"
+        chmod +x "$CURRENT_CLI"
+        updated_any=true
+
+        # 清理临时文件
+        rm -f "$NEW_CLI"
+        echo "🧹 已清理 CLI 临时文件"
+    else
+        # 无变化，但仍可清理（可选）
+        rm -f "$NEW_CLI"
+        echo "🧹 CLI 无变化，已清理临时文件"
+    fi
 else
-    echo "✅ bbx-cli 无变化，跳过"
+    echo "ℹ️  未提供 CLI 新版本（$NEW_CLI 不存在），跳过"
 fi
 
-if [ ! -f "$CURRENT_SRV" ] || [ "$(get_md5 "$NEW_SRV")" != "$(get_md5 "$CURRENT_SRV")" ]; then
-    need_update_srv=true
-    echo "🔄 bbx-server 需要更新"
+# ===== 处理 Server =====
+if [ -f "$NEW_SRV" ]; then
+    echo "🔍 发现 Server 新版本: $NEW_SRV"
+    need_update_srv=false
+    if [ ! -f "$CURRENT_SRV" ] || [ "$(get_md5 "$NEW_SRV")" != "$(get_md5 "$CURRENT_SRV")" ]; then
+        need_update_srv=true
+        echo "🔄 bbx-server 需要更新"
+    else
+        echo "✅ bbx-server 无变化，跳过"
+    fi
+
+    if [ "$need_update_srv" = true ]; then
+        # 停止服务（如果尚未停止且需要重启）
+        if [ "$RESTART" = true ] && [ "$updated_any" = false ]; then
+            echo "🛑 正在停止服务..."
+            if ! ./bin/appctl.sh stop; then
+                echo "⚠️  停止服务失败，但继续更新文件..."
+            fi
+        fi
+
+        # 备份并更新
+        if [ -f "$CURRENT_SRV" ]; then
+            backup_name="${CURRENT_SRV}.${BACKUP_SUFFIX}"
+            echo "📦 备份 bbx-server -> $BACKUP_DIR/$backup_name"
+            cp "$CURRENT_SRV" "$BACKUP_DIR/$backup_name"
+        fi
+        cp "$NEW_SRV" "$CURRENT_SRV"
+        chmod +x "$CURRENT_SRV"
+        updated_any=true
+
+        # 清理临时文件
+        rm -f "$NEW_SRV"
+        echo "🧹 已清理 Server 临时文件"
+    else
+        rm -f "$NEW_SRV"
+        echo "🧹 Server 无变化，已清理临时文件"
+    fi
 else
-    echo "✅ bbx-server 无变化，跳过"
+    echo "ℹ️  未提供 Server 新版本（$NEW_SRV 不存在），跳过"
 fi
 
-if [ "$need_update_cli" = false ] && [ "$need_update_srv" = false ]; then
-    echo "💤 所有文件均无变化，无需更新"
-    # 即使无更新，也清理临时文件（可选）
-    rm -f "$NEW_CLI" "$NEW_SRV"
-    echo "🧹 已清理临时安装包"
+# ===== 最终处理 =====
+if [ "$updated_any" = false ]; then
+    echo "💤 无任何文件需要更新"
     if [ "$RESTART" = true ]; then
         echo "🔁 用户要求重启，正在重启服务..."
         ./bin/appctl.sh stop
@@ -112,57 +156,17 @@ if [ "$need_update_cli" = false ] && [ "$need_update_srv" = false ]; then
     else
         echo "ℹ️  未重启（默认行为）"
     fi
-    exit 0
-fi
-
-# 停止服务（如需重启）
-if [ "$RESTART" = true ]; then
-    echo "🛑 正在停止服务..."
-    if ! ./bin/appctl.sh stop; then
-        echo "⚠️  停止服务失败，但继续更新文件..."
-    fi
 else
-    echo "ℹ️  不重启服务（默认行为）"
-fi
-
-# 按需备份并更新
-if [ "$need_update_cli" = true ]; then
-    if [ -f "$CURRENT_CLI" ]; then
-        backup_name="${CURRENT_CLI}.${BACKUP_SUFFIX}"
-        echo "📦 备份 bbx-cli -> $BACKUP_DIR/$backup_name"
-        cp "$CURRENT_CLI" "$BACKUP_DIR/$backup_name"
+    # 启动服务（如果启用了重启）
+    if [ "$RESTART" = true ]; then
+        echo "🟢 正在启动服务..."
+        if ! ./bin/appctl.sh start; then
+            echo "❌ 启动服务失败！"
+            exit 1
+        fi
+        echo "✅ 更新并重启完成！"
+    else
+        echo "✅ 文件已按需更新（未重启服务）"
+        echo "💡 如需生效，请手动执行: ./bin/appctl.sh restart"
     fi
-    cp "$NEW_CLI" "$CURRENT_CLI"
-    chmod +x "$CURRENT_CLI"
-fi
-
-if [ "$need_update_srv" = true ]; then
-    if [ -f "$CURRENT_SRV" ]; then
-        backup_name="${CURRENT_SRV}.${BACKUP_SUFFIX}"
-        echo "📦 备份 bbx-server -> $BACKUP_DIR/$backup_name"
-        cp "$CURRENT_SRV" "$BACKUP_DIR/$backup_name"
-    fi
-    cp "$NEW_SRV" "$CURRENT_SRV"
-    chmod +x "$CURRENT_SRV"
-fi
-
-# 启动服务（如启用重启）
-if [ "$RESTART" = true ]; then
-    echo "🟢 正在启动服务..."
-    if ! ./bin/appctl.sh start; then
-        echo "❌ 启动服务失败！"
-        # 可选：回滚，此处暂不实现
-        exit 1
-    fi
-fi
-
-# === 关键：清理临时文件 ===
-rm -f "$NEW_CLI" "$NEW_SRV"
-echo "🧹 已清理临时安装包"
-
-if [ "$RESTART" = true ]; then
-    echo "✅ 更新并重启完成！"
-else
-    echo "✅ 文件已按需更新（未重启服务）"
-    echo "💡 如需生效，请手动执行: ./bin/appctl.sh restart"
 fi

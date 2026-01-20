@@ -36,13 +36,13 @@ type VM struct {
 func NewVM(name, ip string, port int, username string) *VM {
 	now := time.Now()
 	return &VM{
-		Name:        name,
-		IP:          ip,
-		Port:        port,
-		Username:    username,
-		Status:      "stopped",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		Name:      name,
+		IP:        ip,
+		Port:      port,
+		Username:  username,
+		Status:    "stopped",
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -69,10 +69,11 @@ type FileTransferConfig struct {
 
 // FileInfo 表示文件或目录的信息
 type FileInfo struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Size      int64  `json:"size"`
-	IsDir     bool   `json:"is_dir"`
-	Mode      string `json:"mode"`
-	ModTime   string `json:"mod_time"`
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
+	IsDir   bool   `json:"is_dir"`
+	Mode    string `json:"mode"`
+	ModTime string `json:"mod_time"`
+	Depth   int    `json:"depth"`
 }
