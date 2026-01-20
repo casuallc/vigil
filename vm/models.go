@@ -61,6 +61,18 @@ type SSHConfig struct {
 	KeyPath  string `json:"key_path,omitempty"`
 }
 
+// SSHForwardConfig 表示SSH转发服务的配置信息
+type SSHForwardConfig struct {
+	Host             string `json:"host"`
+	Port             int    `json:"port"`
+	TargetHost       string `json:"target_host"`
+	TargetPort       int    `json:"target_port"`
+	TargetUsername   string `json:"target_username"`
+	TargetPassword   string `json:"target_password,omitempty"`
+	TargetPrivateKey string `json:"target_private_key,omitempty"`
+	AuditLogPath     string `json:"audit_log_path,omitempty"`
+}
+
 // FileTransferConfig 表示文件传输的配置信息
 type FileTransferConfig struct {
 	SourcePath      string `json:"source_path"`

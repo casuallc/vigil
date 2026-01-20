@@ -150,8 +150,7 @@ if [ "$updated_any" = false ]; then
     echo "💤 无任何文件需要更新"
     if [ "$RESTART" = true ]; then
         echo "🔁 用户要求重启，正在重启服务..."
-        ./bin/appctl.sh stop
-        ./bin/appctl.sh start
+        ./bin/appctl.sh restart
         echo "✅ 服务已重启（无文件变更）"
     else
         echo "ℹ️  未重启（默认行为）"
@@ -159,11 +158,8 @@ if [ "$updated_any" = false ]; then
 else
     # 启动服务（如果启用了重启）
     if [ "$RESTART" = true ]; then
-        echo "🟢 正在启动服务..."
-        if ! ./bin/appctl.sh start; then
-            echo "❌ 启动服务失败！"
-            exit 1
-        fi
+        echo "🔁 用户要求重启，正在重启服务..."
+        ./bin/appctl.sh restart
         echo "✅ 更新并重启完成！"
     else
         echo "✅ 文件已按需更新（未重启服务）"

@@ -42,6 +42,7 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 - **命令执行与限制**：支持命令执行，记录命令执行日志，并限制危险命令
 - **本地文件操作**：直接通过API进行文件上传、下载和列表操作
 - **权限控制**：管理VM的访问权限
+- **SSH转发服务**：支持为VM启动SSH转发服务，实现本地端口到VM的转发
 
 ## 项目结构
 
@@ -124,9 +125,31 @@ bbx-cli vm [command]
   get         获取VM详情
   delete      删除VM
   ssh         SSH连接到VM
+  ssh 为VM启动SSH转发服务
   file        文件管理（上传、下载、列表）
   permission  权限管理
 ```
+
+### SSH转发命令
+
+```bash
+# 为VM启动SSH转发服务
+./bbx-cli vm ssh --vm my-vm --port 2222
+
+# 使用自定义参数
+./bbx-cli vm ssh --vm my-vm --host localhost --port 2222 --target-host 192.168.1.100 --target-port 22 --audit-log /tmp/ssh-audit.log
+```
+
+参数说明：
+- `--vm, -n`: VM名称（必填）
+- `--host, -l`: 本地绑定地址（默认：localhost）
+- `--port, -p`: 本地绑定端口（默认：2222）
+- `--target-host, -t`: 目标主机（默认：VM的IP）
+- `--target-port, -T`: 目标端口（默认：VM的端口）
+- `--target-username, -U`: 目标用户名（默认：VM的用户名）
+- `--target-password, -P`: 目标密码
+- `--target-key, -k`: 目标私钥路径
+- `--audit-log, -a`: 审计日志路径
 
 ### 进程管理命令
 
