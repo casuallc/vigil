@@ -65,6 +65,10 @@ OS/Arch:   %s/%s
   execCmd := c.setupExecCommand()
   rootCmd.AddCommand(execCmd)
 
+  // Add VM commands
+  vmCmd := c.setupVMCommands()
+  rootCmd.AddCommand(vmCmd)
+
   // Global flags
   rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:8181", "API server host address")
 
@@ -74,7 +78,11 @@ OS/Arch:   %s/%s
     // Check if the command or any of its parents is one of the main commands
     currentCmd := cmd
     for currentCmd != nil {
-      if currentCmd == procCmd || currentCmd == resourceCmd || currentCmd == configCmd || currentCmd == execCmd {
+      if currentCmd == procCmd ||
+        currentCmd == resourceCmd ||
+        currentCmd == configCmd ||
+        currentCmd == execCmd ||
+        currentCmd == vmCmd {
         c.client = api.NewClient(apiHost)
         break
       }
@@ -118,10 +126,6 @@ OS/Arch:   %s/%s
   // Add Test commands
   testCmd := c.setupIntegrationTestingCommands()
   rootCmd.AddCommand(testCmd)
-
-  // Add VM commands
-  vmCmd := c.setupVMCommands()
-  rootCmd.AddCommand(vmCmd)
 
   return rootCmd
 }

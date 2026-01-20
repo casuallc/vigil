@@ -20,97 +20,130 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"net"
-	"os"
+	"os/exec"
+	"strings"
 	"time"
-
-	"golang.org/x/crypto/ssh"
 )
 
-// SSHClient 表示SSH客户端
+// SSHClient 表示模拟的SSH客户端
 type SSHClient struct {
-	config *ssh.ClientConfig
-	client *ssh.Client
+	username   string
+	authorized bool
+}
+
+// CommandLog 表示命令执行日志
+type CommandLog struct {
+	Command   string    `json:"command"`
+	Username  string    `json:"username"`
+	Timestamp time.Time `json:"timestamp"`
+	ExitCode  int       `json:"exit_code"`
+	Output    string    `json:"output"`
+	IsAllowed bool      `json:"is_allowed"`
+}
+
+// 命令限制列表
+var restrictedCommands = map[string]bool{
+	"rm": true, "rmdir": true, "mkdir": true, "chmod": true, "chown": true,
+	"kill": true, "reboot": true, "shutdown": true, "init": true, "poweroff": true,
 }
 
 // NewSSHClient 创建一个新的SSH客户端
 func NewSSHClient(config *SSHConfig) (*SSHClient, error) {
-	sshConfig := &ssh.ClientConfig{
-		User: config.Username,
-		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-			// 为了简化，暂时接受所有主机密钥
-			return nil
-		},
-		Timeout: 30 * time.Second,
-	}
-
-	// 配置认证方式
-	if config.Password != "" {
-		sshConfig.Auth = append(sshConfig.Auth, ssh.Password(config.Password))
-	} else if config.KeyPath != "" {
-		privateKey, err := os.ReadFile(config.KeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read private key: %v", err)
-		}
-
-		key, err := ssh.ParsePrivateKey(privateKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse private key: %v", err)
-		}
-
-		sshConfig.Auth = append(sshConfig.Auth, ssh.PublicKeys(key))
-	} else {
-		return nil, fmt.Errorf("either password or private key must be provided")
+	// 这里可以添加用户认证逻辑
+	// 由于是模拟SSH，暂时只检查用户名
+	if config.Username == "" {
+		return nil, fmt.Errorf("username must be provided")
 	}
 
 	return &SSHClient{
-			config: sshConfig,
-		},
-		nil
+		username:   config.Username,
+		authorized: true,
+	}, nil
 }
 
-// Connect 建立SSH连接
+// Connect 建立SSH连接（模拟）
 func (c *SSHClient) Connect(host string, port int) error {
-	addr := fmt.Sprintf("%s:%d", host, port)
-	client, err := ssh.Dial("tcp", addr, c.config)
-	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %v", addr, err)
+	// 模拟SSH连接，实际不需要建立网络连接
+	if !c.authorized {
+		return fmt.Errorf("unauthorized user")
 	}
 
-	c.client = client
-	log.Printf("SSH connected to %s:%d", host, port)
+	log.Printf("SSH connected (simulated) as user: %s", c.username)
 	return nil
 }
 
-// ExecuteCommand 执行SSH命令
+// ExecuteCommand 执行命令（直接在本地执行）
 func (c *SSHClient) ExecuteCommand(cmd string) (string, error) {
-	if c.client == nil {
-		return "", fmt.Errorf("SSH client not connected")
+	if !c.authorized {
+		return "", fmt.Errorf("unauthorized user")
 	}
 
-	session, err := c.client.NewSession()
-	if err != nil {
-		return "", fmt.Errorf("failed to create session: %v", err)
+	// 检查命令是否被限制
+	cmdName := strings.Fields(cmd)[0]
+	if restrictedCommands[cmdName] {
+		log.Printf("Command execution denied: %s (restricted command)", cmd)
+		return "", fmt.Errorf("command not allowed: %s", cmdName)
 	}
-	defer session.Close()
 
+	// 记录命令执行
+	log.Printf("Executing command: %s (user: %s)", cmd, c.username)
+
+	// 执行命令
 	var stdout, stderr bytes.Buffer
-	session.Stdout = &stdout
-	session.Stderr = &stderr
+	cmdObj := exec.Command("cmd", "/C", cmd) // Windows系统
+	// cmdObj := exec.Command("sh", "-c", cmd) // Linux系统
+	cmdObj.Stdout = &stdout
+	cmdObj.Stderr = &stderr
 
-	err = session.Run(cmd)
+	err := cmdObj.Run()
+	exitCode := 0
 	if err != nil {
-		return "", fmt.Errorf("command execution failed: %v, stderr: %s", err, stderr.String())
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return "", fmt.Errorf("failed to execute command: %v", err)
+		}
 	}
 
-	return stdout.String(), nil
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		output += stderr.String()
+	}
+
+	// 记录命令执行结果
+	commandLog := &CommandLog{
+		Command:   cmd,
+		Username:  c.username,
+		Timestamp: time.Now(),
+		ExitCode:  exitCode,
+		Output:    output,
+		IsAllowed: true,
+	}
+
+	// 打印命令日志
+	log.Printf("Command executed: %+v", commandLog)
+
+	return output, nil
 }
 
-// Close 关闭SSH连接
+// Close 关闭SSH连接（模拟）
 func (c *SSHClient) Close() error {
-	if c.client != nil {
-		log.Printf("Closing SSH connection")
-		return c.client.Close()
-	}
+	log.Printf("SSH connection closed (simulated) for user: %s", c.username)
 	return nil
+}
+
+// AddRestrictedCommand 添加被限制的命令
+func AddRestrictedCommand(cmd string) {
+	restrictedCommands[cmd] = true
+}
+
+// RemoveRestrictedCommand 移除被限制的命令
+func RemoveRestrictedCommand(cmd string) {
+	delete(restrictedCommands, cmd)
+}
+
+// IsCommandRestricted 检查命令是否被限制
+func IsCommandRestricted(cmd string) bool {
+	cmdName := strings.Fields(cmd)[0]
+	return restrictedCommands[cmdName]
 }

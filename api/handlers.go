@@ -19,7 +19,12 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -427,10 +432,21 @@ func (s *Server) handleDeleteVM(w http.ResponseWriter, r *http.Request) {
 
 // handleSSHConnect 处理SSH连接请求
 func (s *Server) handleSSHConnect(w http.ResponseWriter, r *http.Request) {
-	var sshConfig vm.SSHConfig
-	if err := json.NewDecoder(r.Body).Decode(&sshConfig); err != nil {
+	type SSHConnectRequest struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	var req SSHConnectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// 创建SSH客户端配置
+	sshConfig := vm.SSHConfig{
+		Username: req.Username,
+		Password: req.Password,
 	}
 
 	// 创建SSH客户端
@@ -441,7 +457,7 @@ func (s *Server) handleSSHConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 建立连接
-	if err := sshClient.Connect(sshConfig.Host, sshConfig.Port); err != nil {
+	if err := sshClient.Connect("localhost", 22); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -453,8 +469,7 @@ func (s *Server) handleSSHConnect(w http.ResponseWriter, r *http.Request) {
 // handleSSHExecute 处理SSH命令执行请求
 func (s *Server) handleSSHExecute(w http.ResponseWriter, r *http.Request) {
 	type SSHExecuteRequest struct {
-		SSHConfig vm.SSHConfig `json:"ssh_config"`
-		Command   string       `json:"command"`
+		Command string `json:"command"`
 	}
 
 	var req SSHExecuteRequest
@@ -463,15 +478,20 @@ func (s *Server) handleSSHExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 创建SSH客户端配置（使用默认用户名）
+	sshConfig := vm.SSHConfig{
+		Username: "root", // 这里可以从会话或认证信息中获取实际用户名
+	}
+
 	// 创建SSH客户端
-	sshClient, err := vm.NewSSHClient(&req.SSHConfig)
+	sshClient, err := vm.NewSSHClient(&sshConfig)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	// 建立连接
-	if err := sshClient.Connect(req.SSHConfig.Host, req.SSHConfig.Port); err != nil {
+	if err := sshClient.Connect("localhost", 22); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -491,37 +511,45 @@ func (s *Server) handleSSHExecute(w http.ResponseWriter, r *http.Request) {
 
 // handleFileUpload 处理文件上传请求
 func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
-	type FileUploadRequest struct {
-		SSHConfig  vm.SSHConfig `json:"ssh_config"`
-		LocalPath  string       `json:"local_path"`
-		RemotePath string       `json:"remote_path"`
-	}
-
-	var req FileUploadRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// 解析multipart/form-data请求
+	err := r.ParseMultipartForm(10 << 20) // 10MB大小限制
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// 创建SSH客户端
-	sshClient, err := vm.NewSSHClient(&req.SSHConfig)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	// 获取目标路径
+	targetPath := r.FormValue("target_path")
+	if targetPath == "" {
+		writeError(w, http.StatusBadRequest, "target_path is required")
 		return
 	}
 
-	// 建立连接
-	if err := sshClient.Connect(req.SSHConfig.Host, req.SSHConfig.Port); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	// 在Windows系统上，确保路径格式正确
+	if runtime.GOOS == "windows" {
+		// 直接检查是否以/tmp/开头，这样可以避免转义问题
+		if strings.HasPrefix(targetPath, "/tmp/") {
+			tmpDir := os.TempDir()
+			targetPath = filepath.Join(tmpDir, filepath.Base(targetPath))
+		} else {
+			// 替换正斜杠为反斜杠
+			targetPath = strings.ReplaceAll(targetPath, "/", "\\")
+		}
+	}
+
+	// 获取上传的文件
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	defer sshClient.Close()
+	defer file.Close()
 
 	// 创建文件管理器
-	fileManager := vm.NewFileManager(sshClient)
+	fileManager := vm.NewFileManager()
 
 	// 上传文件
-	if err := fileManager.UploadFile(req.LocalPath, req.RemotePath); err != nil {
+	if err := fileManager.UploadFileFromReader(file, targetPath); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -532,9 +560,7 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 // handleFileDownload 处理文件下载请求
 func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
 	type FileDownloadRequest struct {
-		SSHConfig  vm.SSHConfig `json:"ssh_config"`
-		RemotePath string       `json:"remote_path"`
-		LocalPath  string       `json:"local_path"`
+		SourcePath string `json:"source_path"`
 	}
 
 	var req FileDownloadRequest
@@ -543,37 +569,50 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 创建SSH客户端
-	sshClient, err := vm.NewSSHClient(&req.SSHConfig)
+	// 在Windows系统上，确保路径格式正确
+	if runtime.GOOS == "windows" {
+		// 直接检查是否以/tmp/开头，这样可以避免转义问题
+		if strings.HasPrefix(req.SourcePath, "/tmp/") {
+			tmpDir := os.TempDir()
+			log.Printf("Original path: %s, Temp dir: %s, Filename: %s", req.SourcePath, tmpDir, filepath.Base(req.SourcePath))
+			req.SourcePath = filepath.Join(tmpDir, filepath.Base(req.SourcePath))
+			log.Printf("Converted path: %s", req.SourcePath)
+		} else {
+			// 替换正斜杠为反斜杠
+			req.SourcePath = strings.ReplaceAll(req.SourcePath, "/", "\\")
+		}
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(req.SourcePath); os.IsNotExist(err) {
+		log.Printf("File not found at path: %s", req.SourcePath)
+		writeError(w, http.StatusNotFound, "File not found")
+		return
+	}
+
+	// 设置响应头
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(req.SourcePath)))
+	w.Header().Set("Content-Type", "application/octet-stream")
+
+	// 打开文件并写入响应
+	sourceFile, err := os.Open(req.SourcePath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	defer sourceFile.Close()
 
-	// 建立连接
-	if err := sshClient.Connect(req.SSHConfig.Host, req.SSHConfig.Port); err != nil {
+	// 传输文件内容
+	if _, err := io.Copy(w, sourceFile); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	defer sshClient.Close()
-
-	// 创建文件管理器
-	fileManager := vm.NewFileManager(sshClient)
-
-	// 下载文件
-	if err := fileManager.DownloadFile(req.RemotePath, req.LocalPath); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"message": "File downloaded successfully"})
 }
 
 // handleFileList 处理列出文件的请求
 func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
 	type FileListRequest struct {
-		SSHConfig  vm.SSHConfig `json:"ssh_config"`
-		RemotePath string       `json:"remote_path"`
+		Path string `json:"path"`
 	}
 
 	var req FileListRequest
@@ -582,25 +621,11 @@ func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 创建SSH客户端
-	sshClient, err := vm.NewSSHClient(&req.SSHConfig)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// 建立连接
-	if err := sshClient.Connect(req.SSHConfig.Host, req.SSHConfig.Port); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	defer sshClient.Close()
-
 	// 创建文件管理器
-	fileManager := vm.NewFileManager(sshClient)
+	fileManager := vm.NewFileManager()
 
 	// 获取文件列表
-	files, err := fileManager.ListFiles(req.RemotePath)
+	files, err := fileManager.ListFiles(req.Path)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

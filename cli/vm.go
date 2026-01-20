@@ -18,7 +18,7 @@ package cli
 
 import (
 	"fmt"
-	"github.com/casuallc/vigil/api"
+
 	"github.com/spf13/cobra"
 )
 
@@ -113,24 +113,21 @@ func (c *CLI) setupVMGetCommand() *cobra.Command {
 }
 
 // setupVMSSHCommand 设置vm ssh命令
+// setupVMSSHCommand 设置vm ssh命令
 func (c *CLI) setupVMSSHCommand() *cobra.Command {
-	var username, password, keyPath string
-	var port int
+	var username, password string
 
 	sshCmd := &cobra.Command{
-		Use:   "ssh [name]",
-		Short: "SSH into a VM",
-		Long:  "SSH into a virtual machine",
-		Args:  cobra.ExactArgs(1),
+		Use:   "ssh",
+		Short: "SSH into VM",
+		Long:  "SSH into virtual machine",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleVMSSH(args[0], username, password, keyPath, port)
+			return c.handleVMSSH(username, password)
 		},
 	}
 
-	sshCmd.Flags().StringVarP(&username, "username", "u", "root", "SSH username")
-	sshCmd.Flags().StringVarP(&password, "password", "p", "", "SSH password")
-	sshCmd.Flags().StringVarP(&keyPath, "key", "k", "", "SSH private key path")
-	sshCmd.Flags().IntVarP(&port, "port", "P", 22, "SSH port")
+	sshCmd.Flags().StringVarP(&username, "username", "u", "root", "Username for SSH connection")
+	sshCmd.Flags().StringVarP(&password, "password", "p", "", "Password for SSH connection")
 
 	return sshCmd
 }
@@ -152,84 +149,62 @@ func (c *CLI) setupVMFileCommand() *cobra.Command {
 
 // setupVMFileUploadCommand 设置vm file upload命令
 func (c *CLI) setupVMFileUploadCommand() *cobra.Command {
-	var vmName, localPath, remotePath, username, password, keyPath string
-	var port int
+	var sourcePath, targetPath string
 
 	uploadCmd := &cobra.Command{
 		Use:   "upload",
-		Short: "Upload a file to a VM",
-		Long:  "Upload a local file to a virtual machine",
+		Short: "Upload a file to VM",
+		Long:  "Upload a local file to VM",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleVMFileUpload(vmName, localPath, remotePath, username, password, keyPath, port)
+			return c.handleVMFileUpload(sourcePath, targetPath)
 		},
 	}
 
-	uploadCmd.Flags().StringVarP(&vmName, "vm", "n", "", "VM name")
-	uploadCmd.Flags().StringVarP(&localPath, "local", "l", "", "Local file path")
-	uploadCmd.Flags().StringVarP(&remotePath, "remote", "r", "", "Remote file path")
-	uploadCmd.Flags().StringVarP(&username, "username", "u", "root", "SSH username")
-	uploadCmd.Flags().StringVarP(&password, "password", "p", "", "SSH password")
-	uploadCmd.Flags().StringVarP(&keyPath, "key", "k", "", "SSH private key path")
-	uploadCmd.Flags().IntVarP(&port, "port", "P", 22, "SSH port")
+	uploadCmd.Flags().StringVarP(&sourcePath, "source", "s", "", "Source file path")
+	uploadCmd.Flags().StringVarP(&targetPath, "target", "t", "", "Target file path")
 
-	uploadCmd.MarkFlagRequired("vm")
-	uploadCmd.MarkFlagRequired("local")
-	uploadCmd.MarkFlagRequired("remote")
+	uploadCmd.MarkFlagRequired("source")
+	uploadCmd.MarkFlagRequired("target")
 
 	return uploadCmd
 }
 
 // setupVMFileDownloadCommand 设置vm file download命令
 func (c *CLI) setupVMFileDownloadCommand() *cobra.Command {
-	var vmName, localPath, remotePath, username, password, keyPath string
-	var port int
+	var sourcePath, targetPath string
 
 	downloadCmd := &cobra.Command{
 		Use:   "download",
-		Short: "Download a file from a VM",
-		Long:  "Download a file from a virtual machine to local",
+		Short: "Download a file from VM",
+		Long:  "Download a file from VM to local",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleVMFileDownload(vmName, remotePath, localPath, username, password, keyPath, port)
+			return c.handleVMFileDownload(sourcePath, targetPath)
 		},
 	}
 
-	downloadCmd.Flags().StringVarP(&vmName, "vm", "n", "", "VM name")
-	downloadCmd.Flags().StringVarP(&remotePath, "remote", "r", "", "Remote file path")
-	downloadCmd.Flags().StringVarP(&localPath, "local", "l", "", "Local file path")
-	downloadCmd.Flags().StringVarP(&username, "username", "u", "root", "SSH username")
-	downloadCmd.Flags().StringVarP(&password, "password", "p", "", "SSH password")
-	downloadCmd.Flags().StringVarP(&keyPath, "key", "k", "", "SSH private key path")
-	downloadCmd.Flags().IntVarP(&port, "port", "P", 22, "SSH port")
+	downloadCmd.Flags().StringVarP(&sourcePath, "source", "s", "", "Source file path on VM")
+	downloadCmd.Flags().StringVarP(&targetPath, "target", "t", "", "Target file path")
 
-	downloadCmd.MarkFlagRequired("vm")
-	downloadCmd.MarkFlagRequired("remote")
-	downloadCmd.MarkFlagRequired("local")
+	downloadCmd.MarkFlagRequired("source")
+	downloadCmd.MarkFlagRequired("target")
 
 	return downloadCmd
 }
 
 // setupVMFileListCommand 设置vm file list命令
 func (c *CLI) setupVMFileListCommand() *cobra.Command {
-	var vmName, remotePath, username, password, keyPath string
-	var port int
+	var path string
 
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List files on a VM",
-		Long:  "List files in a directory on a virtual machine",
+		Short: "List files on VM",
+		Long:  "List files in a directory on VM",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleVMFileList(vmName, remotePath, username, password, keyPath, port)
+			return c.handleVMFileList(path)
 		},
 	}
 
-	listCmd.Flags().StringVarP(&vmName, "vm", "n", "", "VM name")
-	listCmd.Flags().StringVarP(&remotePath, "path", "p", "/", "Remote directory path")
-	listCmd.Flags().StringVarP(&username, "username", "u", "root", "SSH username")
-	listCmd.Flags().StringVarP(&password, "password", "P", "", "SSH password")
-	listCmd.Flags().StringVarP(&keyPath, "key", "k", "", "SSH private key path")
-	listCmd.Flags().IntVarP(&port, "port", "o", 22, "SSH port")
-
-	listCmd.MarkFlagRequired("vm")
+	listCmd.Flags().StringVarP(&path, "path", "p", "/", "Directory path on VM")
 
 	return listCmd
 }
@@ -407,66 +382,42 @@ func (c *CLI) handleVMDelete(name string) error {
 }
 
 // handleVMSSH 处理vm ssh命令
-func (c *CLI) handleVMSSH(vmName, username, password, keyPath string, port int) error {
-	// 获取VM
-	vm, err := c.client.GetVM(vmName)
-	if err != nil {
-		return fmt.Errorf("failed to get VM: %v", err)
-	}
-
+func (c *CLI) handleVMSSH(username, password string) error {
 	// 连接SSH
-	if err := c.client.SSHConnect(vm.IP, vm.Port, username, password, keyPath); err != nil {
+	if err := c.client.SSHConnect(username, password); err != nil {
 		return fmt.Errorf("failed to connect to VM: %v", err)
 	}
 
-	fmt.Printf("SSH connected to %s (%s)\n", vm.Name, vm.IP)
+	fmt.Printf("SSH connected\n")
 	return nil
 }
 
 // handleVMFileUpload 处理vm file upload命令
-func (c *CLI) handleVMFileUpload(vmName, localPath, remotePath, username, password, keyPath string, port int) error {
-	// 获取VM
-	vm, err := c.client.GetVM(vmName)
-	if err != nil {
-		return fmt.Errorf("failed to get VM: %v", err)
-	}
-
+func (c *CLI) handleVMFileUpload(sourcePath, targetPath string) error {
 	// 上传文件
-	if err := c.client.FileUpload(vm.IP, vm.Port, username, password, keyPath, localPath, remotePath); err != nil {
+	if err := c.client.FileUpload(sourcePath, targetPath); err != nil {
 		return fmt.Errorf("failed to upload file: %v", err)
 	}
 
-	fmt.Printf("File uploaded successfully: %s -> %s\n", localPath, remotePath)
+	fmt.Printf("File uploaded successfully: %s -> %s\n", sourcePath, targetPath)
 	return nil
 }
 
 // handleVMFileDownload 处理vm file download命令
-func (c *CLI) handleVMFileDownload(vmName, remotePath, localPath, username, password, keyPath string, port int) error {
-	// 获取VM
-	vm, err := c.client.GetVM(vmName)
-	if err != nil {
-		return fmt.Errorf("failed to get VM: %v", err)
-	}
-
+func (c *CLI) handleVMFileDownload(sourcePath, targetPath string) error {
 	// 下载文件
-	if err := c.client.FileDownload(vm.IP, vm.Port, username, password, keyPath, remotePath, localPath); err != nil {
+	if err := c.client.FileDownload(sourcePath, targetPath); err != nil {
 		return fmt.Errorf("failed to download file: %v", err)
 	}
 
-	fmt.Printf("File downloaded successfully: %s -> %s\n", remotePath, localPath)
+	fmt.Printf("File downloaded successfully: %s -> %s\n", sourcePath, targetPath)
 	return nil
 }
 
 // handleVMFileList 处理vm file list命令
-func (c *CLI) handleVMFileList(vmName, remotePath, username, password, keyPath string, port int) error {
-	// 获取VM
-	vm, err := c.client.GetVM(vmName)
-	if err != nil {
-		return fmt.Errorf("failed to get VM: %v", err)
-	}
-
+func (c *CLI) handleVMFileList(path string) error {
 	// 获取文件列表
-	files, err := c.client.FileList(vm.IP, vm.Port, username, password, keyPath, remotePath)
+	files, err := c.client.FileList(path)
 	if err != nil {
 		return fmt.Errorf("failed to list files: %v", err)
 	}
