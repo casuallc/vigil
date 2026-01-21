@@ -940,7 +940,7 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		// 将输出写入WebSocket
 		for output := range outputChan {
-			if err := conn.WriteMessage(websocket.TextMessage, output); err != nil {
+			if err := conn.WriteMessage(websocket.BinaryMessage, output); err != nil {
 				log.Printf("WebSocket write error: %v", err)
 				return
 			}
