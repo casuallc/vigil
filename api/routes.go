@@ -61,6 +61,8 @@ func (s *Server) Router() *mux.Router {
 	// SSH endpoints
 	r.HandleFunc("/api/vms/ssh/connect", s.handleSSHConnect).Methods("POST")
 	r.HandleFunc("/api/vms/ssh/execute", s.handleSSHExecute).Methods("POST")
+	// WebSocket SSH endpoint
+	r.HandleFunc("/api/vms/ssh/ws", s.handleSSHWebSocket)
 
 	// File Management endpoints
 	r.HandleFunc("/api/vms/file/upload", s.handleFileUpload).Methods("POST")

@@ -35,6 +35,8 @@ import (
 	"github.com/casuallc/vigil/proc"
 	"github.com/casuallc/vigil/vm"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/ssh"
 )
 
 // 以下是所有的处理函数实现（保持不变）
@@ -433,7 +435,7 @@ func (s *Server) handleDeleteVM(w http.ResponseWriter, r *http.Request) {
 // handleSSHConnect 处理SSH连接请求
 func (s *Server) handleSSHConnect(w http.ResponseWriter, r *http.Request) {
 	type SSHConnectRequest struct {
-		Username string `json:"username"`
+		VMName   string `json:"vm_name"`
 		Password string `json:"password"`
 	}
 
@@ -443,21 +445,30 @@ func (s *Server) handleSSHConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 获取指定的VM
+	targetVM, err := s.vmManager.GetVM(req.VMName)
+	if err != nil {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("VM not found: %v", err))
+		return
+	}
+
 	// 创建SSH客户端配置
-	sshConfig := vm.SSHConfig{
-		Username: req.Username,
+	sshConfig := &vm.SSHConfig{
+		Host:     targetVM.IP,
+		Port:     targetVM.Port,
+		Username: targetVM.Username,
 		Password: req.Password,
 	}
 
 	// 创建SSH客户端
-	sshClient, err := vm.NewSSHClient(&sshConfig)
+	sshClient, err := vm.NewSSHClient(sshConfig)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// 建立连接
-	if err := sshClient.Connect("localhost", 22); err != nil {
+	// 建立连接到目标VM
+	if err := sshClient.Connect(targetVM.IP, targetVM.Port); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -469,6 +480,7 @@ func (s *Server) handleSSHConnect(w http.ResponseWriter, r *http.Request) {
 // handleSSHExecute 处理SSH命令执行请求
 func (s *Server) handleSSHExecute(w http.ResponseWriter, r *http.Request) {
 	type SSHExecuteRequest struct {
+		VMName  string `json:"vm_name"`
 		Command string `json:"command"`
 	}
 
@@ -478,20 +490,32 @@ func (s *Server) handleSSHExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 创建SSH客户端配置（使用默认用户名）
-	sshConfig := vm.SSHConfig{
-		Username: "root", // 这里可以从会话或认证信息中获取实际用户名
+	// 获取指定的VM
+	targetVM, err := s.vmManager.GetVM(req.VMName)
+	if err != nil {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("VM not found: %v", err))
+		return
+	}
+
+	// 创建SSH客户端配置
+	sshConfig := &vm.SSHConfig{
+		Host:     targetVM.IP,
+		Port:     targetVM.Port,
+		Username: targetVM.Username,
+		// 注意：VM对象中没有存储密码，这里需要从请求中获取密码
+		// 或者在实际应用中，密码应该通过安全的方式存储和获取
+		Password: "", // 暂时留空，实际应用中需要修改
 	}
 
 	// 创建SSH客户端
-	sshClient, err := vm.NewSSHClient(&sshConfig)
+	sshClient, err := vm.NewSSHClient(sshConfig)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// 建立连接
-	if err := sshClient.Connect("localhost", 22); err != nil {
+	// 建立连接到目标VM
+	if err := sshClient.Connect(targetVM.IP, targetVM.Port); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -713,4 +737,221 @@ func (s *Server) handleCheckPermission(w http.ResponseWriter, r *http.Request) {
 		req.VMName, req.Username, req.Permission)
 
 	writeJSON(w, http.StatusOK, map[string]bool{"has_permission": hasPermission})
+}
+
+// WebSocket SSH相关
+
+// websocket升级器配置
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	// 允许所有跨域请求（生产环境中应该限制）
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+// handleSSHWebSocket 处理WebSocket SSH连接请求
+func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
+	// 解析查询参数
+	vmName := r.URL.Query().Get("vm_name")
+	password := r.URL.Query().Get("password")
+
+	if vmName == "" {
+		writeError(w, http.StatusBadRequest, "vm_name parameter is required")
+		return
+	}
+
+	// 获取指定的VM
+	targetVM, err := s.vmManager.GetVM(vmName)
+	if err != nil {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("VM not found: %v", err))
+		return
+	}
+
+	// 创建SSH客户端配置
+	sshConfig := &vm.SSHConfig{
+		Host:     targetVM.IP,
+		Port:     targetVM.Port,
+		Username: targetVM.Username,
+		Password: password,
+	}
+
+	// 创建SSH客户端
+	sshClient, err := vm.NewSSHClient(sshConfig)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// 建立连接到目标VM
+	if err := sshClient.Connect(targetVM.IP, targetVM.Port); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// 升级HTTP连接为WebSocket连接
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		sshClient.Close()
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	// 创建SSH会话
+	session, err := sshClient.CreateSession()
+	if err != nil {
+		log.Printf("Failed to create SSH session: %v", err)
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v", err)))
+		return
+	}
+	defer session.Close()
+
+	// 获取会话的输入输出管道
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		log.Printf("Failed to get stdin pipe: %v", err)
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v", err)))
+		return
+	}
+
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		log.Printf("Failed to get stdout pipe: %v", err)
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v", err)))
+		return
+	}
+
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		log.Printf("Failed to get stderr pipe: %v", err)
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v", err)))
+		return
+	}
+
+	// 配置SSH会话的伪终端
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,     // 启用回显
+		ssh.TTY_OP_ISPEED: 14400, // 输入速度
+		ssh.TTY_OP_OSPEED: 14400, // 输出速度
+	}
+
+	err = session.RequestPty("xterm-256color", 80, 24, modes)
+	if err != nil {
+		log.Printf("Failed to request PTY: %v", err)
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v", err)))
+		return
+	}
+
+	// 启动Shell
+	if err := session.Shell(); err != nil {
+		log.Printf("Failed to start shell: %v", err)
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v", err)))
+		return
+	}
+
+	// 设置通道关闭通知
+	done := make(chan bool)
+
+	// 从WebSocket读取数据并写入SSH会话
+	go func() {
+		defer func() {
+			done <- true
+		}()
+
+		for {
+			messageType, p, err := conn.ReadMessage()
+			if err != nil {
+				log.Printf("WebSocket read error: %v", err)
+				return
+			}
+
+			if messageType == websocket.TextMessage {
+				// 如果是窗口大小调整消息
+				if strings.HasPrefix(string(p), "resize:") {
+					// 解析窗口大小
+					var resizeData struct {
+						Cols int `json:"cols"`
+						Rows int `json:"rows"`
+					}
+					if err := json.Unmarshal(p[7:], &resizeData); err != nil {
+						log.Printf("Failed to parse resize data: %v", err)
+						continue
+					}
+					// 调整伪终端大小
+					if err := session.WindowChange(resizeData.Rows, resizeData.Cols); err != nil {
+						log.Printf("Failed to change window size: %v", err)
+					}
+					continue
+				}
+
+				// 否则写入SSH会话
+				if _, err := stdin.Write(p); err != nil {
+					log.Printf("Failed to write to SSH session: %v", err)
+					return
+				}
+			}
+		}
+	}()
+
+	// 从SSH会话读取数据并写入WebSocket
+	go func() {
+		defer func() {
+			done <- true
+		}()
+
+		outputChan := make(chan []byte, 100)
+
+		// 读取标准输出
+		go func() {
+			buffer := make([]byte, 1024)
+			for {
+				n, err := stdout.Read(buffer)
+				if err != nil {
+					if err != io.EOF {
+						log.Printf("SSH stdout read error: %v", err)
+					}
+					close(outputChan)
+					return
+				}
+				if n > 0 {
+					outputChan <- buffer[:n]
+				}
+			}
+		}()
+
+		// 读取标准错误
+		go func() {
+			buffer := make([]byte, 1024)
+			for {
+				n, err := stderr.Read(buffer)
+				if err != nil {
+					if err != io.EOF {
+						log.Printf("SSH stderr read error: %v", err)
+					}
+					return
+				}
+				if n > 0 {
+					outputChan <- buffer[:n]
+				}
+			}
+		}()
+
+		// 将输出写入WebSocket
+		for output := range outputChan {
+			if err := conn.WriteMessage(websocket.TextMessage, output); err != nil {
+				log.Printf("WebSocket write error: %v", err)
+				return
+			}
+		}
+	}()
+
+	// 等待任一通道完成
+	<-done
+
+	// 等待SSH会话完成
+	session.Wait()
+
+	log.Printf("WebSocket SSH session closed for VM %s", vmName)
 }

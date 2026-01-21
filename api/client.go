@@ -18,6 +18,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,6 +34,7 @@ import (
 	"github.com/casuallc/vigil/inspection"
 	"github.com/casuallc/vigil/proc"
 	"github.com/casuallc/vigil/vm"
+	"github.com/gorilla/websocket"
 )
 
 // Client represents the HTTP client for the Vigil API
@@ -540,10 +542,9 @@ func (c *Client) DeleteVM(name string) error {
 }
 
 // SSHConnect SSH连接到VM
-// SSHConnect SSH连接到VM
-func (c *Client) SSHConnect(username, password string) error {
+func (c *Client) SSHConnect(vmName, password string) error {
 	reqBody := map[string]interface{}{
-		"username": username,
+		"vm_name":  vmName,
 		"password": password,
 	}
 
@@ -560,8 +561,9 @@ func (c *Client) SSHConnect(username, password string) error {
 }
 
 // SSHExecute 在VM上执行SSH命令
-func (c *Client) SSHExecute(command string) (string, error) {
+func (c *Client) SSHExecute(vmName, command string) (string, error) {
 	reqBody := map[string]interface{}{
+		"vm_name": vmName,
 		"command": command,
 	}
 
@@ -805,4 +807,40 @@ func (c *Client) CheckPermission(vmName, username, permission string) (bool, err
 	}
 
 	return result["has_permission"], nil
+}
+
+// SSHWebSocket 建立WebSocket SSH连接
+func (c *Client) SSHWebSocket(vmName, password string) (*websocket.Conn, error) {
+	// 构建WebSocket URL
+	wsScheme := "ws"
+	if strings.HasPrefix(c.baseURL, "https://") {
+		wsScheme = "wss"
+	}
+
+	// 构建基础URL（去掉http://或https://）
+	baseURL := strings.TrimPrefix(c.baseURL, "http://")
+	baseURL = strings.TrimPrefix(baseURL, "https://")
+
+	// 构建完整的WebSocket URL
+	wsURL := fmt.Sprintf("%s://%s/api/vms/ssh/ws?vm_name=%s&password=%s",
+		wsScheme, baseURL, url.QueryEscape(vmName), url.QueryEscape(password))
+
+	// 构建HTTP头部
+	headers := http.Header{}
+
+	// 如果已配置 Basic Auth，则添加到HTTP头部
+	if c.basicUser != "" && c.basicPass != "" {
+		// 手动构建BasicAuth头
+		auth := c.basicUser + ":" + c.basicPass
+		encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
+		headers.Add("Authorization", "Basic "+encodedAuth)
+	}
+
+	// 建立WebSocket连接
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to WebSocket SSH endpoint: %v", err)
+	}
+
+	return conn, nil
 }

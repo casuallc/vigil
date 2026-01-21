@@ -20,15 +20,21 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"os/exec"
+	"net"
+	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
-// SSHClient 表示模拟的SSH客户端
+// SSHClient 表示真正的SSH客户端
 type SSHClient struct {
 	username   string
+	client     *ssh.Client
+	config     *ssh.ClientConfig
 	authorized bool
+	session    *ssh.Session
 }
 
 // CommandLog 表示命令执行日志
@@ -50,32 +56,69 @@ var restrictedCommands = map[string]bool{
 // NewSSHClient 创建一个新的SSH客户端
 func NewSSHClient(config *SSHConfig) (*SSHClient, error) {
 	// 这里可以添加用户认证逻辑
-	// 由于是模拟SSH，暂时只检查用户名
 	if config.Username == "" {
 		return nil, fmt.Errorf("username must be provided")
 	}
 
+	// 创建SSH客户端配置
+	sshConfig := &ssh.ClientConfig{
+		User: config.Username,
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			// 忽略主机密钥验证（生产环境中应该验证）
+			return nil
+		},
+	}
+
+	// 添加认证方式
+	if config.Password != "" {
+		sshConfig.Auth = append(sshConfig.Auth, ssh.Password(config.Password))
+	}
+
+	if config.KeyPath != "" {
+		// 支持私钥认证
+		// 读取私钥文件内容
+		privateKeyBytes, err := os.ReadFile(config.KeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read private key file: %v", err)
+		}
+
+		// 解析私钥
+		privateKey, err := ssh.ParsePrivateKey(privateKeyBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse private key: %v", err)
+		}
+		sshConfig.Auth = append(sshConfig.Auth, ssh.PublicKeys(privateKey))
+	}
+
 	return &SSHClient{
 		username:   config.Username,
+		config:     sshConfig,
 		authorized: true,
 	}, nil
 }
 
-// Connect 建立SSH连接（模拟）
+// Connect 建立SSH连接
 func (c *SSHClient) Connect(host string, port int) error {
-	// 模拟SSH连接，实际不需要建立网络连接
 	if !c.authorized {
 		return fmt.Errorf("unauthorized user")
 	}
 
-	log.Printf("SSH connected (simulated) as user: %s", c.username)
+	// 建立SSH连接
+	addr := fmt.Sprintf("%s:%d", host, port)
+	client, err := ssh.Dial("tcp", addr, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to connect to %s: %v", addr, err)
+	}
+
+	c.client = client
+	log.Printf("SSH connected to %s as user: %s", addr, c.username)
 	return nil
 }
 
-// ExecuteCommand 执行命令（直接在本地执行）
+// ExecuteCommand 执行命令（通过SSH连接）
 func (c *SSHClient) ExecuteCommand(cmd string) (string, error) {
-	if !c.authorized {
-		return "", fmt.Errorf("unauthorized user")
+	if !c.authorized || c.client == nil {
+		return "", fmt.Errorf("not connected to SSH server")
 	}
 
 	// 检查命令是否被限制
@@ -88,18 +131,23 @@ func (c *SSHClient) ExecuteCommand(cmd string) (string, error) {
 	// 记录命令执行
 	log.Printf("Executing command: %s (user: %s)", cmd, c.username)
 
+	// 创建SSH会话
+	session, err := c.client.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("failed to create SSH session: %v", err)
+	}
+	defer session.Close()
+
 	// 执行命令
 	var stdout, stderr bytes.Buffer
-	cmdObj := exec.Command("cmd", "/C", cmd) // Windows系统
-	// cmdObj := exec.Command("sh", "-c", cmd) // Linux系统
-	cmdObj.Stdout = &stdout
-	cmdObj.Stderr = &stderr
+	session.Stdout = &stdout
+	session.Stderr = &stderr
 
-	err := cmdObj.Run()
+	err = session.Run(cmd)
 	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
+		if exitErr, ok := err.(*ssh.ExitError); ok {
+			exitCode = exitErr.ExitStatus()
 		} else {
 			return "", fmt.Errorf("failed to execute command: %v", err)
 		}
@@ -126,9 +174,45 @@ func (c *SSHClient) ExecuteCommand(cmd string) (string, error) {
 	return output, nil
 }
 
-// Close 关闭SSH连接（模拟）
+// CreateSession 创建一个新的SSH会话
+func (c *SSHClient) CreateSession() (*ssh.Session, error) {
+	if !c.authorized || c.client == nil {
+		return nil, fmt.Errorf("not connected to SSH server")
+	}
+
+	// 创建SSH会话
+	session, err := c.client.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SSH session: %v", err)
+	}
+
+	c.session = session
+	return session, nil
+}
+
+// WindowChangeCallback 返回一个窗口大小变化的回调函数
+func (c *SSHClient) WindowChangeCallback() func(int, int) {
+	return func(w, h int) {
+		if c.session != nil {
+			c.session.WindowChange(h, w)
+		}
+	}
+}
+
+// Close 关闭SSH连接
 func (c *SSHClient) Close() error {
-	log.Printf("SSH connection closed (simulated) for user: %s", c.username)
+	if c.session != nil {
+		c.session.Close()
+		log.Printf("SSH session closed for user: %s", c.username)
+	}
+
+	if c.client != nil {
+		err := c.client.Close()
+		if err != nil {
+			return fmt.Errorf("failed to close SSH connection: %v", err)
+		}
+		log.Printf("SSH connection closed for user: %s", c.username)
+	}
 	return nil
 }
 

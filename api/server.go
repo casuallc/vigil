@@ -17,10 +17,13 @@ limitations under the License.
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -74,6 +77,14 @@ func (lrw *loggingResponseWriter) WriteHeader(code int) {
 func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
 	lrw.body = append(lrw.body, b...)
 	return lrw.ResponseWriter.Write(b)
+}
+
+// 实现http.Hijacker接口，以支持WebSocket
+func (lrw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hijacker, ok := lrw.ResponseWriter.(http.Hijacker); ok {
+		return hijacker.Hijack()
+	}
+	return nil, nil, fmt.Errorf("response writer does not implement http.Hijacker")
 }
 
 // LoggingMiddleware 是一个HTTP中间件，用于记录请求和响应

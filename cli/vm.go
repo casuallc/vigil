@@ -17,13 +17,15 @@ limitations under the License.
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
-	"github.com/casuallc/vigil/ssh"
 	"github.com/casuallc/vigil/vm"
+	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -43,6 +45,7 @@ func (c *CLI) setupVMCommands() *cobra.Command {
 	vmCmd.AddCommand(c.setupVMDeleteCommand())
 	vmCmd.AddCommand(c.setupVMGetCommand())
 	vmCmd.AddCommand(c.setupVMSSHCommand())
+	vmCmd.AddCommand(c.setupVMSSHExecuteCommand())
 	vmCmd.AddCommand(c.setupVMFileCommand())
 	vmCmd.AddCommand(c.setupVMPermissionCommand())
 
@@ -130,6 +133,23 @@ func (c *CLI) setupVMSSHCommand() *cobra.Command {
 	}
 
 	return sshCmd
+}
+
+// setupVMSSHExecuteCommand 设置vm ssh-execute命令
+func (c *CLI) setupVMSSHExecuteCommand() *cobra.Command {
+	sshExecuteCmd := &cobra.Command{
+		Use:   "ssh-execute <vm-name> <command>",
+		Short: "Execute SSH command on VM",
+		Long:  "Execute SSH command on a specific VM",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vmName := args[0]
+			command := args[1]
+			return c.handleVMSSHExecute(vmName, command)
+		},
+	}
+
+	return sshExecuteCmd
 }
 
 // setupVMFileCommand 设置vm file命令组
@@ -419,16 +439,6 @@ func (c *CLI) handleVMSSH() error {
 	// 获取选中的VM
 	selectedVM := vms[selection-1]
 
-	// 连接到目标VM
-	fmt.Printf("Connecting to %s@%s:%d...\n", selectedVM.Username, selectedVM.IP, selectedVM.Port)
-
-	// 使用ssh包创建SSH客户端并连接
-	sshConfig := ssh.ClientConfig{
-		Username:   selectedVM.Username,
-		Password:   "", // 我们需要从用户输入获取密码
-		PrivateKey: "",
-	}
-
 	// 提示用户输入密码
 	fmt.Printf("Password for %s@%s: ", selectedVM.Username, selectedVM.IP)
 
@@ -439,44 +449,86 @@ func (c *CLI) handleVMSSH() error {
 	}
 	fmt.Printf("\n")
 
-	sshConfig.Password = password
-
-	// 创建SSH客户端
-	client, err := ssh.NewClient(selectedVM.IP, selectedVM.Port, &sshConfig)
+	// 建立WebSocket SSH连接
+	conn, err := c.client.SSHWebSocket(selectedVM.Name, password)
 	if err != nil {
-		return fmt.Errorf("failed to connect to %s@%s:%d: %v", selectedVM.Username, selectedVM.IP, selectedVM.Port, err)
+		return fmt.Errorf("failed to establish WebSocket SSH connection: %v", err)
 	}
-	defer client.Close()
+	defer conn.Close()
 
-	// 创建会话
-	session, err := client.CreateSession()
+	// 设置终端为原始模式
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		return fmt.Errorf("failed to create SSH session: %v", err)
+		return fmt.Errorf("failed to set terminal to raw mode: %v", err)
 	}
-	defer session.Close()
+	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
-	// 设置IO重定向
-	session.SetStdin(os.Stdin)
-	session.SetStdout(os.Stdout)
-	session.SetStderr(os.Stderr)
-
-	// 请求PTY
-	err = session.Pty("xterm-256color", 80, 40, 0, 0)
+	// 获取当前终端大小
+	w, h, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
-		return fmt.Errorf("failed to request PTY: %v", err)
+		return fmt.Errorf("failed to get terminal size: %v", err)
 	}
 
-	// 启动shell
-	err = session.Shell()
+	// 发送窗口大小调整消息
+	resizeMsg := map[string]int{"cols": w, "rows": h}
+	resizeJSON, _ := json.Marshal(resizeMsg)
+	conn.WriteMessage(websocket.TextMessage, []byte("resize:"+string(resizeJSON)))
+
+	// 启动协程处理终端大小变化
+	go func() {
+		for {
+			w, h, err := term.GetSize(int(os.Stdout.Fd()))
+			if err != nil {
+				continue
+			}
+			resizeMsg := map[string]int{"cols": w, "rows": h}
+			resizeJSON, _ := json.Marshal(resizeMsg)
+			conn.WriteMessage(websocket.TextMessage, []byte("resize:"+string(resizeJSON)))
+			// 在Windows上，我们简单地休眠一段时间后再次检查
+			// 在Unix/Linux上，我们可以使用SIGWINCH信号
+			// 这里我们使用一个通用的方法，每100毫秒检查一次
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
+	// 启动协程处理WebSocket消息
+	go func() {
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			// 输出WebSocket消息到终端
+			os.Stdout.Write(message)
+		}
+	}()
+
+	// 从终端读取输入并发送到WebSocket
+	buffer := make([]byte, 1024)
+	for {
+		n, err := os.Stdin.Read(buffer)
+		if err != nil {
+			return fmt.Errorf("failed to read from terminal: %v", err)
+		}
+		if n > 0 {
+			err := conn.WriteMessage(websocket.TextMessage, buffer[:n])
+			if err != nil {
+				return fmt.Errorf("failed to write to WebSocket: %v", err)
+			}
+		}
+	}
+}
+
+// handleVMSSHExecute 处理vm ssh-execute命令
+func (c *CLI) handleVMSSHExecute(vmName, command string) error {
+	// 执行命令（通过API）
+	output, err := c.client.SSHExecute(vmName, command)
 	if err != nil {
-		return fmt.Errorf("failed to start shell: %v", err)
+		return fmt.Errorf("failed to execute command on VM %s: %v", vmName, err)
 	}
 
-	// 等待会话结束
-	err = session.Wait()
-	if err != nil {
-		return fmt.Errorf("SSH session ended with error: %v", err)
-	}
+	// 输出命令执行结果
+	fmt.Println(output)
 
 	return nil
 }
