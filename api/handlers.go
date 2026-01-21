@@ -639,18 +639,6 @@ func (s *Server) handleCheckPermission(w http.ResponseWriter, r *http.Request) {
   writeJSON(w, http.StatusOK, map[string]bool{"has_permission": hasPermission})
 }
 
-// WebSocket SSH相关
-
-// websocket升级器配置
-var upgrader = websocket.Upgrader{
-  ReadBufferSize:  1024,
-  WriteBufferSize: 1024,
-  // 允许所有跨域请求（生产环境中应该限制）
-  CheckOrigin: func(r *http.Request) bool {
-    return true
-  },
-}
-
 // handleSSHWebSocket 处理WebSocket SSH连接请求
 func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
   vmName := r.URL.Query().Get("vm_name")
@@ -685,6 +673,14 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
   defer sshClient.Close()
 
   // Upgrade WS
+  var upgrader = websocket.Upgrader{
+    ReadBufferSize:  1024,
+    WriteBufferSize: 1024,
+    // 允许所有跨域请求（生产环境中应该限制）
+    CheckOrigin: func(r *http.Request) bool {
+      return true
+    },
+  }
   ws, err := upgrader.Upgrade(w, r, nil)
   if err != nil {
     return
@@ -754,6 +750,7 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
   }()
 
   // ---------------- 输出：SSH → WS ----------------
+  // SSH → WebSocket（完全 raw）
   go func() {
     defer cancel()
 
@@ -763,11 +760,7 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
     for {
       n, err := reader.Read(buf)
       if n > 0 {
-        out, _ := json.Marshal(WSMessage{
-          Type: "output",
-          Data: buf[:n],
-        })
-        ws.WriteMessage(websocket.BinaryMessage, out)
+        ws.WriteMessage(websocket.BinaryMessage, buf[:n])
       }
       if err != nil {
         return
