@@ -1,0 +1,5 @@
+log_level: info
+monitor_rate: 5
+pid_file_path: ./../app.pid
+managed_apps: []
+encryption_key: 8FVKXDQxzgdEH8DR8wQPnCo6Ke5IwQ+CYdqdmjmi/Lk=
