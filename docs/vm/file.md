@@ -37,13 +37,13 @@
 
 ```bash
 # 上传单个文件
-./bbx-cli vm file upload my-vm --local-file /local/path/file.txt --remote-path /vm/path/
+./bbx-cli vm file upload my-vm --local-file /local/path/file.txt --remote-path /vms/path/
 
 # 上传文件并指定用户名和密钥
-./bbx-cli vm file upload my-vm --local-file /local/path/file.txt --remote-path /vm/path/ --user admin --key ~/.ssh/my-key.pem
+./bbx-cli vm file upload my-vm --local-file /local/path/file.txt --remote-path /vms/path/ --user admin --key ~/.ssh/my-key.pem
 
 # 上传大文件并调整块大小
-./bbx-cli vm file upload my-vm --local-file /local/path/large.iso --remote-path /vm/path/ --chunk-size 50M --timeout 1800s
+./bbx-cli vm file upload my-vm --local-file /local/path/large.iso --remote-path /vms/path/ --chunk-size 50M --timeout 1800s
 ```
 
 ## 2. 文件下载命令
@@ -73,13 +73,13 @@
 
 ```bash
 # 下载单个文件
-./bbx-cli vm file download my-vm --remote-file /vm/path/file.txt --local-path /local/path/
+./bbx-cli vm file download my-vm --remote-file /vms/path/file.txt --local-path /local/path/
 
 # 下载文件并指定用户名和密码
-./bbx-cli vm file download my-vm --remote-file /vm/path/file.txt --local-path /local/path/ --user admin --password pass123
+./bbx-cli vm file download my-vm --remote-file /vms/path/file.txt --local-path /local/path/ --user admin --password pass123
 
 # 下载大文件并调整超时时间
-./bbx-cli vm file download my-vm --remote-file /vm/path/large.iso --local-path /local/path/ --timeout 1800s
+./bbx-cli vm file download my-vm --remote-file /vms/path/large.iso --local-path /local/path/ --timeout 1800s
 ```
 
 ## 3. 文件列表命令
@@ -149,7 +149,7 @@ file:
 使用配置文件：
 
 ```bash
-./bbx-cli vm file upload my-vm --local-file /local/path/file.txt --remote-path /vm/path/ --config vm_file_config.yaml
+./bbx-cli vm file upload my-vm --local-file /local/path/file.txt --remote-path /vms/path/ --config vm_file_config.yaml
 ```
 
 ## 安全注意事项
@@ -158,7 +158,7 @@ file:
 
 ```bash
 # 设置文件权限
-./bbx-cli vm ssh my-vm --command "chmod 644 /vm/path/file.txt"
+./bbx-cli vm ssh my-vm --command "chmod 644 /vms/path/file.txt"
 ```
 
 2. **敏感数据**：避免传输包含密码、密钥等敏感信息的文件
@@ -170,7 +170,7 @@ file:
 sha256sum /local/path/file.txt
 
 # 计算VM上文件哈希值
-./bbx-cli vm ssh my-vm --command "sha256sum /vm/path/file.txt"
+./bbx-cli vm ssh my-vm --command "sha256sum /vms/path/file.txt"
 ```
 
 ## 高级功能
@@ -182,7 +182,7 @@ sha256sum /local/path/file.txt
 ```bash
 # 上传目录中的所有.txt文件
 for file in /local/path/*.txt; do
-  ./bbx-cli vm file upload my-vm --local-file "$file" --remote-path /vm/path/
+  ./bbx-cli vm file upload my-vm --local-file "$file" --remote-path /vms/path/
 done
 ```
 
@@ -192,7 +192,7 @@ done
 
 ```bash
 # 上传大文件，使用更大的块大小和超时时间
-./bbx-cli vm file upload my-vm --local-file /local/path/large.iso --remote-path /vm/path/ --chunk-size 50M --timeout 3600s
+./bbx-cli vm file upload my-vm --local-file /local/path/large.iso --remote-path /vms/path/ --chunk-size 50M --timeout 3600s
 ```
 
 ### 3. 目录同步
@@ -201,10 +201,10 @@ done
 
 ```bash
 # 上传整个目录（需要先在VM上创建目录）
-./bbx-cli vm ssh my-vm --command "mkdir -p /vm/path/my-directory"
+./bbx-cli vm ssh my-vm --command "mkdir -p /vms/path/my-directory"
 for file in /local/path/my-directory/*; do
   filename=$(basename "$file")
-  ./bbx-cli vm file upload my-vm --local-file "$file" --remote-path /vm/path/my-directory/$filename
+  ./bbx-cli vm file upload my-vm --local-file "$file" --remote-path /vms/path/my-directory/$filename
 done
 ```
 
@@ -214,7 +214,7 @@ done
 
 ```bash
 # 查看详细日志
-./bbx-cli vm file upload my-vm --local-file /local/path/file.txt --remote-path /vm/path/ --verbose
+./bbx-cli vm file upload my-vm --local-file /local/path/file.txt --remote-path /vms/path/ --verbose
 ```
 
 **可能的原因**：
@@ -227,7 +227,7 @@ done
 
 ```bash
 # 查看详细日志
-./bbx-cli vm file download my-vm --remote-file /vm/path/file.txt --local-path /local/path/ --verbose
+./bbx-cli vm file download my-vm --remote-file /vms/path/file.txt --local-path /local/path/ --verbose
 ```
 
 **可能的原因**：
@@ -240,7 +240,7 @@ done
 
 ```bash
 # 查看详细日志
-./bbx-cli vm file list my-vm --path /vm/path/ --verbose
+./bbx-cli vm file list my-vm --path /vms/path/ --verbose
 ```
 
 **可能的原因**：
@@ -261,10 +261,10 @@ done
 gzip /local/path/file.txt
 
 # 上传压缩文件
-./bbx-cli vm file upload my-vm --local-file /local/path/file.txt.gz --remote-path /vm/path/
+./bbx-cli vm file upload my-vm --local-file /local/path/file.txt.gz --remote-path /vms/path/
 
 # 在VM上解压
-./bbx-cli vm ssh my-vm --command "gunzip /vm/path/file.txt.gz"
+./bbx-cli vm ssh my-vm --command "gunzip /vms/path/file.txt.gz"
 ```
 
 ## 相关命令

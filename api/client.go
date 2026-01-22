@@ -712,7 +712,7 @@ func (c *Client) SSHExecute(vmName, command string) (string, error) {
   return result["output"], nil
 }
 
-// FileUpload 上传文件
+// FileUpload 上传文件到服务器
 func (c *Client) FileUpload(sourcePath, targetPath string) error {
   // 打开本地文件
   sourceFile, err := os.Open(sourcePath)
@@ -773,7 +773,73 @@ func (c *Client) FileUpload(sourcePath, targetPath string) error {
   return nil
 }
 
-// FileDownload 下载文件
+// VMFileUpload 上传文件到VM（通过服务器中转）
+func (c *Client) VMFileUpload(vmName, sourcePath, targetPath string) error {
+  // 打开本地文件
+  sourceFile, err := os.Open(sourcePath)
+  if err != nil {
+    return fmt.Errorf("failed to open source file: %v", err)
+  }
+  defer sourceFile.Close()
+
+  // 创建multipart/form-data请求
+  body := &bytes.Buffer{}
+  writer := multipart.NewWriter(body)
+
+  // 添加文件字段
+  fileField, err := writer.CreateFormFile("file", filepath.Base(sourcePath))
+  if err != nil {
+    return err
+  }
+
+  // 复制文件内容到multipart writer
+  if _, err := io.Copy(fileField, sourceFile); err != nil {
+    return err
+  }
+
+  // 添加VM名称字段
+  if err := writer.WriteField("vm_name", vmName); err != nil {
+    return err
+  }
+
+  // 添加目标路径字段
+  if err := writer.WriteField("target_path", targetPath); err != nil {
+    return err
+  }
+
+  // 完成multipart writer
+  contentType := writer.FormDataContentType()
+  writer.Close()
+
+  // 创建请求
+  req, err := http.NewRequest("POST", c.host+"/api/vms/files/upload", body)
+  if err != nil {
+    return err
+  }
+
+  // 设置请求头
+  req.Header.Set("Content-Type", contentType)
+
+  // 如果已配置 Basic Auth，则附加到请求
+  if c.basicUser != "" && c.basicPass != "" {
+    req.SetBasicAuth(c.basicUser, c.basicPass)
+  }
+
+  // 发送请求
+  resp, err := c.httpClient.Do(req)
+  if err != nil {
+    return err
+  }
+  defer resp.Body.Close()
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// FileDownload 从服务器下载文件
 func (c *Client) FileDownload(sourcePath, targetPath string) error {
   reqBody := map[string]interface{}{
     "source_path": sourcePath,
@@ -809,6 +875,71 @@ func (c *Client) FileDownload(sourcePath, targetPath string) error {
   }
 
   return nil
+}
+
+// VMFileDownload 从VM下载文件（通过服务器中转）
+func (c *Client) VMFileDownload(vmName, sourcePath, targetPath string) error {
+  reqBody := map[string]interface{}{
+    "vm_name":     vmName,
+    "source_path": sourcePath,
+  }
+
+  // 发送请求
+  resp, err := c.doRequest("POST", "/api/vms/files/download", reqBody)
+  if err != nil {
+    return err
+  }
+  defer resp.Body.Close()
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  // 确保目标目录存在
+  targetDir := filepath.Dir(targetPath)
+  if err := os.MkdirAll(targetDir, 0755); err != nil {
+    return fmt.Errorf("failed to create target directory: %v", err)
+  }
+
+  // 创建目标文件
+  targetFile, err := os.Create(targetPath)
+  if err != nil {
+    return fmt.Errorf("failed to create target file: %v", err)
+  }
+  defer targetFile.Close()
+
+  // 保存文件内容
+  if _, err := io.Copy(targetFile, resp.Body); err != nil {
+    return fmt.Errorf("failed to save file content: %v", err)
+  }
+
+  return nil
+}
+
+// VMFileList 列出VM中的文件（通过服务器中转）
+func (c *Client) VMFileList(vmName, path string, maxDepth int) ([]file.FileInfo, error) {
+  var files []file.FileInfo
+
+  reqBody := map[string]interface{}{
+    "vm_name":   vmName,
+    "path":      path,
+    "max_depth": maxDepth,
+  }
+
+  resp, err := c.doRequest("POST", "/api/vms/files/list", reqBody)
+  if err != nil {
+    return nil, err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return nil, c.errorFromResponse(resp)
+  }
+
+  if err := c.getJSONResponse(resp, &files); err != nil {
+    return nil, err
+  }
+
+  return files, nil
 }
 
 // FileList 列出文件

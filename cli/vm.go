@@ -881,48 +881,17 @@ func (c *CLI) handleVMFileUpload(vmNames, groupNames []string, sourcePath, targe
 		return fmt.Errorf("no VMs found for the specified names or groups")
 	}
 
-	// 遍历所有VM并上传文件
+	// 遍历所有VM并上传文件（通过服务器中转）
 	for _, selectedVM := range vms {
 		fmt.Printf("Uploading to VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
 
-		// 创建SSH客户端
-		sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
-			Host:     selectedVM.IP,
-			Port:     selectedVM.Port,
-			Username: selectedVM.Username,
-			Password: selectedVM.Password,
-			KeyPath:  selectedVM.KeyPath,
-		})
-		if err != nil {
-			fmt.Printf("Failed to create SSH client for %s: %v\n", selectedVM.Name, err)
-			continue
-		}
-
-		// 连接到SSH服务器
-		if err := sshClient.Connect(selectedVM.IP, selectedVM.Port); err != nil {
-			fmt.Printf("Failed to connect to %s: %v\n", selectedVM.Name, err)
-			sshClient.Close()
-			continue
-		}
-
-		// 打开本地文件
-		sourceFile, err := os.Open(sourcePath)
-		if err != nil {
-			fmt.Printf("Failed to open source file: %v\n", err)
-			sshClient.Close()
-			continue
-		}
-		defer sourceFile.Close()
-
-		// 上传文件
-		if err := sshClient.UploadFile(sourceFile, targetPath); err != nil {
+		// 通过服务器中转上传文件
+		if err := c.client.VMFileUpload(selectedVM.Name, sourcePath, targetPath); err != nil {
 			fmt.Printf("Failed to upload file to %s: %v\n", selectedVM.Name, err)
-			sshClient.Close()
 			continue
 		}
 
 		fmt.Printf("File uploaded successfully to %s: %s -> %s\n", selectedVM.Name, sourcePath, targetPath)
-		sshClient.Close()
 	}
 
 	return nil
@@ -977,7 +946,7 @@ func (c *CLI) handleVMFileDownload(vmNames, groupNames []string, sourcePath, tar
 		return fmt.Errorf("no VMs found for the specified names or groups")
 	}
 
-	// 遍历所有VM并下载文件
+	// 遍历所有VM并下载文件（通过服务器中转）
 	for _, selectedVM := range vms {
 		fmt.Printf("Downloading from VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
 
@@ -999,51 +968,13 @@ func (c *CLI) handleVMFileDownload(vmNames, groupNames []string, sourcePath, tar
 			vmTargetPath = targetPath
 		}
 
-		// 创建SSH客户端
-		sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
-			Host:     selectedVM.IP,
-			Port:     selectedVM.Port,
-			Username: selectedVM.Username,
-			Password: selectedVM.Password,
-			KeyPath:  selectedVM.KeyPath,
-		})
-		if err != nil {
-			fmt.Printf("Failed to create SSH client for %s: %v\n", selectedVM.Name, err)
-			continue
-		}
-
-		// 连接到SSH服务器
-		if err := sshClient.Connect(selectedVM.IP, selectedVM.Port); err != nil {
-			fmt.Printf("Failed to connect to %s: %v\n", selectedVM.Name, err)
-			sshClient.Close()
-			continue
-		}
-
-		// 下载文件
-		content, err := sshClient.DownloadFile(sourcePath)
-		if err != nil {
+		// 通过服务器中转下载文件
+		if err := c.client.VMFileDownload(selectedVM.Name, sourcePath, vmTargetPath); err != nil {
 			fmt.Printf("Failed to download file from %s: %v\n", selectedVM.Name, err)
-			sshClient.Close()
-			continue
-		}
-
-		// 确保目标目录存在
-		targetDir := filepath.Dir(vmTargetPath)
-		if err := os.MkdirAll(targetDir, 0755); err != nil {
-			fmt.Printf("Failed to create target directory %s: %v\n", selectedVM.Name, err)
-			sshClient.Close()
-			continue
-		}
-
-		// 写入文件
-		if err := os.WriteFile(vmTargetPath, content, 0644); err != nil {
-			fmt.Printf("Failed to write file: %v\n", err)
-			sshClient.Close()
 			continue
 		}
 
 		fmt.Printf("File downloaded successfully from %s: %s -> %s\n", selectedVM.Name, sourcePath, vmTargetPath)
-		sshClient.Close()
 	}
 
 	return nil
@@ -1098,37 +1029,16 @@ func (c *CLI) handleVMFileList(vmNames, groupNames []string, path string, maxDep
 		return fmt.Errorf("no VMs found for the specified names or groups")
 	}
 
-	// 遍历所有VM并列出文件
+	// 遍历所有VM并列出文件（通过服务器中转）
 	for _, selectedVM := range vms {
 		fmt.Printf("\nListing files on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
 		fmt.Printf("Path: %s\n", path)
 		fmt.Println(strings.Repeat("=", 80))
 
-		// 创建SSH客户端
-		sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
-			Host:     selectedVM.IP,
-			Port:     selectedVM.Port,
-			Username: selectedVM.Username,
-			Password: selectedVM.Password,
-			KeyPath:  selectedVM.KeyPath,
-		})
-		if err != nil {
-			fmt.Printf("Failed to create SSH client for %s: %v\n", selectedVM.Name, err)
-			continue
-		}
-
-		// 连接到SSH服务器
-		if err := sshClient.Connect(selectedVM.IP, selectedVM.Port); err != nil {
-			fmt.Printf("Failed to connect to %s: %v\n", selectedVM.Name, err)
-			sshClient.Close()
-			continue
-		}
-
-		// 获取文件列表
-		files, err := sshClient.ListFiles(path, maxDepth)
+		// 通过服务器中转获取文件列表
+		files, err := c.client.VMFileList(selectedVM.Name, path, maxDepth)
 		if err != nil {
 			fmt.Printf("Failed to list files on %s: %v\n", selectedVM.Name, err)
-			sshClient.Close()
 			continue
 		}
 
@@ -1153,10 +1063,9 @@ func (c *CLI) handleVMFileList(vmNames, groupNames []string, path string, maxDep
 			}
 			// 添加缩进，限制文件名长度
 			indent := getIndent(file.Depth + 1)
-			fmt.Printf("%-10s %-10s %-20s %s%-30s\n", fileType, vm.FormatFileSize(file.Size), file.ModTime, indent, file.Name)
+			fmt.Printf("%-10s %-10s %-20s %s%-30s\n", fileType, FormatFileSize(file.Size), file.ModTime, indent, file.Name)
 		}
 
-		sshClient.Close()
 		fmt.Println(strings.Repeat("=", 80))
 	}
 
