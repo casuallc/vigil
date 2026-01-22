@@ -759,6 +759,10 @@ func (c *CLI) handleVMSSH(vmName string) error {
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
+				// 连接关闭，不报错
+				fmt.Println("close")
+				// 退出程序
+				os.Exit(0)
 				return
 			}
 			// 输出WebSocket消息到终端
@@ -771,12 +775,16 @@ func (c *CLI) handleVMSSH(vmName string) error {
 	for {
 		n, err := os.Stdin.Read(buffer)
 		if err != nil {
-			return fmt.Errorf("failed to read from terminal: %v", err)
+			// 终端读取错误，可能是用户按下了Ctrl+C
+			fmt.Println("close")
+			return nil
 		}
 		if n > 0 {
 			err := conn.WriteMessage(websocket.TextMessage, buffer[:n])
 			if err != nil {
-				return fmt.Errorf("failed to write to WebSocket: %v", err)
+				// 写入WebSocket错误，可能是连接已关闭
+				fmt.Println("close")
+				return nil
 			}
 		}
 	}
