@@ -17,6 +17,8 @@ limitations under the License.
 package api
 
 import (
+  "net/http"
+
   "github.com/gorilla/mux"
 )
 
@@ -57,6 +59,14 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/vms", s.handleListVMs).Methods("GET")
   r.HandleFunc("/api/vms/{name}", s.handleGetVM).Methods("GET")
   r.HandleFunc("/api/vms/{name}", s.handleDeleteVM).Methods("DELETE")
+  r.HandleFunc("/api/vms/{name}", s.handleUpdateVM).Methods("PUT")
+
+  // Group Management endpoints
+  r.HandleFunc("/api/vms/groups", s.handleAddGroup).Methods("POST")
+  r.HandleFunc("/api/vms/groups", s.handleListGroups).Methods("GET")
+  r.HandleFunc("/api/vms/groups/{name}", s.handleGetGroup).Methods("GET")
+  r.HandleFunc("/api/vms/groups/{name}", s.handleUpdateGroup).Methods("PUT")
+  r.HandleFunc("/api/vms/groups/{name}", s.handleDeleteGroup).Methods("DELETE")
 
   // WebSocket SSH endpoint
   r.HandleFunc("/api/vms/ssh/ws", s.handleSSHWebSocket)
@@ -71,6 +81,19 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/vms/permissions", s.handleRemovePermission).Methods("DELETE")
   r.HandleFunc("/api/vms/{name}/permissions", s.handleListPermissions).Methods("GET")
   r.HandleFunc("/api/vms/permissions/check", s.handleCheckPermission).Methods("POST")
+
+  // File Management endpoints
+  r.HandleFunc("/api/files/upload", s.handleFileUpload).Methods("POST")
+  r.HandleFunc("/api/files/download", s.handleFileDownload).Methods("POST")
+  r.HandleFunc("/api/files/list", s.handleFileList).Methods("POST")
+  r.HandleFunc("/api/files/delete", s.handleFileDelete).Methods("POST")
+  r.HandleFunc("/api/files/copy", s.handleFileCopy).Methods("POST")
+  r.HandleFunc("/api/files/move", s.handleFileMove).Methods("POST")
+
+  // 应用审计中间件
+  r.Use(func(next http.Handler) http.Handler {
+    return s.AuditMiddleware(next)
+  })
 
   return r
 }

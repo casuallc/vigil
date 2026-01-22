@@ -36,6 +36,7 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 - **命令执行**：执行命令或脚本
 - **批量扫描**：从配置文件加载并扫描多个进程
 - **集成测试**：支持多种服务的集成测试，如MQTT测试
+- **审计模块**：记录所有API请求的审计日志，包括操作类型、时间戳、用户、IP地址、状态等信息
 
 ### VM管理
 - **模拟SSH服务**：提供模拟的SSH服务，无需真实网络连接
@@ -43,6 +44,11 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 - **本地文件操作**：直接通过API进行文件上传、下载和列表操作
 - **权限控制**：管理VM的访问权限
 - **SSH转发服务**：支持为VM启动SSH转发服务，实现本地端口到VM的转发
+- **加密存储**：使用加密方式存储SSH密钥路径和密码，确保敏感数据安全
+- **非交互式VM选择**：支持通过命令行参数指定VM，无需交互式提示
+- **VM组管理**：创建、列出、获取、更新和删除VM组，每个组可包含多个VM
+- **批量文件传输**：支持向多个VM或VM组批量上传、下载文件和列出文件
+- **SFTP文件传输**：基于SFTP协议的安全文件传输功能
 
 ## 项目结构
 
@@ -63,9 +69,11 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 ├── common/           # 通用工具函数
 ├── conf/             # 配置文件
 ├── config/           # 配置加载和管理
+├── crypto/           # 加密相关功能
 ├── docs/             # 文档
 ├── inspection/       # 检查规则和实现
 ├── proc/             # 进程管理核心逻辑
+├── audit/            # 审计模块
 ├── vm/               # VM管理核心逻辑
 ├── scripts/          # 脚本文件
 ├── tests/            # 测试文件
@@ -125,8 +133,8 @@ bbx-cli vm [command]
   get         获取VM详情
   delete      删除VM
   ssh         SSH连接到VM
-  ssh 为VM启动SSH转发服务
   file        文件管理（上传、下载、列表）
+  group       VM组管理（添加、列出、获取、更新、删除组）
   permission  权限管理
 ```
 
@@ -150,6 +158,53 @@ bbx-cli vm [command]
 - `--target-password, -P`: 目标密码
 - `--target-key, -k`: 目标私钥路径
 - `--audit-log, -a`: 审计日志路径
+
+### VM组管理命令
+
+```bash
+# 添加VM组
+./bbx-cli vm group add -n test-group -d "Test VM group" -v vm1 -v vm2
+
+# 列出所有VM组
+./bbx-cli vm group list
+
+# 获取VM组详情
+./bbx-cli vm group get -n test-group
+
+# 更新VM组
+./bbx-cli vm group update -n test-group -d "Updated test group" -v vm1 -v vm2 -v vm3
+
+# 删除VM组
+./bbx-cli vm group delete -n test-group
+```
+
+参数说明：
+- `--name, -n`: 组名称（必填）
+- `--description, -d`: 组描述
+- `--vms, -v`: VM名称（可多次使用，添加多个VM）
+
+### 批量文件传输命令
+
+```bash
+# 向多个VM上传文件
+./bbx-cli vm file upload --vm vm1 --vm vm2 --source local.txt --target /remote/path
+
+# 向VM组上传文件
+./bbx-cli vm file upload --group test-group --source local.txt --target /remote/path
+
+# 从多个VM下载文件
+./bbx-cli vm file download --vm vm1 --vm vm2 --source /remote/path --target local/dir
+
+# 列出多个VM上的文件
+./bbx-cli vm file list --vm vm1 --vm vm2 --path /remote/path
+```
+
+参数说明：
+- `--vm, -v`: VM名称（可多次使用，指定多个VM）
+- `--group, -g`: 组名称（可多次使用，指定多个组）
+- `--source, -s`: 源文件路径
+- `--target, -t`: 目标文件路径
+- `--path, -p`: 目录路径（用于list命令）
 
 ### 进程管理命令
 
@@ -281,6 +336,7 @@ go build -o bbx-server ./cmd/bbx-server
 - github.com/rabbitmq/amqp091-go - RabbitMQ 客户端
 - github.com/redis/go-redis/v9 - Redis 客户端
 - github.com/samuel/go-zookeeper - Zookeeper 客户端
+- github.com/google/uuid - 生成唯一ID
 
 ## 使用示例
 

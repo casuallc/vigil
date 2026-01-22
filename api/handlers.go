@@ -30,6 +30,7 @@ import (
 
 	"github.com/casuallc/vigil/common"
 	"github.com/casuallc/vigil/config"
+	"github.com/casuallc/vigil/file"
 	"github.com/casuallc/vigil/inspection"
 	"github.com/casuallc/vigil/proc"
 	"github.com/casuallc/vigil/vm"
@@ -429,6 +430,141 @@ func (s *Server) handleDeleteVM(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "VM deleted successfully"})
 }
 
+// handleUpdateVM 处理更新VM的请求
+func (s *Server) handleUpdateVM(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	vmName := vars["name"]
+
+	// 获取VM信息
+	vmInfo, err := s.vmManager.GetVM(vmName)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	// 解析请求体
+	var updateData struct {
+		Password string `json:"password"`
+		KeyPath  string `json:"key_path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 更新密码和密钥路径
+	if updateData.Password != "" {
+		vmInfo.Password = updateData.Password
+	}
+	if updateData.KeyPath != "" {
+		vmInfo.KeyPath = updateData.KeyPath
+	}
+
+	// 保存VM信息
+	if err := s.vmManager.SaveVMs(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "VM updated successfully"})
+}
+
+// ------------------------- Group Management Handlers -------------------------
+
+// handleAddGroup 处理添加VM组的请求
+// AI Modified
+func (s *Server) handleAddGroup(w http.ResponseWriter, r *http.Request) {
+	// 解析请求体
+	var groupData struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		VMs         []string `json:"vms"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&groupData); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 验证请求数据
+	if groupData.Name == "" {
+		writeError(w, http.StatusBadRequest, "group name is required")
+		return
+	}
+
+	// 添加组
+	if err := s.vmManager.AddGroup(groupData.Name, groupData.Description, groupData.VMs); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Group added successfully"})
+}
+
+// handleListGroups 处理列出VM组的请求
+// AI Modified
+func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
+	// 获取所有组
+	groups := s.vmManager.ListGroups()
+
+	writeJSON(w, http.StatusOK, groups)
+}
+
+// handleGetGroup 处理获取VM组的请求
+// AI Modified
+func (s *Server) handleGetGroup(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupName := vars["name"]
+
+	// 获取组
+	group, err := s.vmManager.GetGroup(groupName)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, group)
+}
+
+// handleUpdateGroup 处理更新VM组的请求
+// AI Modified
+func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupName := vars["name"]
+
+	// 解析请求体
+	var updateData struct {
+		Description string   `json:"description"`
+		VMs         []string `json:"vms"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 更新组
+	if err := s.vmManager.UpdateGroup(groupName, updateData.Description, updateData.VMs); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Group updated successfully"})
+}
+
+// handleDeleteGroup 处理删除VM组的请求
+// AI Modified
+func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupName := vars["name"]
+
+	// 删除组
+	if err := s.vmManager.RemoveGroup(groupName); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Group deleted successfully"})
+}
+
 // ------------------------- File Management Handlers -------------------------
 
 // handleFileUpload 处理文件上传请求
@@ -581,10 +717,8 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
 // handleFileList 处理列出文件的请求
 func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
 	type FileListRequest struct {
-		VMName   string `json:"vm_name"`
 		Path     string `json:"path"`
 		MaxDepth int    `json:"max_depth"`
-		Password string `json:"password"`
 	}
 
 	var req FileListRequest
@@ -593,53 +727,91 @@ func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 验证VM名称
-	if req.VMName == "" {
-		writeError(w, http.StatusBadRequest, "vm_name is required")
-		return
-	}
-
-	// 获取VM信息
-	vmInfo, err := s.vmManager.GetVM(req.VMName)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
-	}
-
-	// 使用存储的密码，如果没有则使用传入的密码
-	sshPassword := req.Password
-	if sshPassword == "" {
-		sshPassword = vmInfo.Password
-	}
-
-	// 创建SSH客户端
-	sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
-		Host:     vmInfo.IP,
-		Port:     vmInfo.Port,
-		Username: vmInfo.Username,
-		Password: sshPassword,
-		KeyPath:  vmInfo.KeyPath,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// 连接到SSH服务器
-	if err := sshClient.Connect(vmInfo.IP, vmInfo.Port); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	defer sshClient.Close()
+	// 创建文件管理器
+	fileManager := file.NewManager("")
 
 	// 获取文件列表
-	files, err := sshClient.ListFiles(req.Path, req.MaxDepth)
+	files, err := fileManager.ListFiles(req.Path, req.MaxDepth)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, files)
+}
+
+// handleFileDelete 处理删除文件的请求
+func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
+	type FileDeleteRequest struct {
+		Path string `json:"path"`
+	}
+
+	var req FileDeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 创建文件管理器
+	fileManager := file.NewManager("")
+
+	// 删除文件
+	if err := fileManager.DeleteFile(req.Path); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "File deleted successfully"})
+}
+
+// handleFileCopy 处理复制文件的请求
+func (s *Server) handleFileCopy(w http.ResponseWriter, r *http.Request) {
+	type FileCopyRequest struct {
+		SourcePath string `json:"source_path"`
+		TargetPath string `json:"target_path"`
+	}
+
+	var req FileCopyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 创建文件管理器
+	fileManager := file.NewManager("")
+
+	// 复制文件
+	if err := fileManager.CopyFile(req.SourcePath, req.TargetPath); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "File copied successfully"})
+}
+
+// handleFileMove 处理移动文件的请求
+func (s *Server) handleFileMove(w http.ResponseWriter, r *http.Request) {
+	type FileMoveRequest struct {
+		SourcePath string `json:"source_path"`
+		TargetPath string `json:"target_path"`
+	}
+
+	var req FileMoveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 创建文件管理器
+	fileManager := file.NewManager("")
+
+	// 移动文件
+	if err := fileManager.MoveFile(req.SourcePath, req.TargetPath); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "File moved successfully"})
 }
 
 // ------------------------- Permission Handlers -------------------------

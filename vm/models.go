@@ -56,6 +56,29 @@ func (vm *VM) UpdateStatus(status string) {
 	vm.UpdatedAt = time.Now()
 }
 
+// Group 表示VM组信息
+// AI Modified
+type Group struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	VMs         []string  `json:"vms"` // VM名称列表
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// NewGroup 创建一个新的Group实例
+// AI Modified
+func NewGroup(name, description string, vms []string) *Group {
+	now := time.Now()
+	return &Group{
+		Name:        name,
+		Description: description,
+		VMs:         vms,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+}
+
 // SSHConfig 表示SSH连接的配置信息
 type SSHConfig struct {
 	Host     string `json:"host"`
