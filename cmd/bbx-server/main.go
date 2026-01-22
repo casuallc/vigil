@@ -57,7 +57,7 @@ func main() {
     if err != nil {
       log.Fatalf("Failed to get executable path: %v", err)
     }
-    configPath = filepath.Join(filepath.Dir(exePath), "config.yaml")
+    configPath = filepath.Join(filepath.Dir(exePath), "./conf/config.yaml")
   }
 
   // Load config file

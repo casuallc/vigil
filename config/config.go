@@ -90,10 +90,24 @@ func LoadConfig(filePath string) (*Config, error) {
 	}
 
 	// Parse YAML
-	config := DefaultConfig()
+	// 直接创建一个空的 Config 结构体，而不是调用 DefaultConfig()
+	// 这样可以避免生成新的加密密钥，而是使用文件中已有的密钥
+	config := &Config{}
 	if err := yaml.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
+
+	// 确保所有必要的字段都有值
+	if config.LogLevel == "" {
+		config.LogLevel = "info"
+	}
+	if config.MonitorRate == 0 {
+		config.MonitorRate = 5
+	}
+	if config.PidFilePath == "" {
+		config.PidFilePath = "./vigil.pid"
+	}
+	// 注意：不要在这里生成新的加密密钥，否则会导致之前加密的数据无法解密
 
 	return config, nil
 }

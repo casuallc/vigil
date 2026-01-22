@@ -26,7 +26,13 @@ import (
 
 // Encrypt 加密数据
 func Encrypt(data, key string) (string, error) {
-	block, err := aes.NewCipher([]byte(key))
+	// 对密钥进行 base64 解码，以恢复原始的 32 字节密钥
+	decodedKey, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(decodedKey)
 	if err != nil {
 		return "", err
 	}
@@ -52,7 +58,13 @@ func Decrypt(encryptedData, key string) (string, error) {
 		return "", err
 	}
 
-	block, err := aes.NewCipher([]byte(key))
+	// 对密钥进行 base64 解码，以恢复原始的 32 字节密钥
+	decodedKey, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(decodedKey)
 	if err != nil {
 		return "", err
 	}
