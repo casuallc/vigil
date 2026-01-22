@@ -69,6 +69,11 @@ func (s *Server) Router() *mux.Router {
   // WebSocket SSH endpoint
   r.HandleFunc("/api/vms/ssh/ws", s.handleSSHWebSocket)
 
+  // File Management endpoints by vms
+  r.HandleFunc("/api/vms/files/upload", s.handleFileUpload).Methods("POST")
+  r.HandleFunc("/api/vms/files/download", s.handleFileDownload).Methods("POST")
+  r.HandleFunc("/api/vms/files/list", s.handleFileList).Methods("POST")
+
   // Permission endpoints
   r.HandleFunc("/api/vms/permissions", s.handleAddPermission).Methods("POST")
   r.HandleFunc("/api/vms/permissions", s.handleRemovePermission).Methods("DELETE")
