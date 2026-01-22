@@ -483,13 +483,15 @@ func (c *Client) ListVMs() ([]vm.VM, error) {
 }
 
 // AddVM 添加一个新的VM
-func (c *Client) AddVM(name, ip string, port int, username string) (*vm.VM, error) {
+func (c *Client) AddVM(name, ip string, port int, username, password, keyPath string) (*vm.VM, error) {
 	var newVM vm.VM
 	vmData := vm.VM{
 		Name:     name,
 		IP:       ip,
 		Port:     port,
 		Username: username,
+		Password: password,
+		KeyPath:  keyPath,
 	}
 
 	resp, err := c.doRequest("POST", "/api/vms", vmData)
@@ -593,8 +595,7 @@ func (c *Client) SSHExecute(vmName, command string) (string, error) {
 }
 
 // FileUpload 上传文件到VM
-// FileUpload 上传文件到VM
-func (c *Client) FileUpload(sourcePath, targetPath string) error {
+func (c *Client) FileUpload(vmName, sourcePath, targetPath, password string) error {
 	// 打开本地文件
 	sourceFile, err := os.Open(sourcePath)
 	if err != nil {
@@ -619,6 +620,16 @@ func (c *Client) FileUpload(sourcePath, targetPath string) error {
 
 	// 添加目标路径字段
 	if err := writer.WriteField("target_path", targetPath); err != nil {
+		return err
+	}
+
+	// 添加VM名称字段
+	if err := writer.WriteField("vm_name", vmName); err != nil {
+		return err
+	}
+
+	// 添加密码字段
+	if err := writer.WriteField("password", password); err != nil {
 		return err
 	}
 
@@ -655,9 +666,11 @@ func (c *Client) FileUpload(sourcePath, targetPath string) error {
 }
 
 // FileDownload 从VM下载文件
-func (c *Client) FileDownload(sourcePath, targetPath string) error {
+func (c *Client) FileDownload(vmName, sourcePath, targetPath, password string) error {
 	reqBody := map[string]interface{}{
+		"vm_name":     vmName,
 		"source_path": sourcePath,
+		"password":    password,
 	}
 
 	// 发送请求
@@ -693,12 +706,14 @@ func (c *Client) FileDownload(sourcePath, targetPath string) error {
 }
 
 // FileList 列出VM上的文件
-func (c *Client) FileList(path string, maxDepth int) ([]vm.FileInfo, error) {
+func (c *Client) FileList(vmName, path string, maxDepth int, password string) ([]vm.FileInfo, error) {
 	var files []vm.FileInfo
 
 	reqBody := map[string]interface{}{
+		"vm_name":   vmName,
 		"path":      path,
 		"max_depth": maxDepth,
+		"password":  password,
 	}
 
 	resp, err := c.doRequest("POST", "/api/vms/file/list", reqBody)

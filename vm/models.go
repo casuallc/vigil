@@ -26,6 +26,8 @@ type VM struct {
 	IP          string    `json:"ip"`
 	Port        int       `json:"port"`
 	Username    string    `json:"username"`
+	Password    string    `json:"password,omitempty"`
+	KeyPath     string    `json:"key_path,omitempty"`
 	Status      string    `json:"status"`
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -33,13 +35,15 @@ type VM struct {
 }
 
 // NewVM 创建一个新的VM实例
-func NewVM(name, ip string, port int, username string) *VM {
+func NewVM(name, ip string, port int, username, password, keyPath string) *VM {
 	now := time.Now()
 	return &VM{
 		Name:      name,
 		IP:        ip,
 		Port:      port,
 		Username:  username,
+		Password:  password,
+		KeyPath:   keyPath,
 		Status:    "stopped",
 		CreatedAt: now,
 		UpdatedAt: now,
