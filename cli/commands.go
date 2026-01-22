@@ -69,6 +69,10 @@ OS/Arch:   %s/%s
   vmCmd := c.setupVMCommands()
   rootCmd.AddCommand(vmCmd)
 
+  // Add File commands
+  fileCmd := c.setupFileCommand()
+  rootCmd.AddCommand(fileCmd)
+
   // Global flags
   rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:8181", "API server host address")
 
@@ -82,7 +86,8 @@ OS/Arch:   %s/%s
         currentCmd == resourceCmd ||
         currentCmd == configCmd ||
         currentCmd == execCmd ||
-        currentCmd == vmCmd {
+        currentCmd == vmCmd ||
+        currentCmd == fileCmd {
         c.client = api.NewClient(apiHost)
         break
       }
