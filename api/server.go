@@ -93,7 +93,7 @@ func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
   return lrw.ResponseWriter.Write(b)
 }
 
-// 实现http.Hijacker接口，以支持WebSocket
+// Hijack 实现http.Hijacker接口，以支持WebSocket
 func (lrw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
   if hijacker, ok := lrw.ResponseWriter.(http.Hijacker); ok {
     return hijacker.Hijack()

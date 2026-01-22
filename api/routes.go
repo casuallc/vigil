@@ -17,8 +17,6 @@ limitations under the License.
 package api
 
 import (
-  "net/http"
-
   "github.com/gorilla/mux"
 )
 
@@ -89,11 +87,5 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/files/delete", s.handleFileDelete).Methods("POST")
   r.HandleFunc("/api/files/copy", s.handleFileCopy).Methods("POST")
   r.HandleFunc("/api/files/move", s.handleFileMove).Methods("POST")
-
-  // 应用审计中间件
-  r.Use(func(next http.Handler) http.Handler {
-    return s.AuditMiddleware(next)
-  })
-
   return r
 }
