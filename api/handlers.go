@@ -725,26 +725,37 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
   go func() {
     defer cancel()
     for {
-      msgType, data, err := ws.ReadMessage()
+      messageType, payload, err := ws.ReadMessage()
       if err != nil {
         return
       }
 
-      if msgType != websocket.BinaryMessage {
-        continue
-      }
+      if messageType == websocket.TextMessage {
+        // 如果是窗口大小调整消息
+        if strings.HasPrefix(string(payload), "resize:") {
+          // 解析窗口大小
+          var resizeData struct {
+            Cols int `json:"cols"`
+            Rows int `json:"rows"`
+          }
+          if err := json.Unmarshal(payload[7:], &resizeData); err != nil {
+            log.Printf("Failed to parse resize data: %v", err)
+            continue
+          }
+          // 调整伪终端大小
+          if err := session.WindowChange(resizeData.Rows, resizeData.Cols); err != nil {
+            log.Printf("Failed to change window size: %v", err)
+          }
+          continue
+        }
 
-      var msg WSMessage
-      if err := json.Unmarshal(data, &msg); err != nil {
-        continue
-      }
-
-      switch msg.Type {
-      case "input":
-        _, _ = stdin.Write(msg.Data)
-
-      case "resize":
-        _ = session.WindowChange(msg.Rows, msg.Cols)
+        // 否则写入SSH会话
+        if _, err := stdin.Write(payload); err != nil {
+          log.Printf("Failed to write to SSH session: %v", err)
+          return
+        }
+      } else {
+        _, _ = stdin.Write(payload)
       }
     }
   }()
