@@ -25,6 +25,7 @@ import (
   "log"
   "net"
   "net/http"
+  "os"
   "path/filepath"
   "strings"
   "time"
@@ -48,7 +49,7 @@ type Server struct {
 // NewServerWithManager creates a new API server with an existing proc manager
 func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server {
   monitor := proc.NewMonitor(manager)
-  vmManager := vm.NewManagerWithConfig("vms.json", config.EncryptionKey)
+  vmManager := vm.NewManagerWithConfig("vms.json", config.Security.EncryptionKey)
 
   // 创建审计日志目录
   auditLogDir := filepath.Join("logs", "audit")
@@ -324,6 +325,24 @@ func (s *Server) Start(addr string) error {
     log.Printf("Basic Auth not configured; API runs without authentication")
   }
 
-  log.Printf("Starting API server on %s", addr)
-  return http.ListenAndServe(addr, handler)
+  // 检查是否配置了 HTTPS 证书和密钥
+  if s.config.HTTPS.CertPath != "" && s.config.HTTPS.KeyPath != "" {
+    // 检查证书和密钥文件是否存在
+    if _, err := os.Stat(s.config.HTTPS.CertPath); os.IsNotExist(err) {
+      log.Printf("Warning: HTTPS certificate file not found: %s", s.config.HTTPS.CertPath)
+      log.Printf("Starting API server on %s (HTTP)", addr)
+      return http.ListenAndServe(addr, handler)
+    }
+    if _, err := os.Stat(s.config.HTTPS.KeyPath); os.IsNotExist(err) {
+      log.Printf("Warning: HTTPS private key file not found: %s", s.config.HTTPS.KeyPath)
+      log.Printf("Starting API server on %s (HTTP)", addr)
+      return http.ListenAndServe(addr, handler)
+    }
+
+    log.Printf("Starting API server on %s (HTTPS)", addr)
+    return http.ListenAndServeTLS(addr, s.config.HTTPS.CertPath, s.config.HTTPS.KeyPath, handler)
+  } else {
+    log.Printf("Starting API server on %s (HTTP)", addr)
+    return http.ListenAndServe(addr, handler)
+  }
 }

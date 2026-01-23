@@ -37,6 +37,8 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 - **批量扫描**：从配置文件加载并扫描多个进程
 - **集成测试**：支持多种服务的集成测试，如MQTT测试
 - **审计模块**：记录所有API请求的审计日志，包括操作类型、时间戳、用户、IP地址、状态等信息
+- **HTTPS支持**：服务端支持HTTPS加密通信，提高安全性
+- **TLS证书管理**：提供命令行工具生成自签名TLS证书
 
 ### VM管理
 - **模拟SSH服务**：提供模拟的SSH服务，无需真实网络连接
@@ -93,6 +95,9 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 
 # 指定服务器监听地址
 ./bbx-server -addr :8080
+
+# 使用HTTPS（需要在配置文件中设置证书和密钥路径）
+./bbx-server -config path/to/config.yaml
 ```
 
 ### 使用 CLI
@@ -104,8 +109,11 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口：
 # 查看帮助信息
 ./bbx-cli help
 
-# 扫描进程
+# 扫描进程（HTTP）
 ./bbx-cli proc scan -q "MQ" -H http://127.0.0.1:8181
+
+# 扫描进程（HTTPS）
+./bbx-cli proc scan -q "MQ" -H https://127.0.0.1:8181
 
 # 列出所有托管进程
 ./bbx-cli proc list
@@ -265,23 +273,60 @@ bbx-cli test [service]
   - `bbx-cli test mqtt v5`：运行MQTT 5.0 测试
   - `bbx-cli test mqtt emqx`：运行 EMQX 特定测试
 
+### TLS证书管理命令
+
+使用 TLS 命令可以生成自签名的 HTTPS 证书：
+
+```
+bbx-cli tls [command]
+
+命令列表：
+  generate    生成TLS证书
+```
+
+#### 生成TLS证书
+
+```bash
+# 使用默认参数生成证书
+./bbx-cli tls generate
+
+# 指定证书和密钥路径
+./bbx-cli tls generate --cert cert.pem --key key.pem
+
+# 指定主机名
+./bbx-cli tls generate --host example.com
+```
+
+参数说明：
+- `--cert, -c`：证书文件路径（默认：cert.pem）
+- `--key, -k`：私钥文件路径（默认：key.pem）
+- `--host, -H`：证书的主机名或IP地址（默认：localhost）
+
 ## 配置文件
 
 ### 服务器配置
 
-服务器配置文件默认路径为 `config.yaml`，可以通过 `-config` 参数指定。配置示例：
+服务器配置文件默认路径为 `conf/config.yaml`，可以通过 `-config` 参数指定。配置示例：
 
 ```yaml
-# 服务器配置示例
-server:
-  host: "0.0.0.0"
-  port: 8181
-  timeout: 30s
+log:
+  level: info
 
-# 进程管理配置
+monitor:
+  rate: 5          # seconds
+
 process:
-  default_namespace: "default"
-  managed_processes_file: "proc/managed_processes.yaml"
+  pid_file: ./../app.pid
+
+security:
+  encryption_key: 8FVKXDQxzgdEH8DR8wQPnCo6Ke5IwQ+CYdqdmjmi/Lk=
+
+https:
+  enabled: true
+  cert_path: conf/cert.pem
+  key_path: conf/key.pem
+
+managed_apps: []
 ```
 
 ### 扫描配置

@@ -18,6 +18,7 @@ package cli
 
 import (
   "fmt"
+
   "github.com/casuallc/vigil/api"
   "github.com/casuallc/vigil/version"
   "github.com/spf13/cobra"
@@ -131,6 +132,10 @@ OS/Arch:   %s/%s
   // Add Test commands
   testCmd := c.setupIntegrationTestingCommands()
   rootCmd.AddCommand(testCmd)
+
+  // Add TLS commands
+  tlsCmd := c.setupTLSCommands()
+  rootCmd.AddCommand(tlsCmd)
 
   return rootCmd
 }

@@ -1,5 +1,18 @@
-log_level: info
-monitor_rate: 5
-pid_file_path: ./../app.pid
+log:
+  level: info
+
+monitor:
+  rate: 5          # seconds
+
+process:
+  pid_file: ./../app.pid
+
+security:
+  encryption_key: 8FVKXDQxzgdEH8DR8wQPnCo6Ke5IwQ+CYdqdmjmi/Lk=
+
+https:
+  enabled: true
+  cert_path: conf/cert.pem
+  key_path: conf/key.pem
+
 managed_apps: []
-encryption_key: 8FVKXDQxzgdEH8DR8wQPnCo6Ke5IwQ+CYdqdmjmi/Lk=
