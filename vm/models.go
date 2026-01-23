@@ -17,102 +17,100 @@ limitations under the License.
 package vm
 
 import (
-	"time"
+  "time"
 )
 
 // VM 表示虚拟机实例的基本信息
 type VM struct {
-	Name        string    `json:"name"`
-	IP          string    `json:"ip"`
-	Port        int       `json:"port"`
-	Username    string    `json:"username"`
-	Password    string    `json:"password,omitempty"`
-	KeyPath     string    `json:"key_path,omitempty"`
-	Status      string    `json:"status"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+  Name        string    `json:"name"`
+  IP          string    `json:"ip"`
+  Port        int       `json:"port"`
+  Username    string    `json:"username"`
+  Password    string    `json:"password,omitempty"`
+  KeyPath     string    `json:"key_path,omitempty"`
+  Status      string    `json:"status"`
+  Description string    `json:"description"`
+  CreatedAt   time.Time `json:"created_at"`
+  UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // NewVM 创建一个新的VM实例
 func NewVM(name, ip string, port int, username, password, keyPath string) *VM {
-	now := time.Now()
-	return &VM{
-		Name:      name,
-		IP:        ip,
-		Port:      port,
-		Username:  username,
-		Password:  password,
-		KeyPath:   keyPath,
-		Status:    "stopped",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
+  now := time.Now()
+  return &VM{
+    Name:      name,
+    IP:        ip,
+    Port:      port,
+    Username:  username,
+    Password:  password,
+    KeyPath:   keyPath,
+    Status:    "stopped",
+    CreatedAt: now,
+    UpdatedAt: now,
+  }
 }
 
 // UpdateStatus 更新VM的状态
 func (vm *VM) UpdateStatus(status string) {
-	vm.Status = status
-	vm.UpdatedAt = time.Now()
+  vm.Status = status
+  vm.UpdatedAt = time.Now()
 }
 
 // Group 表示VM组信息
-// AI Modified
 type Group struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	VMs         []string  `json:"vms"` // VM名称列表
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+  Name        string    `json:"name"`
+  Description string    `json:"description"`
+  VMs         []string  `json:"vms"` // VM名称列表
+  CreatedAt   time.Time `json:"created_at"`
+  UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // NewGroup 创建一个新的Group实例
-// AI Modified
 func NewGroup(name, description string, vms []string) *Group {
-	now := time.Now()
-	return &Group{
-		Name:        name,
-		Description: description,
-		VMs:         vms,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
+  now := time.Now()
+  return &Group{
+    Name:        name,
+    Description: description,
+    VMs:         vms,
+    CreatedAt:   now,
+    UpdatedAt:   now,
+  }
 }
 
 // SSHConfig 表示SSH连接的配置信息
 type SSHConfig struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password,omitempty"`
-	KeyPath  string `json:"key_path,omitempty"`
+  Host     string `json:"host"`
+  Port     int    `json:"port"`
+  Username string `json:"username"`
+  Password string `json:"password,omitempty"`
+  KeyPath  string `json:"key_path,omitempty"`
 }
 
 // SSHForwardConfig 表示SSH转发服务的配置信息
 type SSHForwardConfig struct {
-	Host             string `json:"host"`
-	Port             int    `json:"port"`
-	TargetHost       string `json:"target_host"`
-	TargetPort       int    `json:"target_port"`
-	TargetUsername   string `json:"target_username"`
-	TargetPassword   string `json:"target_password,omitempty"`
-	TargetPrivateKey string `json:"target_private_key,omitempty"`
-	AuditLogPath     string `json:"audit_log_path,omitempty"`
+  Host             string `json:"host"`
+  Port             int    `json:"port"`
+  TargetHost       string `json:"target_host"`
+  TargetPort       int    `json:"target_port"`
+  TargetUsername   string `json:"target_username"`
+  TargetPassword   string `json:"target_password,omitempty"`
+  TargetPrivateKey string `json:"target_private_key,omitempty"`
+  AuditLogPath     string `json:"audit_log_path,omitempty"`
 }
 
 // FileTransferConfig 表示文件传输的配置信息
 type FileTransferConfig struct {
-	SourcePath      string `json:"source_path"`
-	DestinationPath string `json:"destination_path"`
+  SourcePath      string `json:"source_path"`
+  DestinationPath string `json:"destination_path"`
 }
 
 // FileInfo 表示文件或目录的信息
 type FileInfo struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Size    int64  `json:"size"`
-	IsDir   bool   `json:"is_dir"`
-	Mode    string `json:"mode"`
-	ModTime string `json:"mod_time"`
-	Depth   int    `json:"depth"`
+  Name    string `json:"name"`
+  Path    string `json:"path"`
+  Size    int64  `json:"size"`
+  IsDir   bool   `json:"is_dir"`
+  Mode    string `json:"mode"`
+  ModTime string `json:"mod_time"`
+  Depth   int    `json:"depth"`
 }

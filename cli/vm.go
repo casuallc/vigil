@@ -645,7 +645,6 @@ func (c *CLI) handleVMUpdate(name, password, keyPath string) error {
 }
 
 // handleVMGroupAdd 处理vm group add命令
-// AI Modified
 func (c *CLI) handleVMGroupAdd(name, description string, vms []string) error {
   // 添加组
   if err := c.client.AddGroup(name, description, vms); err != nil {
@@ -657,7 +656,6 @@ func (c *CLI) handleVMGroupAdd(name, description string, vms []string) error {
 }
 
 // handleVMGroupList 处理vm group list命令
-// AI Modified
 func (c *CLI) handleVMGroupList() error {
   // 列出所有组
   groups, err := c.client.ListGroups()
@@ -681,7 +679,6 @@ func (c *CLI) handleVMGroupList() error {
 }
 
 // handleVMGroupGet 处理vm group get命令
-// AI Modified
 func (c *CLI) handleVMGroupGet(name string) error {
   // 获取组
   group, err := c.client.GetGroup(name)
@@ -700,7 +697,6 @@ func (c *CLI) handleVMGroupGet(name string) error {
 }
 
 // handleVMGroupUpdate 处理vm group update命令
-// AI Modified
 func (c *CLI) handleVMGroupUpdate(name, description string, vms []string) error {
   // 更新组
   if err := c.client.UpdateGroup(name, description, vms); err != nil {
@@ -712,7 +708,6 @@ func (c *CLI) handleVMGroupUpdate(name, description string, vms []string) error 
 }
 
 // handleVMGroupDelete 处理vm group delete命令
-// AI Modified
 func (c *CLI) handleVMGroupDelete(name string) error {
   // 删除组
   if err := c.client.DeleteGroup(name); err != nil {
@@ -958,7 +953,6 @@ func readPassword() (string, error) {
 }
 
 // getTargetVMs 获取目标VM列表，包括直接指定的VM和通过组指定的VM
-// AI Modified
 func (c *CLI) getTargetVMs(vmNames, groupNames []string) ([]*vm.VM, error) {
   // 检查是否指定了VM或组
   if len(vmNames) == 0 && len(groupNames) == 0 {
@@ -999,7 +993,6 @@ func (c *CLI) getTargetVMs(vmNames, groupNames []string) ([]*vm.VM, error) {
 }
 
 // handleVMFileUpload 处理vm file upload命令
-// AI Modified
 func (c *CLI) handleVMFileUpload(vmNames, groupNames []string, sourcePath, targetPath string) error {
   // 检查是否提供了目标VM或组
   if len(vmNames) == 0 && len(groupNames) == 0 {
@@ -1064,7 +1057,6 @@ func (c *CLI) handleVMFileUpload(vmNames, groupNames []string, sourcePath, targe
 }
 
 // handleVMFileDownload 处理vm file download命令
-// AI Modified
 func (c *CLI) handleVMFileDownload(vmNames, groupNames []string, sourcePath, targetPath string) error {
   // 检查是否提供了目标VM或组
   if len(vmNames) == 0 && len(groupNames) == 0 {
@@ -1147,7 +1139,6 @@ func (c *CLI) handleVMFileDownload(vmNames, groupNames []string, sourcePath, tar
 }
 
 // handleVMFileList 处理vm file list命令
-// AI Modified
 func (c *CLI) handleVMFileList(vmNames, groupNames []string, path string, maxDepth int) error {
   if !strings.HasSuffix(path, "/") {
     path = path + "/"

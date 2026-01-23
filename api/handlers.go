@@ -495,7 +495,6 @@ func (s *Server) handleUpdateVM(w http.ResponseWriter, r *http.Request) {
 // ------------------------- Group Management Handlers -------------------------
 
 // handleAddGroup 处理添加VM组的请求
-// AI Modified
 func (s *Server) handleAddGroup(w http.ResponseWriter, r *http.Request) {
   // 解析请求体
   var groupData struct {
@@ -524,7 +523,6 @@ func (s *Server) handleAddGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListGroups 处理列出VM组的请求
-// AI Modified
 func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
   // 获取所有组
   groups := s.vmManager.ListGroups()
@@ -533,7 +531,6 @@ func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetGroup 处理获取VM组的请求
-// AI Modified
 func (s *Server) handleGetGroup(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
   groupName := vars["name"]
@@ -549,7 +546,6 @@ func (s *Server) handleGetGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUpdateGroup 处理更新VM组的请求
-// AI Modified
 func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
   groupName := vars["name"]
@@ -574,7 +570,6 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDeleteGroup 处理删除VM组的请求
-// AI Modified
 func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
   vars := mux.Vars(r)
   groupName := vars["name"]
@@ -588,10 +583,65 @@ func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
   writeJSON(w, http.StatusOK, map[string]string{"message": "Group deleted successfully"})
 }
 
-// ------------------------- File Management Handlers -------------------------
+// handleVmFileList 处理列出VM中的文件请求
+func (s *Server) handleVmFileList(w http.ResponseWriter, r *http.Request) {
+  type FileListRequest struct {
+    VMName   string `json:"vm_name"`
+    Path     string `json:"path"`
+    MaxDepth int    `json:"max_depth"`
+  }
+
+  var req FileListRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 验证VM名称
+  if req.VMName == "" {
+    writeError(w, http.StatusBadRequest, "vm_name is required")
+    return
+  }
+
+  // 获取VM信息
+  vmInfo, err := s.vmManager.GetVM(req.VMName)
+  if err != nil {
+    writeError(w, http.StatusNotFound, err.Error())
+    return
+  }
+
+  // 创建SSH客户端
+  sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
+    Host:     vmInfo.IP,
+    Port:     vmInfo.Port,
+    Username: vmInfo.Username,
+    Password: vmInfo.Password,
+    KeyPath:  vmInfo.KeyPath,
+  })
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  // 连接到SSH服务器
+  if err := sshClient.Connect(vmInfo.IP, vmInfo.Port); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+  defer sshClient.Close()
+
+  // 获取文件列表
+  files, err := sshClient.ListFiles(req.Path, req.MaxDepth)
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, files)
+}
 
 // handleFileUpload 处理文件上传请求
-func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleVmFileUpload(w http.ResponseWriter, r *http.Request) {
   // 解析multipart/form-data请求
   err := r.ParseMultipartForm(10 << 20) // 10MB大小限制
   if err != nil {
@@ -613,9 +663,6 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // 获取密码
-  password := r.FormValue("password")
-
   // 获取VM信息
   vmInfo, err := s.vmManager.GetVM(vmName)
   if err != nil {
@@ -623,18 +670,12 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // 使用存储的密码，如果没有则使用传入的密码
-  sshPassword := password
-  if sshPassword == "" {
-    sshPassword = vmInfo.Password
-  }
-
   // 创建SSH客户端
   sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
     Host:     vmInfo.IP,
     Port:     vmInfo.Port,
     Username: vmInfo.Username,
-    Password: sshPassword,
+    Password: vmInfo.Password,
     KeyPath:  vmInfo.KeyPath,
   })
   if err != nil {
@@ -666,12 +707,11 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
   writeJSON(w, http.StatusOK, map[string]string{"message": "File uploaded successfully"})
 }
 
-// handleFileDownload 处理文件下载请求
-func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
+// handleVmFileDownload 处理文件下载请求
+func (s *Server) handleVmFileDownload(w http.ResponseWriter, r *http.Request) {
   type FileDownloadRequest struct {
     VMName     string `json:"vm_name"`
     SourcePath string `json:"source_path"`
-    Password   string `json:"password"`
   }
 
   var req FileDownloadRequest
@@ -693,18 +733,12 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // 使用存储的密码，如果没有则使用传入的密码
-  sshPassword := req.Password
-  if sshPassword == "" {
-    sshPassword = vmInfo.Password
-  }
-
   // 创建SSH客户端
   sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
     Host:     vmInfo.IP,
     Port:     vmInfo.Port,
     Username: vmInfo.Username,
-    Password: sshPassword,
+    Password: vmInfo.Password,
     KeyPath:  vmInfo.KeyPath,
   })
   if err != nil {
@@ -737,6 +771,8 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
   }
 }
 
+// ------------------------- File Management Handlers -------------------------
+
 // handleFileList 处理列出文件的请求
 func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
   type FileListRequest struct {
@@ -761,6 +797,82 @@ func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
   }
 
   writeJSON(w, http.StatusOK, files)
+}
+
+// handleFileUpload 处理列出文件的请求
+func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
+  // 解析multipart/form-data请求
+  err := r.ParseMultipartForm(10 << 20) // 10MB大小限制
+  if err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 获取目标路径
+  targetPath := r.FormValue("target_path")
+  if targetPath == "" {
+    writeError(w, http.StatusBadRequest, "target_path is required")
+    return
+  }
+
+  // 获取上传的文件
+  sourceFile, _, err := r.FormFile("file")
+  if err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+  defer sourceFile.Close()
+
+  // 创建文件管理器
+  fileManager := file.NewManager("")
+
+  // 上传文件
+  file, _, err := r.FormFile("file")
+  if err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+  defer file.Close()
+
+  if err := fileManager.UploadFile(file, targetPath); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "File uploaded successfully"})
+}
+
+// handleFileDownload 处理列出文件的请求
+func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
+  type FileDownloadRequest struct {
+    SourcePath string `json:"source_path"`
+  }
+
+  var req FileDownloadRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 创建文件管理器
+  fileManager := file.NewManager("")
+
+  // 下载文件
+  content, err := fileManager.DownloadFile(req.SourcePath)
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  // 设置响应头
+  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(req.SourcePath)))
+  w.Header().Set("Content-Type", "application/octet-stream")
+
+  // 写入响应
+  if _, err := w.Write(content); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
 }
 
 // handleFileDelete 处理删除文件的请求

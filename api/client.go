@@ -580,7 +580,6 @@ func (c *Client) UpdateVM(name, password, keyPath string) error {
 // ------------------------- Group Management Methods -------------------------
 
 // AddGroup 添加VM组
-// AI Modified
 func (c *Client) AddGroup(name, description string, vms []string) error {
   reqBody := map[string]interface{}{
     "name":        name,
@@ -601,7 +600,6 @@ func (c *Client) AddGroup(name, description string, vms []string) error {
 }
 
 // ListGroups 列出所有VM组
-// AI Modified
 func (c *Client) ListGroups() ([]*vm.Group, error) {
   resp, err := c.doRequest("GET", "/api/vms/groups", nil)
   if err != nil {
@@ -621,7 +619,6 @@ func (c *Client) ListGroups() ([]*vm.Group, error) {
 }
 
 // GetGroup 获取VM组详情
-// AI Modified
 func (c *Client) GetGroup(name string) (*vm.Group, error) {
   resp, err := c.doRequest("GET", fmt.Sprintf("/api/vms/groups/%s", name), nil)
   if err != nil {
@@ -641,7 +638,6 @@ func (c *Client) GetGroup(name string) (*vm.Group, error) {
 }
 
 // UpdateGroup 更新VM组
-// AI Modified
 func (c *Client) UpdateGroup(name, description string, vms []string) error {
   reqBody := map[string]interface{}{
     "description": description,
@@ -661,7 +657,6 @@ func (c *Client) UpdateGroup(name, description string, vms []string) error {
 }
 
 // DeleteGroup 删除VM组
-// AI Modified
 func (c *Client) DeleteGroup(name string) error {
   resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/vms/groups/%s", name), nil)
   if err != nil {
@@ -1156,8 +1151,16 @@ func (c *Client) SSHWebSocket(vmName string) (*websocket.Conn, error) {
     headers.Add("Authorization", "Basic "+encodedAuth)
   }
 
+  // 创建自定义WebSocket拨号器，支持跳过证书验证
+  dialer := &websocket.Dialer{}
+  if c.insecureSkipVerify {
+    dialer.TLSClientConfig = &tls.Config{
+      InsecureSkipVerify: true,
+    }
+  }
+
   // 建立WebSocket连接
-  conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+  conn, _, err := dialer.Dial(wsURL, headers)
   if err != nil {
     return nil, fmt.Errorf("failed to connect to WebSocket SSH endpoint: %v", err)
   }
