@@ -1116,7 +1116,7 @@ func (c *Client) CheckPermission(vmName, username, permission string) (bool, err
 }
 
 // SSHWebSocket 建立WebSocket SSH连接
-func (c *Client) SSHWebSocket(vmName, password string) (*websocket.Conn, error) {
+func (c *Client) SSHWebSocket(vmName string) (*websocket.Conn, error) {
   // 构建WebSocket URL
   wsScheme := "ws"
   if strings.HasPrefix(c.baseURL, "https://") {
@@ -1128,8 +1128,8 @@ func (c *Client) SSHWebSocket(vmName, password string) (*websocket.Conn, error) 
   baseURL = strings.TrimPrefix(baseURL, "https://")
 
   // 构建完整的WebSocket URL
-  wsURL := fmt.Sprintf("%s://%s/api/vms/ssh/ws?vm_name=%s&password=%s",
-    wsScheme, baseURL, url.QueryEscape(vmName), url.QueryEscape(password))
+  wsURL := fmt.Sprintf("%s://%s/api/vms/ssh/ws?vm_name=%s",
+    wsScheme, baseURL, url.QueryEscape(vmName))
 
   // 构建HTTP头部
   headers := http.Header{}

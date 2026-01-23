@@ -189,7 +189,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
   }
 
   // Save the new configuration
-  if err := config.SaveConfig("config.yaml", &newConfig); err != nil {
+  if err := config.SaveConfig("./conf/config.yaml", &newConfig); err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
@@ -905,7 +905,6 @@ func (s *Server) handleCheckPermission(w http.ResponseWriter, r *http.Request) {
 // handleSSHWebSocket 处理WebSocket SSH连接请求
 func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
   vmName := r.URL.Query().Get("vm_name")
-  password := r.URL.Query().Get("password")
 
   if vmName == "" {
     http.Error(w, "vm_name required", http.StatusBadRequest)
@@ -918,17 +917,11 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // 使用URL参数中的密码，如果没有则使用VM中存储的密码
-  sshPassword := password
-  if sshPassword == "" {
-    sshPassword = vmInfo.Password
-  }
-
   sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
     Host:     vmInfo.IP,
     Port:     vmInfo.Port,
     Username: vmInfo.Username,
-    Password: sshPassword,
+    Password: vmInfo.Password,
     KeyPath:  vmInfo.KeyPath,
   })
   if err != nil {
