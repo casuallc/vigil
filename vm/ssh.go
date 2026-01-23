@@ -19,11 +19,12 @@ package vm
 import (
   "bytes"
   "fmt"
+  "github.com/pkg/sftp"
   "io"
   "log"
   "net"
   "os"
-  "path/filepath"
+  "path"
   "strconv"
   "strings"
   "time"
@@ -208,51 +209,61 @@ func (c *SSHClient) UploadFile(src io.Reader, dstPath string) error {
     return fmt.Errorf("not connected to SSH server")
   }
 
-  // 创建SSH会话
-  session, err := c.client.NewSession()
+  // 创建 SFTP 客户端
+  sftpClient, err := sftp.NewClient(c.client)
   if err != nil {
-    return fmt.Errorf("failed to create SSH session: %v", err)
+    return fmt.Errorf("create sftp client failed: %w", err)
   }
-  defer session.Close()
+  defer sftpClient.Close()
 
-  // 打开远程文件进行写入
-  w, err := session.StdinPipe()
+  // 确保远程目录存在
+  dir := path.Dir(dstPath)
+  if err := mkdirAllSFTP(sftpClient, dir); err != nil {
+    return fmt.Errorf("create remote dir failed: %w", err)
+  }
+
+  // 创建远程文件（覆盖写）
+  dstFile, err := sftpClient.OpenFile(
+    dstPath,
+    os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+  )
   if err != nil {
-    return fmt.Errorf("failed to create stdin pipe: %v", err)
+    return fmt.Errorf("open remote file failed: %w", err)
+  }
+  defer dstFile.Close()
+
+  // 流式拷贝，支持大文件
+  if _, err := io.Copy(dstFile, src); err != nil {
+    return fmt.Errorf("upload failed: %w", err)
   }
 
-  // 启动scp命令
-  cmd := fmt.Sprintf("scp -t %s", dstPath)
-  if err := session.Start(cmd); err != nil {
-    return fmt.Errorf("failed to start scp command: %v", err)
+  return nil
+}
+
+func mkdirAllSFTP(c *sftp.Client, dir string) error {
+  if dir == "." || dir == "/" {
+    return nil
   }
 
-  // 获取文件信息
-  srcStat, ok := src.(interface{ Stat() (os.FileInfo, error) })
-  var fileSize int64
-  if ok {
-    info, err := srcStat.Stat()
-    if err == nil {
-      fileSize = info.Size()
+  // 已存在直接返回
+  if _, err := c.Stat(dir); err == nil {
+    return nil
+  }
+
+  parent := path.Dir(dir)
+  if parent != dir {
+    if err := mkdirAllSFTP(c, parent); err != nil {
+      return err
     }
   }
 
-  // 发送文件大小和名称
-  fmt.Fprintf(w, "C0644 %d %s\n", fileSize, filepath.Base(dstPath))
-
-  // 发送文件内容
-  if _, err := io.Copy(w, src); err != nil {
-    return fmt.Errorf("failed to copy file content: %v", err)
+  // 忽略已存在错误（并发安全）
+  if err := c.Mkdir(dir); err != nil {
+    if _, statErr := c.Stat(dir); statErr == nil {
+      return nil
+    }
+    return err
   }
-
-  // 发送结束符
-  fmt.Fprint(w, "\x00")
-
-  // 等待命令完成
-  if err := session.Wait(); err != nil {
-    return fmt.Errorf("scp command failed: %v", err)
-  }
-
   return nil
 }
 
