@@ -102,19 +102,38 @@ func (lrw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) 
   return nil, nil, fmt.Errorf("response writer does not implement http.Hijacker")
 }
 
-// AuditMiddleware 是一个HTTP中间件，用于记录审计日志
-func (s *Server) AuditMiddleware(next http.Handler) http.Handler {
+// LoggingMiddleware 是一个HTTP中间件，用于记录请求和响应
+func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    // 创建一个可记录响应的ResponseWriter
+    lrw := newLoggingResponseWriter(w)
+
+    // 记录请求开始时间
+    startTime := time.Now()
+
+    // 读取并记录请求体
+    var requestBody []byte
+    if r.Body != nil {
+      requestBody, _ = io.ReadAll(r.Body)
+      // 重新设置请求体，以便后续处理可以读取
+      r.Body = io.NopCloser(bytes.NewBuffer(requestBody))
+    }
+
+    // 处理请求
+    next.ServeHTTP(lrw, r)
+
+    // 计算请求处理时间
+    duration := time.Since(startTime)
+
     // 获取客户端IP
     clientIP := r.RemoteAddr
     if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
       clientIP = forwardedFor
     }
 
-    // 获取用户信息（这里简化处理，实际应用中可能需要从认证中间件获取）
+    // 获取用户信息
     user := "anonymous"
     if auth := r.Header.Get("Authorization"); auth != "" {
-      // 这里可以从认证头中提取用户信息
       user = "authenticated"
     }
 
@@ -161,44 +180,41 @@ func (s *Server) AuditMiddleware(next http.Handler) http.Handler {
         action = audit.ActionGroupDelete
         resource = strings.TrimPrefix(path, "/api/vms/groups/")
       }
-    case strings.HasPrefix(path, "/api/ssh"):
+    case strings.HasPrefix(path, "/api/vms/ssh"):
       action = audit.ActionVMSSH
       resource = r.URL.Query().Get("vm")
-    case strings.HasPrefix(path, "/api/file/upload"):
-      action = audit.ActionFileUpload
-      resource = r.URL.Query().Get("vm")
-    case strings.HasPrefix(path, "/api/file/download"):
-      action = audit.ActionFileDownload
-      resource = r.URL.Query().Get("vm")
-    case strings.HasPrefix(path, "/api/file/list"):
-      action = audit.ActionFileList
-      resource = r.URL.Query().Get("vm")
-    case strings.HasPrefix(path, "/api/permissions"):
+    case strings.HasPrefix(path, "/api/vms/files"):
+      switch {
+      case strings.Contains(path, "/upload"):
+        action = audit.ActionFileUpload
+      case strings.Contains(path, "/download"):
+        action = audit.ActionFileDownload
+      case strings.Contains(path, "/list"):
+        action = audit.ActionFileList
+      }
+      resource = r.URL.Query().Get("vm_name")
+    case strings.HasPrefix(path, "/api/vms/permissions"):
       switch r.Method {
       case http.MethodPost:
         action = audit.ActionPermissionAdd
       case http.MethodGet:
-        if strings.Count(path, "/") == 3 {
+        if strings.Count(path, "/") == 4 {
           action = audit.ActionPermissionList
-          resource = strings.TrimPrefix(path, "/api/permissions/")
+          resource = strings.TrimPrefix(strings.TrimPrefix(path, "/api/vms/"), "/permissions")
         }
       case http.MethodDelete:
         action = audit.ActionPermissionRemove
-        resource = strings.TrimPrefix(path, "/api/permissions/")
+        resource = strings.TrimPrefix(path, "/api/vms/permissions/")
       }
+    case strings.HasPrefix(path, "/api/processes"):
+      action = audit.ActionProcessManage
+    case strings.HasPrefix(path, "/api/resources"):
+      action = audit.ActionResourceMonitor
+    case strings.HasPrefix(path, "/api/config"):
+      action = audit.ActionConfigManage
+    case strings.HasPrefix(path, "/api/exec"):
+      action = audit.ActionCommandExecute
     }
-
-    // 创建一个可记录响应的ResponseWriter
-    lrw := newLoggingResponseWriter(w)
-
-    // 记录请求开始时间
-    startTime := time.Now()
-
-    // 调用下一个处理函数
-    next.ServeHTTP(lrw, r)
-
-    // 计算请求处理时间
-    elapsedTime := time.Since(startTime)
 
     // 确定操作状态
     status := audit.StatusSuccess
@@ -207,13 +223,13 @@ func (s *Server) AuditMiddleware(next http.Handler) http.Handler {
     }
 
     // 创建审计日志条目
-    message := fmt.Sprintf("%s %s %d %v", r.Method, r.URL.Path, lrw.statusCode, elapsedTime)
+    message := fmt.Sprintf("%s %s %d %v", r.Method, r.URL.Path, lrw.statusCode, duration)
     details := map[string]interface{}{
       "method":      r.Method,
       "path":        r.URL.Path,
       "query":       r.URL.RawQuery,
       "status_code": lrw.statusCode,
-      "elapsed_ms":  elapsedTime.Milliseconds(),
+      "elapsed_ms":  duration.Milliseconds(),
     }
 
     // 记录审计日志
@@ -223,45 +239,6 @@ func (s *Server) AuditMiddleware(next http.Handler) http.Handler {
         log.Printf("Error logging audit entry: %v", err)
       }
     }
-  })
-}
-
-// LoggingMiddleware 是一个HTTP中间件，用于记录请求和响应
-func LoggingMiddleware(next http.Handler) http.Handler {
-  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    // 创建一个可记录响应的ResponseWriter
-    lrw := newLoggingResponseWriter(w)
-
-    // 记录请求开始时间
-    startTime := time.Now()
-
-    // 读取并记录请求体
-    var requestBody []byte
-    if r.Body != nil {
-      requestBody, _ = io.ReadAll(r.Body)
-      // 重新设置请求体，以便后续处理可以读取
-      r.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-    }
-
-    // 记录请求信息
-    log.Printf("[REQUEST] Method: %s, URL: %s, RemoteAddr: %s, Body: %s",
-      r.Method, r.URL.String(), r.RemoteAddr, string(requestBody))
-
-    // 处理请求
-    next.ServeHTTP(lrw, r)
-
-    // 计算请求处理时间
-    duration := time.Since(startTime)
-
-    // 记录响应信息（对于大型响应，可以限制记录的长度）
-    maxLogBodySize := 65536 // 限制日志中响应体的大小
-    responseBody := lrw.body
-    if len(responseBody) > maxLogBodySize {
-      responseBody = responseBody[:maxLogBodySize]
-    }
-
-    log.Printf("[RESPONSE] Method: %s, URL: %s, Status: %d, Duration: %v, Body: %s",
-      r.Method, r.URL.String(), lrw.statusCode, duration, string(responseBody))
   })
 }
 
@@ -306,7 +283,7 @@ func (s *Server) Start(addr string) error {
   r := s.Router()
 
   // 应用日志中间件到所有路由
-  loggedRouter := LoggingMiddleware(r)
+  loggedRouter := s.LoggingMiddleware(r)
 
   // 从 conf/app.conf 加载 Basic Auth 凭据
   confPath := filepath.Join("conf", "app.conf")
