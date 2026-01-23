@@ -28,6 +28,7 @@ import (
 func (c *CLI) setupCommands() *cobra.Command {
   // Root command
   var apiHost string
+  var insecureSkipVerify bool
 
   rootCmd := &cobra.Command{
     Use:     "bbx-cli",
@@ -76,6 +77,7 @@ OS/Arch:   %s/%s
 
   // Global flags
   rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:8181", "API server host address")
+  rootCmd.PersistentFlags().BoolVar(&insecureSkipVerify, "insecure", false, "Skip TLS certificate verification")
 
   // Override PreRun to create client with the provided host
   rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -89,7 +91,7 @@ OS/Arch:   %s/%s
         currentCmd == execCmd ||
         currentCmd == vmCmd ||
         currentCmd == fileCmd {
-        c.client = api.NewClient(apiHost)
+        c.client = api.NewClient(apiHost, insecureSkipVerify)
         break
       }
       currentCmd = currentCmd.Parent()

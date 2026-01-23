@@ -83,6 +83,11 @@ func (m *Manager) ListFiles(path string, maxDepth int) ([]FileInfo, error) {
       return err
     }
 
+    // 跳过指定的路径本身，只处理其子文件和子目录
+    if filePath == path {
+      return nil
+    }
+
     // 计算深度
     depth := strings.Count(strings.TrimPrefix(filePath, path), string(os.PathSeparator))
     if depth > maxDepth {

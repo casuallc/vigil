@@ -26,9 +26,9 @@ type CLI struct {
 }
 
 // NewCLI creates a new command line interface
-func NewCLI(apiHost string) *CLI {
+func NewCLI(apiHost string, insecureSkipVerify ...bool) *CLI {
 	return &CLI{
-		client: api.NewClient(apiHost),
+		client: api.NewClient(apiHost, insecureSkipVerify...),
 	}
 }
 

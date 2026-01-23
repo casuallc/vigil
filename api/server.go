@@ -19,6 +19,7 @@ package api
 import (
   "bufio"
   "bytes"
+  "crypto/tls"
   "encoding/json"
   "fmt"
   "io"
@@ -294,7 +295,7 @@ func (s *Server) Start() error {
   }
 
   // 检查是否配置了 HTTPS 证书和密钥
-  if s.config.HTTPS.CertPath != "" && s.config.HTTPS.KeyPath != "" {
+  if s.config.HTTPS.Enabled {
     // 检查证书和密钥文件是否存在
     if _, err := os.Stat(s.config.HTTPS.CertPath); os.IsNotExist(err) {
       log.Printf("Warning: HTTPS certificate file not found: %s", s.config.HTTPS.CertPath)
@@ -303,6 +304,16 @@ func (s *Server) Start() error {
     }
     if _, err := os.Stat(s.config.HTTPS.KeyPath); os.IsNotExist(err) {
       log.Printf("Warning: HTTPS private key file not found: %s", s.config.HTTPS.KeyPath)
+      log.Printf("Starting API server on %s (HTTP)", addr)
+      return http.ListenAndServe(addr, handler)
+    }
+
+    // 尝试加载证书和密钥，验证它们是否匹配
+    _, err := tls.LoadX509KeyPair(s.config.HTTPS.CertPath, s.config.HTTPS.KeyPath)
+    if err != nil {
+      log.Printf("Error: Failed to load HTTPS certificate and key: %v", err)
+      log.Printf("This usually happens when the certificate and private key do not match.")
+      log.Printf("Please generate a new certificate and key pair, or check your configuration.")
       log.Printf("Starting API server on %s (HTTP)", addr)
       return http.ListenAndServe(addr, handler)
     }

@@ -199,6 +199,9 @@ func (c *CLI) handleFileDownload(sourcePath, targetPath string) error {
 // handleFileList 处理file list命令
 func (c *CLI) handleFileList(path string, maxDepth int) error {
   // 获取文件列表
+  if !strings.HasSuffix(path, "/") {
+    path = path + "/"
+  }
   files, err := c.client.FileList(path, maxDepth)
   if err != nil {
     return fmt.Errorf("failed to list files: %v", err)
