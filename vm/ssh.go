@@ -25,7 +25,6 @@ import (
   "net"
   "os"
   "path"
-  "strconv"
   "strings"
   "time"
 
@@ -294,61 +293,78 @@ func (c *SSHClient) DownloadFile(srcPath string) ([]byte, error) {
 }
 
 // ListFiles 列出远程服务器上的文件
-func (c *SSHClient) ListFiles(path string, maxDepth int) ([]FileInfo, error) {
+func (c *SSHClient) ListFiles(root string, maxDepth int) ([]FileInfo, error) {
   if !c.authorized || c.client == nil {
     return nil, fmt.Errorf("not connected to SSH server")
   }
 
-  // 创建SSH会话
-  session, err := c.client.NewSession()
+  sftpClient, err := sftp.NewClient(c.client)
   if err != nil {
-    return nil, fmt.Errorf("failed to create SSH session: %v", err)
+    return nil, fmt.Errorf("create sftp client failed: %w", err)
   }
-  defer session.Close()
+  defer sftpClient.Close()
 
-  // 构建ls命令
-  cmd := fmt.Sprintf("find %s -maxdepth %d -type f -o -type d", path, maxDepth)
-
-  // 执行命令
-  session.Stderr = os.Stderr
-  output, err := session.Output(cmd)
+  info, err := sftpClient.Stat(root)
   if err != nil {
-    return nil, fmt.Errorf("failed to execute ls command: %v", err)
+    return nil, fmt.Errorf("stat path failed: %w", err)
+  }
+  if !info.IsDir() {
+    return nil, fmt.Errorf("path is not a directory: %s", root)
   }
 
-  // 解析输出
-  var files []FileInfo
-  lines := strings.Split(string(output), "\n")
-  for _, line := range lines {
-    if line == "" {
-      continue
-    }
-
-    // 解析ls -la输出
-    parts := strings.Fields(line)
-    if len(parts) < 8 {
-      continue
-    }
-
-    fileType := "file"
-    if parts[0][0] == 'd' {
-      fileType = "dir"
-    }
-
-    fileSize, _ := strconv.ParseInt(parts[4], 10, 64)
-    modTime := strings.Join(parts[5:8], " ")
-    fileName := parts[8]
-
-    files = append(files, FileInfo{
-      Name:    fileName,
-      Size:    fileSize,
-      IsDir:   fileType == "dir",
-      ModTime: modTime,
-      Depth:   0, // 简化处理，实际应该计算深度
-    })
+  var result []FileInfo
+  err = listFilesRecursive(
+    sftpClient,
+    root,
+    0,
+    maxDepth,
+    &result,
+  )
+  if err != nil {
+    return nil, err
   }
 
-  return files, nil
+  return result, nil
+}
+
+func listFilesRecursive(client *sftp.Client, dir string, depth int, maxDepth int, result *[]FileInfo) error {
+  // 达到最大深度
+  if depth > maxDepth {
+    return nil
+  }
+
+  entries, err := client.ReadDir(dir)
+  if err != nil {
+    return err
+  }
+
+  for _, entry := range entries {
+    fullPath := path.Join(dir, entry.Name())
+
+    fi := FileInfo{
+      Name:    entry.Name(),
+      Path:    fullPath,
+      Size:    entry.Size(),
+      IsDir:   entry.IsDir(),
+      Mode:    entry.Mode().String(),
+      ModTime: entry.ModTime().Format(time.RFC3339),
+      Depth:   depth + 1,
+    }
+
+    *result = append(*result, fi)
+    if entry.IsDir() {
+      if err := listFilesRecursive(
+        client,
+        fullPath,
+        depth+1,
+        maxDepth,
+        result,
+      ); err != nil {
+        return err
+      }
+    }
+  }
+  return nil
 }
 
 // Close 关闭SSH连接
