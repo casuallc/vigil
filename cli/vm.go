@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -724,7 +725,6 @@ func (c *CLI) handleVMGroupDelete(name string) error {
 // handleVMDelete 处理vm delete命令
 func (c *CLI) handleVMDelete(name string) error {
 	var selectedVMName string
-	var err error
 
 	// 如果指定了VM名称，直接使用
 	if name != "" {
@@ -832,6 +832,12 @@ func (c *CLI) handleVMSSH(vmName string) error {
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
+	// 连接状态管理
+	var (
+		connClosed bool
+		mu         sync.Mutex
+	)
+
 	// 获取当前终端大小
 	w, h, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
@@ -841,18 +847,32 @@ func (c *CLI) handleVMSSH(vmName string) error {
 	// 发送窗口大小调整消息
 	resizeMsg := map[string]int{"cols": w, "rows": h}
 	resizeJSON, _ := json.Marshal(resizeMsg)
-	conn.WriteMessage(websocket.TextMessage, []byte("resize:"+string(resizeJSON)))
+	if err := writeWebSocketMessage(conn, &connClosed, &mu, websocket.TextMessage, []byte("resize:"+string(resizeJSON))); err != nil {
+		fmt.Println("close")
+		return nil
+	}
 
 	// 启动协程处理终端大小变化
 	go func() {
 		for {
+			// 检查连接是否关闭
+			mu.Lock()
+			if connClosed {
+				mu.Unlock()
+				return
+			}
+			mu.Unlock()
+
 			w, h, err := term.GetSize(int(os.Stdout.Fd()))
 			if err != nil {
 				continue
 			}
 			resizeMsg := map[string]int{"cols": w, "rows": h}
 			resizeJSON, _ := json.Marshal(resizeMsg)
-			conn.WriteMessage(websocket.TextMessage, []byte("resize:"+string(resizeJSON)))
+			if err := writeWebSocketMessage(conn, &connClosed, &mu, websocket.TextMessage, []byte("resize:"+string(resizeJSON))); err != nil {
+				// 连接已关闭，退出协程
+				return
+			}
 			// 在Windows上，我们简单地休眠一段时间后再次检查
 			// 在Unix/Linux上，我们可以使用SIGWINCH信号
 			// 这里我们使用一个通用的方法，每100毫秒检查一次
@@ -867,9 +887,14 @@ func (c *CLI) handleVMSSH(vmName string) error {
 			if err != nil {
 				// 连接关闭，不报错
 				fmt.Println("close")
+				// 标记连接为关闭
+				mu.Lock()
+				connClosed = true
+				mu.Unlock()
+				// 恢复终端状态
+				term.Restore(int(os.Stdin.Fd()), oldState)
 				// 退出程序
 				os.Exit(0)
-				return
 			}
 			// 输出WebSocket消息到终端
 			os.Stdout.Write(message)
@@ -879,6 +904,14 @@ func (c *CLI) handleVMSSH(vmName string) error {
 	// 从终端读取输入并发送到WebSocket
 	buffer := make([]byte, 1024)
 	for {
+		// 检查连接是否关闭
+		mu.Lock()
+		if connClosed {
+			mu.Unlock()
+			return nil
+		}
+		mu.Unlock()
+
 		n, err := os.Stdin.Read(buffer)
 		if err != nil {
 			// 终端读取错误，可能是用户按下了Ctrl+C
@@ -886,14 +919,32 @@ func (c *CLI) handleVMSSH(vmName string) error {
 			return nil
 		}
 		if n > 0 {
-			err := conn.WriteMessage(websocket.TextMessage, buffer[:n])
-			if err != nil {
+			if err := writeWebSocketMessage(conn, &connClosed, &mu, websocket.TextMessage, buffer[:n]); err != nil {
 				// 写入WebSocket错误，可能是连接已关闭
 				fmt.Println("close")
 				return nil
 			}
 		}
 	}
+}
+
+// writeWebSocketMessage 安全地写入WebSocket消息，避免并发写入
+func writeWebSocketMessage(conn *websocket.Conn, connClosed *bool, mu *sync.Mutex, messageType int, data []byte) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if *connClosed {
+		return fmt.Errorf("connection closed")
+	}
+
+	err := conn.WriteMessage(messageType, data)
+	if err != nil {
+		// 标记连接为关闭
+		*connClosed = true
+		return err
+	}
+
+	return nil
 }
 
 // readPassword 读取密码输入（隐藏输入内容）
