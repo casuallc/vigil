@@ -35,12 +35,10 @@ func main() {
   // Parse command line arguments
   var (
     configPath  string
-    apiAddr     string
     showVersion bool
   )
 
   flag.StringVar(&configPath, "config", "", "Config file path")
-  flag.StringVar(&apiAddr, "addr", ":8181", "API server address")
   flag.BoolVar(&showVersion, "version", false, "Show version information")
   flag.Parse()
 
@@ -86,7 +84,7 @@ func main() {
   // Start the server in a goroutine
   serverErr := make(chan error, 1)
   go func() {
-    serverErr <- server.Start(apiAddr)
+    serverErr <- server.Start()
   }()
 
   // Wait for termination signal or server error

@@ -1,3 +1,10 @@
+addr: :8181
+
+auth:
+  enabled: false
+  username: admin
+  password: admin
+
 log:
   level: info
 

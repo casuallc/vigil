@@ -29,12 +29,20 @@ import (
 
 // Config represents the program configuration
 type Config struct {
+  Addr        string         `yaml:"addr"`
+  BasicAuth   BasicAuth      `yaml:"auth"`
   Log         LogConfig      `yaml:"log"`
   Monitor     MonitorConfig  `yaml:"monitor"`
   Process     ProcConfig     `yaml:"process"`
   Security    SecurityConfig `yaml:"security"`
   HTTPS       HTTPSConfig    `yaml:"https"`
   ManagedApps []AppConfig    `yaml:"managed_apps"`
+}
+
+type BasicAuth struct {
+  Enabled  bool   `yaml:"enabled"`
+  Username string `yaml:"username"`
+  Password string `yaml:"password"`
 }
 
 type LogConfig struct {

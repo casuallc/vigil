@@ -31,7 +31,6 @@ import (
   "time"
 
   "github.com/casuallc/vigil/audit"
-  "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/proc"
   "github.com/casuallc/vigil/vm"
@@ -278,25 +277,17 @@ func getNamespace(vars map[string]string) string {
 }
 
 // Start starts the HTTP server
-func (s *Server) Start(addr string) error {
+func (s *Server) Start() error {
+  addr := s.config.Addr
   // 获取路由
   r := s.Router()
 
   // 应用日志中间件到所有路由
   loggedRouter := s.LoggingMiddleware(r)
 
-  // 从 conf/app.conf 加载 Basic Auth 凭据
-  confPath := filepath.Join("conf", "app.conf")
-  kv, err := common.LoadKeyValues(confPath)
-  if err != nil {
-    log.Printf("warning: failed to load %s: %v", confPath, err)
-  }
-  user := kv["BASIC_AUTH_USER"]
-  pass := kv["BASIC_AUTH_PASS"]
-
   var handler http.Handler = loggedRouter
-  if user != "" && pass != "" {
-    handler = BasicAuthMiddleware(user, pass, handler)
+  if s.config.BasicAuth.Enabled {
+    handler = BasicAuthMiddleware(s.config.BasicAuth.Username, s.config.BasicAuth.Password, handler)
     log.Printf("Basic Auth enabled for API")
   } else {
     log.Printf("Basic Auth not configured; API runs without authentication")
