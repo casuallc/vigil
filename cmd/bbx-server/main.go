@@ -63,8 +63,8 @@ func main() {
   // Load config file
   cfg, err := config.LoadConfig(configPath)
   if err != nil {
-    log.Printf("Failed to load config file, using default config: %v", err)
-    cfg = config.DefaultConfig()
+    log.Printf("Failed to load config file: %v", err)
+    return
   }
 
   // 创建进程管理器
