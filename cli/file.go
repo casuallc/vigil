@@ -18,6 +18,7 @@ package cli
 
 import (
   "fmt"
+  "github.com/casuallc/vigil/common"
   "os"
   "strings"
 
@@ -220,7 +221,7 @@ func (c *CLI) handleFileList(path string, maxDepth int) error {
     }
     // 添加缩进，限制文件名长度
     indent := strings.Repeat("  ", file.Depth)
-    fmt.Printf("%-10s %-10s %-20s %s%-30s\n", fileType, FormatFileSize(file.Size), file.ModTime, indent, file.Name)
+    fmt.Printf("%-10s %-10s %-20s %s%-30s\n", fileType, common.FormatFileSize(file.Size), common.FormatFileTime(file.ModTime), indent, file.Name)
   }
 
   return nil
@@ -257,18 +258,4 @@ func (c *CLI) handleFileMove(sourcePath, targetPath string) error {
 
   fmt.Printf("File moved successfully: %s -> %s\n", sourcePath, targetPath)
   return nil
-}
-
-// FormatFileSize 格式化文件大小
-func FormatFileSize(size int64) string {
-  const unit = 1024
-  if size < unit {
-    return fmt.Sprintf("%d B", size)
-  }
-  div, exp := int64(unit), 0
-  for n := size / unit; n >= unit; n /= unit {
-    div *= unit
-    exp++
-  }
-  return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
 }

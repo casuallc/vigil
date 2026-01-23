@@ -74,8 +74,8 @@ func (m *Manager) DownloadFile(srcPath string) ([]byte, error) {
 }
 
 // ListFiles 列出文件
-func (m *Manager) ListFiles(path string, maxDepth int) ([]FileInfo, error) {
-  var files []FileInfo
+func (m *Manager) ListFiles(path string, maxDepth int) ([]Info, error) {
+  var files []Info
 
   // 遍历目录
   err := filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
@@ -95,7 +95,7 @@ func (m *Manager) ListFiles(path string, maxDepth int) ([]FileInfo, error) {
     }
 
     // 创建文件信息
-    fileInfo := FileInfo{
+    fileInfo := Info{
       Name:    info.Name(),
       Path:    filePath,
       Size:    info.Size(),

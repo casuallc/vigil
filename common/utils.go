@@ -258,3 +258,28 @@ func ParseInterfaceToString(val interface{}) string {
     return fmt.Sprint(val)
   }
 }
+
+// FormatFileSize 格式化文件大小
+func FormatFileSize(size int64) string {
+  const unit = 1024
+  if size < unit {
+    return fmt.Sprintf("%dB", size)
+  }
+  div, exp := int64(unit), 0
+  for n := size / unit; n >= unit; n /= unit {
+    div *= unit
+    exp++
+  }
+  return fmt.Sprintf("%.1f%cB", float64(size)/float64(div), "KMGTPE"[exp])
+}
+
+// FormatFileTime 格式化文件时间
+func FormatFileTime(s string) string {
+  // 解析 RFC3339 时间字符串
+  t, err := time.Parse(time.RFC3339, s)
+  if err != nil {
+    return s
+  }
+
+  return t.Format("2006-01-02 15:04:05")
+}

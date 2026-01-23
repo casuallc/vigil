@@ -18,44 +18,44 @@ package file
 
 import "time"
 
-// FileTransferRequest 表示文件传输请求
-type FileTransferRequest struct {
-	SourcePath      string `json:"source_path"`
-	DestinationPath string `json:"destination_path"`
-	Overwrite       bool   `json:"overwrite"`
+// TransferRequest 表示文件传输请求
+type TransferRequest struct {
+  SourcePath      string `json:"source_path"`
+  DestinationPath string `json:"destination_path"`
+  Overwrite       bool   `json:"overwrite"`
 }
 
-// FileListRequest 表示文件列表请求
-type FileListRequest struct {
-	Path     string `json:"path"`
-	MaxDepth int    `json:"max_depth"`
+// ListRequest 表示文件列表请求
+type ListRequest struct {
+  Path     string `json:"path"`
+  MaxDepth int    `json:"max_depth"`
 }
 
-// FileInfo 表示文件或目录的信息
-type FileInfo struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Size    int64  `json:"size"`
-	IsDir   bool   `json:"is_dir"`
-	Mode    string `json:"mode"`
-	ModTime string `json:"mod_time"`
-	Depth   int    `json:"depth"`
+// Info 表示文件或目录的信息
+type Info struct {
+  Name    string `json:"name"`
+  Path    string `json:"path"`
+  Size    int64  `json:"size"`
+  IsDir   bool   `json:"is_dir"`
+  Mode    string `json:"mode"`
+  ModTime string `json:"mod_time"`
+  Depth   int    `json:"depth"`
 }
 
-// FileTransferResponse 表示文件传输响应
-type FileTransferResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Error   string `json:"error,omitempty"`
+// TransferResponse 表示文件传输响应
+type TransferResponse struct {
+  Success bool   `json:"success"`
+  Message string `json:"message"`
+  Error   string `json:"error,omitempty"`
 }
 
-// FileOperationLog 表示文件操作日志
-type FileOperationLog struct {
-	Operation       string    `json:"operation"` // upload, download, list
-	SourcePath      string    `json:"source_path"`
-	DestinationPath string    `json:"destination_path"`
-	Username        string    `json:"username"`
-	Timestamp       time.Time `json:"timestamp"`
-	Success         bool      `json:"success"`
-	Error           string    `json:"error,omitempty"`
+// OperationLog 表示文件操作日志
+type OperationLog struct {
+  Operation       string    `json:"operation"` // upload, download, list
+  SourcePath      string    `json:"source_path"`
+  DestinationPath string    `json:"destination_path"`
+  Username        string    `json:"username"`
+  Timestamp       time.Time `json:"timestamp"`
+  Success         bool      `json:"success"`
+  Error           string    `json:"error,omitempty"`
 }

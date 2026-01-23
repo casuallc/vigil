@@ -19,6 +19,7 @@ package cli
 import (
   "encoding/json"
   "fmt"
+  "github.com/casuallc/vigil/common"
   "os"
   "path/filepath"
   "strings"
@@ -1231,7 +1232,7 @@ func (c *CLI) handleVMFileList(vmNames, groupNames []string, path string, maxDep
       }
       // 添加缩进，限制文件名长度
       indent := getIndent(file.Depth + 1)
-      fmt.Printf("%-10s %-10s %-20s %s%-30s\n", fileType, FormatFileSize(file.Size), file.ModTime, indent, file.Name)
+      fmt.Printf("%-10s %-10s %-20s %s%-30s\n", fileType, common.FormatFileSize(file.Size), common.FormatFileTime(file.ModTime), indent, file.Name)
     }
 
     fmt.Println(strings.Repeat("=", 80))
