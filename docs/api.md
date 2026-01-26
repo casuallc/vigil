@@ -6,48 +6,48 @@
 
 ## 2. 接口列表
 
-| 模块 | 接口路径 | 请求方法 | 功能描述 |
-|------|----------|----------|----------|
-| 健康检查 | /health | GET | 检查系统健康状态 |
-| 进程管理 | /api/processes/scan | GET | 扫描进程 |
-| 进程管理 | /api/namespaces/{namespace}/processes/{name}/add | POST | 添加进程 |
-| 进程管理 | /api/namespaces/{namespace}/processes/{name}/start | POST | 启动进程 |
-| 进程管理 | /api/namespaces/{namespace}/processes/{name}/stop | POST | 停止进程 |
+| 模块 | 接口路径                                                 | 请求方法 | 功能描述 |
+|------|------------------------------------------------------|----------|----------|
+| 健康检查 | /health                                              | GET | 检查系统健康状态 |
+| 进程管理 | /api/processes/scan                                  | GET | 扫描进程 |
+| 进程管理 | /api/namespaces/{namespace}/processes/{name}/add     | POST | 添加进程 |
+| 进程管理 | /api/namespaces/{namespace}/processes/{name}/start   | POST | 启动进程 |
+| 进程管理 | /api/namespaces/{namespace}/processes/{name}/stop    | POST | 停止进程 |
 | 进程管理 | /api/namespaces/{namespace}/processes/{name}/restart | POST | 重启进程 |
-| 进程管理 | /api/namespaces/{namespace}/processes/{name} | GET | 获取进程详情 |
-| 进程管理 | /api/namespaces/{namespace}/processes/{name} | PUT | 编辑进程 |
-| 进程管理 | /api/namespaces/{namespace}/processes/{name} | DELETE | 删除进程 |
-| 进程管理 | /api/namespaces/{namespace}/processes | GET | 列出进程 |
-| 资源监控 | /api/resources/system | GET | 获取系统资源信息 |
-| 资源监控 | /api/resources/process/{pid} | GET | 获取进程资源信息 |
-| 配置管理 | /api/config | GET | 获取配置 |
-| 配置管理 | /api/config | PUT | 更新配置 |
-| 命令执行 | /api/exec | POST | 执行命令 |
-| 巡检检查 | /api/inspect | POST | 执行巡检检查 |
-| VM 管理 | /api/vms | POST | 添加 VM |
-| VM 管理 | /api/vms | GET | 列出 VM |
-| VM 管理 | /api/vms/{name} | GET | 获取 VM 详情 |
-| VM 管理 | /api/vms/{name} | PUT | 更新 VM |
-| VM 管理 | /api/vms/{name} | DELETE | 删除 VM |
-| VM 组管理 | /api/vms/groups | POST | 添加 VM 组 |
-| VM 组管理 | /api/vms/groups | GET | 列出 VM 组 |
-| VM 组管理 | /api/vms/groups/{name} | GET | 获取 VM 组详情 |
-| VM 组管理 | /api/vms/groups/{name} | PUT | 更新 VM 组 |
-| VM 组管理 | /api/vms/groups/{name} | DELETE | 删除 VM 组 |
-| VM SSH | /api/vms/ssh/ws | WebSocket | WebSocket SSH 连接 |
-| VM 文件管理 | /api/vms/files/upload | POST | 上传文件到 VM |
-| VM 文件管理 | /api/vms/files/download | POST | 从 VM 下载文件 |
-| VM 文件管理 | /api/vms/files/list | POST | 列出 VM 中的文件 |
-| 权限管理 | /api/vms/permissions | POST | 添加权限 |
-| 权限管理 | /api/vms/permissions | DELETE | 移除权限 |
-| 权限管理 | /api/vms/permissions/check | POST | 检查权限 |
-| 权限管理 | /api/vms/{name}/permissions | GET | 列出权限 |
-| 文件管理 | /api/files/upload | POST | 上传文件 |
-| 文件管理 | /api/files/download | POST | 下载文件 |
-| 文件管理 | /api/files/list | POST | 列出文件 |
-| 文件管理 | /api/files/delete | POST | 删除文件 |
-| 文件管理 | /api/files/copy | POST | 复制文件 |
-| 文件管理 | /api/files/move | POST | 移动文件 |
+| 进程管理 | /api/namespaces/{namespace}/processes/{name}         | GET | 获取进程详情 |
+| 进程管理 | /api/namespaces/{namespace}/processes/{name}         | PUT | 编辑进程 |
+| 进程管理 | /api/namespaces/{namespace}/processes/{name}         | DELETE | 删除进程 |
+| 进程管理 | /api/namespaces/{namespace}/processes                | GET | 列出进程 |
+| 资源监控 | /api/resources/system                                | GET | 获取系统资源信息 |
+| 资源监控 | /api/resources/process/{pid}                         | GET | 获取进程资源信息 |
+| 配置管理 | /api/config                                          | GET | 获取配置 |
+| 配置管理 | /api/config                                          | PUT | 更新配置 |
+| 命令执行 | /api/exec                                            | POST | 执行命令 |
+| 巡检检查 | /api/inspect                                         | POST | 执行巡检检查 |
+| VM 服务器管理 | /api/vms/servers/{name}                              | POST | 添加 VM |
+| VM 服务器管理 | /api/vms/servers                                     | GET | 列出 VM |
+| VM 服务器管理 | /api/vms/servers/{name}                              | GET | 获取 VM 详情 |
+| VM 服务器管理 | /api/vms/servers/{name}                              | PUT | 更新 VM |
+| VM 服务器管理 | /api/vms/servers/{name}                              | DELETE | 删除 VM |
+| VM 组管理 | /api/vms/groups/{name}                               | POST | 添加 VM 组 |
+| VM 组管理 | /api/vms/groups                                      | GET | 列出 VM 组 |
+| VM 组管理 | /api/vms/groups/{name}                               | GET | 获取 VM 组详情 |
+| VM 组管理 | /api/vms/groups/{name}                               | PUT | 更新 VM 组 |
+| VM 组管理 | /api/vms/groups/{name}                               | DELETE | 删除 VM 组 |
+| VM SSH | /api/vms/ssh/ws                                      | WebSocket | WebSocket SSH 连接 |
+| VM 文件管理 | /api/vms/files/{name}/upload                         | POST | 上传文件到 VM |
+| VM 文件管理 | /api/vms/files/{name}/download                       | POST | 从 VM 下载文件 |
+| VM 文件管理 | /api/vms/files/{name}/list                           | POST | 列出 VM 中的文件 |
+| 权限管理 | /api/vms/permissions/{name}                          | POST | 添加权限 |
+| 权限管理 | /api/vms/permissions/{name}                          | DELETE | 移除权限 |
+| 权限管理 | /api/vms/permissions/{name}/check                    | POST | 检查权限 |
+| 权限管理 | /api/vms/servers/{name}/permissions                  | GET | 列出权限 |
+| 文件管理 | /api/files/upload                                    | POST | 上传文件 |
+| 文件管理 | /api/files/download                                  | POST | 下载文件 |
+| 文件管理 | /api/files/list                                      | POST | 列出文件 |
+| 文件管理 | /api/files/delete                                    | POST | 删除文件 |
+| 文件管理 | /api/files/copy                                      | POST | 复制文件 |
+| 文件管理 | /api/files/move                                      | POST | 移动文件 |
 
 ## 3. 详细接口说明
 
@@ -387,19 +387,20 @@
 }
 ```
 
-### 3.7 VM 管理
+### 3.7 VM 服务器管理
 
-#### POST /api/vms
+#### POST /api/vms/servers/{name}
 
 **功能描述**：添加 VM
 
 **请求参数**：
-- 请求体：VM 信息
+- 路径参数：
+  - `name`：VM 名称
+- 请求体：VM 信息（不包含 name 字段）
 
 **请求体示例**：
 ```json
 {
-  "name": "vm-name",
   "ip": "192.168.1.1",
   "port": 22,
   "username": "username",
@@ -411,16 +412,11 @@
 **响应格式**：
 ```json
 {
-  "name": "vm-name",
-  "ip": "192.168.1.1",
-  "port": 22,
-  "username": "username",
-  "password": "password",
-  "key_path": "/path/to/key"
+  "message": "VM added successfully"
 }
 ```
 
-#### GET /api/vms
+#### GET /api/vms/servers
 
 **功能描述**：列出 VM
 
@@ -434,13 +430,12 @@
     "ip": "192.168.1.1",
     "port": 22,
     "username": "username",
-    "password": "password",
     "key_path": "/path/to/key"
   }
 ]
 ```
 
-#### GET /api/vms/{name}
+#### GET /api/vms/servers/{name}
 
 **功能描述**：获取 VM 详情
 
@@ -454,12 +449,11 @@
   "ip": "192.168.1.1",
   "port": 22,
   "username": "username",
-  "password": "password",
   "key_path": "/path/to/key"
 }
 ```
 
-#### PUT /api/vms/{name}
+#### PUT /api/vms/servers/{name}
 
 **功能描述**：更新 VM
 
@@ -476,10 +470,13 @@
 ```
 
 **响应格式**：
-- 成功：200 OK
-- 失败：404 Not Found 或 500 Internal Server Error
+```json
+{
+  "message": "VM updated successfully"
+}
+```
 
-#### DELETE /api/vms/{name}
+#### DELETE /api/vms/servers/{name}
 
 **功能描述**：删除 VM
 
@@ -487,30 +484,37 @@
 - `name`：VM 名称（路径参数）
 
 **响应格式**：
-- 成功：200 OK
-- 失败：404 Not Found 或 500 Internal Server Error
+```json
+{
+  "message": "VM deleted successfully"
+}
+```
 
 ### 3.8 VM 组管理
 
-#### POST /api/vms/groups
+#### POST /api/vms/groups/{name}
 
 **功能描述**：添加 VM 组
 
 **请求参数**：
-- 请求体：组信息
+- 路径参数：
+  - `name`：组名称
+- 请求体：组信息（不包含 name 字段）
 
 **请求体示例**：
 ```json
 {
-  "name": "group-name",
   "description": "Group description",
   "vms": ["vm1", "vm2"]
 }
 ```
 
 **响应格式**：
-- 成功：200 OK
-- 失败：400 Bad Request 或 500 Internal Server Error
+```json
+{
+  "message": "Group added successfully"
+}
+```
 
 #### GET /api/vms/groups
 
@@ -588,35 +592,45 @@
 
 **响应格式**：WebSocket 连接，双向通信
 
+**使用说明**：
+1. 客户端通过 WebSocket 协议连接到此端点
+2. 连接时需要提供 `vm_name` 查询参数指定要连接的 VM
+3. 连接建立后，客户端可以发送 SSH 命令，服务端返回命令执行结果
+4. 支持窗口大小调整，客户端可以发送 `resize:{"cols":120,"rows":40}` 格式的消息调整终端大小
+
 ### 3.10 VM 文件管理
 
-#### POST /api/vms/files/upload
+#### POST /api/vms/files/{name}/upload
 
 **功能描述**：上传文件到 VM
 
 **请求参数**：
+- 路径参数：
+  - `name`：VM 名称
 - 表单数据：
   - `file`：文件内容
-  - `vm_name`：VM 名称
   - `target_path`：目标路径
 
 **响应格式**：
-- 成功：200 OK
-- 失败：400 Bad Request 或 500 Internal Server Error
+```json
+{
+  "message": "File uploaded successfully"
+}
+```
 
-#### POST /api/vms/files/download
+#### POST /api/vms/files/{name}/download
 
 **功能描述**：从 VM 下载文件
 
 **请求参数**：
+- 路径参数：
+  - `name`：VM 名称
 - 请求体：
-  - `vm_name`：VM 名称
   - `source_path`：源路径
 
 **请求体示例**：
 ```json
 {
-  "vm_name": "vm-name",
   "source_path": "/path/to/file"
 }
 ```
@@ -625,20 +639,20 @@
 - 成功：文件内容
 - 失败：400 Bad Request 或 500 Internal Server Error
 
-#### POST /api/vms/files/list
+#### POST /api/vms/files/{name}/list
 
 **功能描述**：列出 VM 中的文件
 
 **请求参数**：
+- 路径参数：
+  - `name`：VM 名称
 - 请求体：
-  - `vm_name`：VM 名称
   - `path`：路径
   - `max_depth`：最大深度
 
 **请求体示例**：
 ```json
 {
-  "vm_name": "vm-name",
   "path": "/path/to/dir",
   "max_depth": 1
 }
@@ -661,60 +675,68 @@
 
 ### 3.11 权限管理
 
-#### POST /api/vms/permissions
+#### POST /api/vms/permissions/{name}
 
 **功能描述**：添加权限
 
 **请求参数**：
+- 路径参数：
+  - `name`：VM 名称
 - 请求体：权限信息
 
 **请求体示例**：
 ```json
 {
-  "vm_name": "vm-name",
   "username": "username",
   "permissions": ["read", "write"]
 }
 ```
 
 **响应格式**：
-- 成功：200 OK
-- 失败：400 Bad Request 或 500 Internal Server Error
+```json
+{
+  "message": "Permission added successfully"
+}
+```
 
-#### DELETE /api/vms/permissions
+#### DELETE /api/vms/permissions/{name}
 
 **功能描述**：移除权限
 
 **请求参数**：
+- 路径参数：
+  - `name`：VM 名称
 - 请求体：权限信息
 
 **请求体示例**：
 ```json
 {
-  "vm_name": "vm-name",
   "username": "username",
   "permissions": ["read", "write"]
 }
 ```
 
 **响应格式**：
-- 成功：200 OK
-- 失败：400 Bad Request 或 500 Internal Server Error
+```json
+{
+  "message": "Permission removed successfully"
+}
+```
 
-#### POST /api/vms/permissions/check
+#### POST /api/vms/permissions/{name}/check
 
 **功能描述**：检查权限
 
 **请求参数**：
+- 路径参数：
+  - `name`：VM 名称
 - 请求体：
-  - `vm_name`：VM 名称
   - `username`：用户名
   - `permission`：权限
 
 **请求体示例**：
 ```json
 {
-  "vm_name": "vm-name",
   "username": "username",
   "permission": "read"
 }
@@ -727,12 +749,13 @@
 }
 ```
 
-#### GET /api/vms/{name}/permissions
+#### GET /api/vms/servers/{name}/permissions
 
 **功能描述**：列出权限
 
 **请求参数**：
-- `name`：VM 名称（路径参数）
+- 路径参数：
+  - `name`：VM 名称
 
 **响应格式**：
 ```json
