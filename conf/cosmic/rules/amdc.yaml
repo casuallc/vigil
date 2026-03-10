@@ -19,7 +19,9 @@ checks:
   - id: amdc-6379-port
     name: "AMDC Redis 6379 端口监听状态"
     type: script
-    command: "set -e; ss -tln | awk '$4 ~ /:6379$/ {count++} END {print count+0}'"
+    command: |
+      set -e; 
+      ss -tln | awk '$4 ~ /:6379$/ {count++} END {print count+0}'
     parse:
       kind: int
     thresholds:
@@ -30,7 +32,9 @@ checks:
   - id: amdc-6379-ping
     name: "AMDC Redis 6379 服务响应（PING）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping 2>/dev/null"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping 2>/dev/null
     expect: "PONG"
     severity: critical
     remediation: "检查 amdc-6379 进程是否正常运行"
@@ -38,14 +42,18 @@ checks:
   - id: amdc-6379-role
     name: "AMDC Redis 6379 角色（role）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication 2>/dev/null | grep '^role:' | cut -d: -f2"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication 2>/dev/null | grep '^role:' | cut -d: -f2
     parse:
       kind: string
 
   - id: amdc-6379-memory
     name: "AMDC Redis 6379 内存使用量（human readable）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory 2>/dev/null | grep '^used_memory_human:' | cut -d: -f2"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory 2>/dev/null | grep '^used_memory_human:' | cut -d: -f2
     parse:
       kind: string
 
@@ -77,7 +85,9 @@ checks:
   - id: amdc-6379-rejected-conn
     name: "AMDC Redis 6379 拒绝连接数"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats 2>/dev/null | grep '^rejected_connections:' | cut -d: -f2"
+    command: | 
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6379 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats 2>/dev/null | grep '^rejected_connections:' | cut -d: -f2
     parse:
       kind: int
     thresholds:
@@ -98,7 +108,9 @@ checks:
   - id: amdc-6380-port
     name: "AMDC Redis 6380 端口监听状态"
     type: script
-    command: "set -e; ss -tln | awk '$4 ~ /:6380$/ {count++} END {print count+0}'"
+    command: |
+      set -e;
+      ss -tln | awk '$4 ~ /:6380$/ {count++} END {print count+0}'
     parse:
       kind: int
     thresholds:
@@ -109,21 +121,27 @@ checks:
   - id: amdc-6380-ping
     name: "AMDC Redis 6380 服务响应（PING）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping 2>/dev/null"
+    command: | 
+      set -e;
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping 2>/dev/null
     expect: "PONG"
     severity: critical
 
   - id: amdc-6380-role
     name: "AMDC Redis 6380 角色（role）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication 2>/dev/null | grep '^role:' | cut -d: -f2"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication 2>/dev/null | grep '^role:' | cut -d: -f2
     parse:
       kind: string
 
   - id: amdc-6380-memory
     name: "AMDC Redis 6380 内存使用量"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory 2>/dev/null | grep '^used_memory_human:' | cut -d: -f2"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory 2>/dev/null | grep '^used_memory_human:' | cut -d: -f2
     parse:
       kind: string
 
@@ -155,7 +173,9 @@ checks:
   - id: amdc-6380-rejected-conn
     name: "AMDC Redis 6380 拒绝连接数"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats 2>/dev/null | grep '^rejected_connections:' | cut -d: -f2"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6380 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats 2>/dev/null | grep '^rejected_connections:' | cut -d: -f2
     parse:
       kind: int
     thresholds:
@@ -176,7 +196,9 @@ checks:
   - id: amdc-6381-port
     name: "AMDC Redis 6381 端口监听状态"
     type: script
-    command: "set -e; ss -tln | awk '$4 ~ /:6381$/ {count++} END {print count+0}'"
+    command: |
+      set -e;
+      ss -tln | awk '$4 ~ /:6381$/ {count++} END {print count+0}'
     parse:
       kind: int
     thresholds:
@@ -187,21 +209,27 @@ checks:
   - id: amdc-6381-ping
     name: "AMDC Redis 6381 服务响应（PING）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping 2>/dev/null"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} ping 2>/dev/null
     expect: "PONG"
     severity: critical
 
   - id: amdc-6381-role
     name: "AMDC Redis 6381 角色（role）"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication 2>/dev/null | grep '^role:' | cut -d: -f2"
+    command: |
+      set -e;
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info replication 2>/dev/null | grep '^role:' | cut -d: -f2
     parse:
       kind: string
 
   - id: amdc-6381-memory
     name: "AMDC Redis 6381 内存使用量"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory 2>/dev/null | grep '^used_memory_human:' | cut -d: -f2"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info memory 2>/dev/null | grep '^used_memory_human:' | cut -d: -f2
     parse:
       kind: string
 
@@ -233,7 +261,9 @@ checks:
   - id: amdc-6381-rejected-conn
     name: "AMDC Redis 6381 拒绝连接数"
     type: script
-    command: "set -e; ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats 2>/dev/null | grep '^rejected_connections:' | cut -d: -f2"
+    command: |
+      set -e; 
+      ${APUSIC_HOME:-/kingdee/cosmic}/common/amdc/amdc/amdc-cli -p 6381 -a ${APUSIC_AMDC_PASSWORD:-Cosmic@3021} info stats 2>/dev/null | grep '^rejected_connections:' | cut -d: -f2
     parse:
       kind: int
     thresholds:

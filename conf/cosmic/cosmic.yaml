@@ -36,6 +36,8 @@ jobs:
     envs:
       - name: APUSIC_HOME
         value: /opt/kingdee/cosmic
+      - name: APUSIC_AMDC_PASSWORD
+        value: Cosmic@3021
     rules:
       - name: test
         path: ./conf/cosmic/rules/amdc.yaml
@@ -57,3 +59,18 @@ jobs:
     rules:
       - name: test
         path: ./conf/cosmic/rules/alb.yaml
+  - name: ailp
+    targets:
+      - node1
+    envs:
+      - name: APUSIC_HOME
+        value: /opt/kingdee/cosmic
+      - name: APUSIC_ES_USER
+        value: elastic
+      - name: APUSIC_ES_PASSWORD
+        value: Cosmic@2020
+      - name: APUSIC_IP
+        value: 172.20.140.224
+    rules:
+      - name: test
+        path: ./conf/cosmic/rules/ailp.yaml
