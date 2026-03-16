@@ -180,10 +180,8 @@ func handleExpectMatch(check Check, result *CheckResult) {
 
 // handleCompare 处理数值比较
 func handleCompare(check Check, result *CheckResult) {
-  value, err := common.ParseFloatValue(result.Value)
-  if err != nil {
-    result.Status = StatusError
-    result.Message = fmt.Sprintf("Failed to parse value: %v", err)
+  value := parseValue(result)
+  if value == nil {
     return
   }
 
@@ -209,10 +207,8 @@ func handleCompare(check Check, result *CheckResult) {
 
 // handleThresholds 处理阈值判断
 func handleThresholds(check Check, result *CheckResult) {
-  value, err := common.ParseFloatValue(result.Value)
-  if err != nil {
-    result.Status = StatusError
-    result.Message = fmt.Sprintf("Failed to parse value: %v", err)
+  value := parseValue(result)
+  if value == nil {
     return
   }
 
@@ -244,4 +240,24 @@ func handleThresholds(check Check, result *CheckResult) {
       break // 一旦匹配到阈值规则就停止检查
     }
   }
+}
+
+func parseValue(result *CheckResult) interface{} {
+  var value interface{}
+
+  floatValue, err := common.ParseFloatValue(result.Value)
+  if err == nil {
+    value = floatValue
+  } else {
+    // 如果解析失败，则按字符串处理
+    strValue, ok := result.Value.(string)
+    if !ok {
+      result.Status = StatusError
+      result.Message = fmt.Sprintf("Unsupported value type: %T", result.Value)
+      return nil
+    }
+    value = strValue
+  }
+
+  return value
 }

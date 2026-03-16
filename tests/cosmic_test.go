@@ -17,10 +17,44 @@ limitations under the License.
 package tests
 
 import (
+  "github.com/casuallc/vigil/common"
+  "github.com/expr-lang/expr"
   "os"
   "path/filepath"
   "testing"
 )
+
+func TestExpr(t *testing.T) {
+  v := "123"
+  value, err := common.ParseFloatValue(v)
+  println(value)
+  if err != nil {
+    t.Errorf("Failed to parse value: %v", err)
+    return
+  }
+
+  // 使用expr-lang评估阈值表达式
+  env := map[string]interface{}{
+    "value": value,
+  }
+
+  // 构建表达式
+  exprStr := "value < 123"
+
+  // 评估表达式
+  evalResult, err := expr.Eval(exprStr, env)
+  if err != nil {
+    t.Errorf("Failed to evaluate expression: %v", err)
+    return
+  }
+
+  // 如果表达式为真，则应用该阈值规则
+  if match, ok := evalResult.(bool); ok && match {
+    t.Logf("Threshold condition met: %s", exprStr)
+  } else {
+    t.Logf("Threshold condition not met: %s", exprStr)
+  }
+}
 
 // TestCosmicHealthCommand 测试cosmic health命令
 func TestCosmicHealthCommand(t *testing.T) {
