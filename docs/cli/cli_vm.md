@@ -23,6 +23,8 @@ bbx-cli vm [command]
 | `update` | 更新虚拟机凭据 |
 | `group` | 虚拟机组管理 |
 | `permission` | 虚拟机权限管理 |
+| `exec` | 在 VM 上执行命令 |
+| `ping` | 测试 VM 连接 |
 
 ## 命令详情
 
@@ -160,6 +162,94 @@ bbx-cli vm delete --vm <vm_name>
 ./bbx-cli vm delete
 ```
 
+### vm exec
+
+在虚拟机上执行远程命令。
+
+**语法：**
+
+```
+bbx-cli vm exec --vm <vm_name> --command <cmd>
+bbx-cli vm exec --group <group_name> --command <cmd>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--command` | `-c` | 要执行的命令 | 是 | - |
+| `--timeout` | `-t` | 命令执行超时时间（秒） | 否 | 30 |
+
+**示例：**
+
+```bash
+# 在指定虚拟机上执行命令
+./bbx-cli vm exec --vm vm1 --command "uptime"
+
+# 在多个虚拟机上执行命令
+./bbx-cli vm exec --vm vm1 --vm vm2 --command "df -h"
+
+# 在组中的所有虚拟机上执行命令
+./bbx-cli vm exec --group web --command "systemctl status nginx"
+
+# 设置命令执行超时时间
+./bbx-cli vm exec --vm vm1 --command "sleep 10" --timeout 30
+```
+
+**输出示例：**
+
+```
+VM: vm1
+Command: uptime
+Output:  10:30:45 up 1 day,  2:15,  1 user,  load average: 0.05, 0.10, 0.05
+Status: Success
+```
+
+### vm ping
+
+测试虚拟机的 SSH 端口连接性。
+
+**语法：**
+
+```
+bbx-cli vm ping --vm <vm_name>
+bbx-cli vm ping --group <group_name>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+
+**示例：**
+
+```bash
+# Ping 指定虚拟机
+./bbx-cli vm ping --vm vm1
+
+# Ping 多个虚拟机
+./bbx-cli vm ping --vm vm1 --vm vm2
+
+# Ping 组中的所有虚拟机
+./bbx-cli vm ping --group web
+```
+
+**输出示例：**
+
+```
+VM: vm1 (192.168.1.100:22)
+Status: OK
+Latency: 2.45ms
+
+VM: vm2 (192.168.1.101:22)
+Status: TIMEOUT
+Error: connection timeout
+```
+
 ### vm ssh
 
 SSH 登录到虚拟机。
@@ -203,6 +293,11 @@ bbx-cli vm file [command]
 | `upload` | 上传文件到虚拟机 |
 | `download` | 从虚拟机下载文件 |
 | `list` | 列出虚拟机上的文件 |
+| `cat` | 查看虚拟机上的文件内容 |
+| `mkdir` | 在虚拟机上创建目录 |
+| `rm` | 删除虚拟机上的文件或目录 |
+| `chmod` | 修改虚拟机上的文件权限 |
+| `chown` | 修改虚拟机上的文件所有者 |
 
 #### vm file upload
 
@@ -292,6 +387,165 @@ bbx-cli vm file list --vm <vm_name> --group <group_name> --path <path> --max-dep
 
 # 递归列出虚拟机上的文件
 ./bbx-cli vm file list --vm vm1 --path /home --max-depth 2
+```
+
+#### vm file cat
+
+查看虚拟机上的文件内容。
+
+**语法：**
+
+```
+bbx-cli vm file cat --vm <vm_name> --group <group_name> --path <path>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--path` | `-p` | 虚拟机上的文件路径 | 是 | - |
+
+**示例：**
+
+```bash
+# 查看指定虚拟机上的文件内容
+./bbx-cli vm file cat --vm vm1 --path /var/log/nginx/error.log
+
+# 查看多个虚拟机上的同一文件
+./bbx-cli vm file cat --vm vm1 --vm vm2 --path /etc/hostname
+
+# 查看组中所有虚拟机上的文件
+./bbx-cli vm file cat --group web --path /etc/hosts
+```
+
+#### vm file mkdir
+
+在虚拟机上创建目录。
+
+**语法：**
+
+```
+bbx-cli vm file mkdir --vm <vm_name> --group <group_name> --path <path> --parents
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--path` | `-p` | 要创建的目录路径 | 是 | - |
+| `--parents` | | 是否创建父目录（类似 mkdir -p） | 否 | false |
+
+**示例：**
+
+```bash
+# 在指定虚拟机上创建目录
+./bbx-cli vm file mkdir --vm vm1 --path /home/app/data
+
+# 递归创建目录（包括父目录）
+./bbx-cli vm file mkdir --vm vm1 --path /home/app/logs/2025 --parents
+
+# 在组中所有虚拟机上创建目录
+./bbx-cli vm file mkdir --group web --path /var/www/html --parents
+```
+
+#### vm file rm
+
+删除虚拟机上的文件或目录。
+
+**语法：**
+
+```
+bbx-cli vm file rm --vm <vm_name> --group <group_name> --path <path> --recursive
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--path` | `-p` | 要删除的文件或目录路径 | 是 | - |
+| `--recursive` | `-r` | 是否递归删除目录 | 否 | false |
+
+**示例：**
+
+```bash
+# 删除指定虚拟机上的文件
+./bbx-cli vm file rm --vm vm1 --path /tmp/old.log
+
+# 递归删除目录
+./bbx-cli vm file rm --vm vm1 --path /var/log/nginx --recursive
+
+# 在组中所有虚拟机上删除文件
+./bbx-cli vm file rm --group web --path /tmp/cache --recursive
+```
+
+#### vm file chmod
+
+修改虚拟机上的文件权限。
+
+**语法：**
+
+```
+bbx-cli vm file chmod --vm <vm_name> --group <group_name> --path <path> --mode <mode>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--path` | `-p` | 文件或目录路径 | 是 | - |
+| `--mode` | `-m` | 权限模式（八进制，如 755） | 是 | - |
+
+**示例：**
+
+```bash
+# 修改文件权限为 755
+./bbx-cli vm file chmod --vm vm1 --path /home/app/run.sh --mode 755
+
+# 修改目录权限为 644
+./bbx-cli vm file chmod --vm vm1 --path /var/www/html/index.html --mode 644
+
+# 在组中所有虚拟机上修改权限
+./bbx-cli vm file chmod --group web --path /var/log/nginx --mode 640
+```
+
+#### vm file chown
+
+修改虚拟机上的文件所有者。
+
+**语法：**
+
+```
+bbx-cli vm file chown --vm <vm_name> --group <group_name> --path <path> --owner <owner>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--path` | `-p` | 文件或目录路径 | 是 | - |
+| `--owner` | `-o` | 新的所有者（格式：user:group） | 是 | - |
+
+**示例：**
+
+```bash
+# 修改文件所有者为 www-data
+./bbx-cli vm file chown --vm vm1 --path /var/www/html/index.html --owner www-data:www-data
+
+# 修改目录所有者为 root:root
+./bbx-cli vm file chown --vm vm1 --path /opt/app --owner root:root
+
+# 在组中所有虚拟机上修改所有者
+./bbx-cli vm file chown --group web --path /var/log/nginx --owner nginx:nginx
 ```
 
 ### vm update

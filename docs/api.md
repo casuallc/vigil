@@ -42,6 +42,8 @@
 | 权限管理 | /api/vms/permissions/{name}                          | DELETE | 移除权限 |
 | 权限管理 | /api/vms/permissions/{name}/check                    | POST | 检查权限 |
 | 权限管理 | /api/vms/servers/{name}/permissions                  | GET | 列出权限 |
+| VM 命令执行 | /api/vms/servers/{name}/exec                           | POST | 在 VM 上执行命令 |
+| VM 连接测试 | /api/vms/servers/{name}/ping                           | GET | 测试 VM 连接 |
 | 文件管理 | /api/files/upload                                    | POST | 上传文件 |
 | 文件管理 | /api/files/download                                  | POST | 下载文件 |
 | 文件管理 | /api/files/list                                      | POST | 列出文件 |
@@ -768,7 +770,92 @@
 ]
 ```
 
-### 3.12 文件管理
+### 3.12 VM 命令执行
+
+#### POST /api/vms/servers/{name}/exec
+
+**功能描述**：在虚拟机上执行远程命令
+
+**请求参数**：
+- 路径参数：
+  - `name`：VM 名称
+- 请求体：
+  - `command`：要执行的命令
+  - `timeout`：超时时间（秒，可选，默认 30）
+
+**请求体示例**：
+```json
+{
+  "command": "uptime",
+  "timeout": 30
+}
+```
+
+**响应格式**：
+```json
+{
+  "vm": "vm-name",
+  "command": "uptime",
+  "output": " 10:30:45 up 1 day,  2:15,  1 user,  load average: 0.05, 0.10, 0.05",
+  "status": "success"
+}
+```
+
+**错误响应**：
+```json
+{
+  "error": "Failed to connect to VM"
+}
+```
+
+### 3.13 VM 连接测试
+
+#### GET /api/vms/servers/{name}/ping
+
+**功能描述**：测试虚拟机 SSH 端口的连接性
+
+**请求参数**：
+- 路径参数：
+  - `name`：VM 名称
+
+**响应格式**：
+```json
+{
+  "vm": "vm-name",
+  "ip": "192.168.1.100",
+  "port": 22,
+  "success": true,
+  "status": "OK",
+  "latency_ms": 2.45
+}
+```
+
+**成功响应示例**：
+```json
+{
+  "vm": "vm1",
+  "ip": "192.168.1.100",
+  "port": 22,
+  "success": true,
+  "status": "OK",
+  "latency_ms": 2.45
+}
+```
+
+**失败响应示例**：
+```json
+{
+  "vm": "vm2",
+  "ip": "192.168.1.101",
+  "port": 22,
+  "success": false,
+  "status": "TIMEOUT",
+  "latency_ms": null,
+  "message": "connection timeout"
+}
+```
+
+### 3.14 文件管理
 
 #### POST /api/files/upload
 
