@@ -80,6 +80,10 @@ func (s *Server) Router() *mux.Router {
 	r.HandleFunc("/api/vms/permissions/{name}/check", s.handleCheckPermission).Methods("POST")
 	r.HandleFunc("/api/vms/servers/{name}/permissions", s.handleListPermissions).Methods("GET")
 
+	// VM Exec and Ping endpoints
+	r.HandleFunc("/api/vms/servers/{name}/exec", s.handleVMExec).Methods("POST")
+	r.HandleFunc("/api/vms/servers/{name}/ping", s.handleVMPing).Methods("GET")
+
 	// File Management endpoints
 	r.HandleFunc("/api/files/upload", s.handleFileUpload).Methods("POST")
 	r.HandleFunc("/api/files/download", s.handleFileDownload).Methods("POST")

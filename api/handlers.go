@@ -22,6 +22,7 @@ import (
   "fmt"
   "io"
   "log"
+  "net"
   "net/http"
   "path/filepath"
   "strconv"
@@ -1194,4 +1195,115 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
 
   <-ctx.Done()
   session.Wait()
+}
+
+// handleVMExec 处理 VM 命令执行请求
+func (s *Server) handleVMExec(w http.ResponseWriter, r *http.Request) {
+  vars := mux.Vars(r)
+  vmName := vars["name"]
+  if vmName == "" {
+    writeError(w, http.StatusBadRequest, "vm name is required in path")
+    return
+  }
+
+  // 解析请求体
+  var req struct {
+    Command string `json:"command"`
+    Timeout int    `json:"timeout"`
+  }
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 验证命令不为空
+  if req.Command == "" {
+    writeError(w, http.StatusBadRequest, "command cannot be empty")
+    return
+  }
+
+  // 设置默认超时
+  if req.Timeout <= 0 {
+    req.Timeout = 30
+  }
+
+  // 获取 VM 信息
+  vmInfo, err := s.vmManager.GetVM(vmName)
+  if err != nil {
+    writeError(w, http.StatusNotFound, err.Error())
+    return
+  }
+
+  // 创建 SSH 客户端
+  sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
+    Host:     vmInfo.IP,
+    Port:     vmInfo.Port,
+    Username: vmInfo.Username,
+    Password: vmInfo.Password,
+    KeyPath:  vmInfo.KeyPath,
+  })
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  // 连接到 SSH 服务器
+  if err := sshClient.Connect(vmInfo.IP, vmInfo.Port); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+  defer sshClient.Close()
+
+  // 执行命令
+  output, err := sshClient.ExecuteCommand(req.Command)
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  // 返回命令输出
+  w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+  w.WriteHeader(http.StatusOK)
+  w.Write([]byte(output))
+}
+
+// handleVMPing 处理 VM Ping 请求
+func (s *Server) handleVMPing(w http.ResponseWriter, r *http.Request) {
+  vars := mux.Vars(r)
+  vmName := vars["name"]
+  if vmName == "" {
+    writeError(w, http.StatusBadRequest, "vm name is required in path")
+    return
+  }
+
+  // 获取 VM 信息
+  vmInfo, err := s.vmManager.GetVM(vmName)
+  if err != nil {
+    writeError(w, http.StatusNotFound, err.Error())
+    return
+  }
+
+  // 测试 TCP 连接
+  addr := fmt.Sprintf("%s:%d", vmInfo.IP, vmInfo.Port)
+  start := time.Now()
+  conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+  latency := time.Since(start)
+
+  if err != nil {
+    // 连接失败
+    writeJSON(w, http.StatusOK, map[string]interface{}{
+      "success": false,
+      "status":  "TIMEOUT",
+      "message": err.Error(),
+    })
+    return
+  }
+  defer conn.Close()
+
+  // 连接成功
+  writeJSON(w, http.StatusOK, map[string]interface{}{
+    "success": true,
+    "status":  "OK",
+    "latency": latency.String(),
+  })
 }

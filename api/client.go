@@ -1112,3 +1112,57 @@ func (c *Client) SSHWebSocket(vmName string) (*websocket.Conn, error) {
 
   return conn, nil
 }
+
+// PingResult represents the result of a ping test
+type PingResult struct {
+  Success bool   `json:"success"`
+  Status  string `json:"status"`
+  Latency string `json:"latency,omitempty"`
+  Message string `json:"message,omitempty"`
+}
+
+// VMExec executes a command on a VM via SSH
+func (c *Client) VMExec(vmName, command string, timeout int) (string, error) {
+  reqBody := map[string]interface{}{
+    "command": command,
+    "timeout": timeout,
+  }
+
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/vms/servers/%s/exec", vmName), reqBody)
+  if err != nil {
+    return "", err
+  }
+  defer resp.Body.Close()
+
+  if resp.StatusCode != http.StatusOK {
+    return "", c.errorFromResponse(resp)
+  }
+
+  // Read response body
+  body, err := io.ReadAll(resp.Body)
+  if err != nil {
+    return "", err
+  }
+
+  return string(body), nil
+}
+
+// VMPing tests TCP connection to a VM
+func (c *Client) VMPing(vmName string) (*PingResult, error) {
+  resp, err := c.doRequest("GET", fmt.Sprintf("/api/vms/servers/%s/ping", vmName), nil)
+  if err != nil {
+    return nil, err
+  }
+  defer resp.Body.Close()
+
+  if resp.StatusCode != http.StatusOK {
+    return nil, c.errorFromResponse(resp)
+  }
+
+  var result PingResult
+  if err := c.getJSONResponse(resp, &result); err != nil {
+    return nil, err
+  }
+
+  return &result, nil
+}

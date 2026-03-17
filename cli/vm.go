@@ -52,6 +52,8 @@ func (c *CLI) setupVMCommands() *cobra.Command {
   vmCmd.AddCommand(c.setupVMUpdateCommand())
   vmCmd.AddCommand(c.setupVMGroupCommand())
   vmCmd.AddCommand(c.setupVMPermissionCommand())
+  vmCmd.AddCommand(c.setupVMExecCommand())
+  vmCmd.AddCommand(c.setupVMPingCommand())
 
   return vmCmd
 }
@@ -164,6 +166,11 @@ func (c *CLI) setupVMFileCommand() *cobra.Command {
   fileCmd.AddCommand(c.setupVMFileUploadCommand())
   fileCmd.AddCommand(c.setupVMFileDownloadCommand())
   fileCmd.AddCommand(c.setupVMFileListCommand())
+  fileCmd.AddCommand(c.setupVMFileCatCommand())
+  fileCmd.AddCommand(c.setupVMFileMkdirCommand())
+  fileCmd.AddCommand(c.setupVMFileRmCommand())
+  fileCmd.AddCommand(c.setupVMFileChmodCommand())
+  fileCmd.AddCommand(c.setupVMFileChownCommand())
 
   return fileCmd
 }
@@ -242,6 +249,129 @@ func (c *CLI) setupVMFileListCommand() *cobra.Command {
   listCmd.Flags().IntVarP(&maxDepth, "max-depth", "d", 0, "Maximum depth for recursive listing (0 means no recursion)")
 
   return listCmd
+}
+
+// setupVMFileCatCommand 设置 vm file cat 命令
+func (c *CLI) setupVMFileCatCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var path string
+
+  catCmd := &cobra.Command{
+    Use:   "cat",
+    Short: "View file contents on VM",
+    Long:  "View contents of a file on a virtual machine",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMFileCat(vmNames, groupNames, path)
+    },
+  }
+
+  catCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  catCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  catCmd.Flags().StringVarP(&path, "path", "p", "", "File path on VM")
+  catCmd.MarkFlagRequired("path")
+
+  return catCmd
+}
+
+// setupVMFileMkdirCommand 设置 vm file mkdir 命令
+func (c *CLI) setupVMFileMkdirCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var path string
+  var parents bool
+
+  mkdirCmd := &cobra.Command{
+    Use:   "mkdir",
+    Short: "Create directory on VM",
+    Long:  "Create a directory on a virtual machine",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMFileMkdir(vmNames, groupNames, path, parents)
+    },
+  }
+
+  mkdirCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  mkdirCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  mkdirCmd.Flags().StringVarP(&path, "path", "p", "", "Directory path on VM")
+  mkdirCmd.Flags().BoolVarP(&parents, "parents", "P", false, "Create parent directories if needed")
+  mkdirCmd.MarkFlagRequired("path")
+
+  return mkdirCmd
+}
+
+// setupVMFileRmCommand 设置 vm file rm 命令
+func (c *CLI) setupVMFileRmCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var path string
+  var recursive bool
+
+  rmCmd := &cobra.Command{
+    Use:   "rm",
+    Short: "Remove file/directory on VM",
+    Long:  "Remove a file or directory from a virtual machine",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMFileRm(vmNames, groupNames, path, recursive)
+    },
+  }
+
+  rmCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  rmCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  rmCmd.Flags().StringVarP(&path, "path", "p", "", "File/Directory path on VM")
+  rmCmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Remove directories recursively")
+  rmCmd.MarkFlagRequired("path")
+
+  return rmCmd
+}
+
+// setupVMFileChmodCommand 设置 vm file chmod 命令
+func (c *CLI) setupVMFileChmodCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var path, mode string
+
+  chmodCmd := &cobra.Command{
+    Use:   "chmod",
+    Short: "Change file permissions on VM",
+    Long:  "Change permissions of a file/directory on a virtual machine",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMFileChmod(vmNames, groupNames, path, mode)
+    },
+  }
+
+  chmodCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  chmodCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  chmodCmd.Flags().StringVarP(&path, "path", "p", "", "File/Directory path on VM")
+  chmodCmd.Flags().StringVarP(&mode, "mode", "m", "", "Permission mode (e.g., 755, u+x)")
+  chmodCmd.MarkFlagRequired("path")
+  chmodCmd.MarkFlagRequired("mode")
+
+  return chmodCmd
+}
+
+// setupVMFileChownCommand 设置 vm file chown 命令
+func (c *CLI) setupVMFileChownCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var path, owner string
+
+  chownCmd := &cobra.Command{
+    Use:   "chown",
+    Short: "Change file owner on VM",
+    Long:  "Change owner/group of a file/directory on a virtual machine",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMFileChown(vmNames, groupNames, path, owner)
+    },
+  }
+
+  chownCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  chownCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  chownCmd.Flags().StringVarP(&path, "path", "p", "", "File/Directory path on VM")
+  chownCmd.Flags().StringVarP(&owner, "owner", "o", "", "Owner/group (e.g., user:group)")
+  chownCmd.MarkFlagRequired("path")
+  chownCmd.MarkFlagRequired("owner")
+
+  return chownCmd
 }
 
 // setupVMUpdateCommand 设置vm update命令
@@ -490,6 +620,52 @@ func (c *CLI) setupVMPermissionCheckCommand() *cobra.Command {
   checkCmd.MarkFlagRequired("permission")
 
   return checkCmd
+}
+
+// setupVMExecCommand 设置 vm exec 命令
+func (c *CLI) setupVMExecCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var command string
+  var timeout int
+
+  execCmd := &cobra.Command{
+    Use:   "exec",
+    Short: "Execute command on VM(s)",
+    Long:  "Execute a command on one or more VMs",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMExec(vmNames, groupNames, command, timeout)
+    },
+  }
+
+  execCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  execCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  execCmd.Flags().StringVarP(&command, "command", "c", "", "Command to execute")
+  execCmd.Flags().IntVarP(&timeout, "timeout", "t", 30, "Command timeout in seconds")
+
+  execCmd.MarkFlagRequired("command")
+
+  return execCmd
+}
+
+// setupVMPingCommand 设置 vm ping 命令
+func (c *CLI) setupVMPingCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+
+  pingCmd := &cobra.Command{
+    Use:   "ping",
+    Short: "Ping VM(s)",
+    Long:  "Test TCP connection to one or more VMs",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMPing(vmNames, groupNames)
+    },
+  }
+
+  pingCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  pingCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+
+  return pingCmd
 }
 
 // ------------------------- Command Handlers -------------------------
@@ -1420,6 +1596,255 @@ func (c *CLI) handleVMPermissionCheck(vmName, username, permission string) error
     fmt.Printf("User %s has permission %s on VM %s\n", username, permission, vmName)
   } else {
     fmt.Printf("User %s does not have permission %s on VM %s\n", username, permission, vmName)
+  }
+
+  return nil
+}
+
+// handleVMExec 处理 vm exec 命令
+func (c *CLI) handleVMExec(vmNames, groupNames []string, command string, timeout int) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 遍历所有 VM 并执行命令
+  for _, selectedVM := range vms {
+    fmt.Printf("Executing on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Command: %s (timeout: %ds)\n", command, timeout)
+
+    // 执行命令
+    output, err := c.client.VMExec(selectedVM.Name, command, timeout)
+    if err != nil {
+      fmt.Printf("Failed to execute command on %s: %v\n", selectedVM.Name, err)
+      fmt.Printf("Output: %s\n", output)
+      continue
+    }
+
+    fmt.Printf("Output from %s:\n%s\n", selectedVM.Name, output)
+    fmt.Println(strings.Repeat("-", 80))
+  }
+
+  return nil
+}
+
+// handleVMPing 处理 vm ping 命令
+func (c *CLI) handleVMPing(vmNames, groupNames []string) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 遍历所有 VM 并执行 ping 测试
+  for _, selectedVM := range vms {
+    fmt.Printf("Pinging VM: %s (%s:%d)...\n", selectedVM.Name, selectedVM.IP, selectedVM.Port)
+
+    // 执行 ping 测试
+    result, err := c.client.VMPing(selectedVM.Name)
+    if err != nil {
+      fmt.Printf("Ping failed: %v\n", err)
+      continue
+    }
+
+    if result.Success {
+      fmt.Printf("Ping successful: latency=%v, status=%s\n", result.Latency, result.Status)
+    } else {
+      fmt.Printf("Ping failed: status=%s, message=%s\n", result.Status, result.Message)
+    }
+  }
+
+  return nil
+}
+
+// handleVMFileCat 处理 vm file cat 命令
+func (c *CLI) handleVMFileCat(vmNames, groupNames []string, path string) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 遍历所有 VM 并查看文件内容
+  for _, selectedVM := range vms {
+    fmt.Printf("Viewing file on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Path: %s\n", path)
+    fmt.Println(strings.Repeat("=", 80))
+
+    // 执行 cat 命令
+    output, err := c.client.VMExec(selectedVM.Name, fmt.Sprintf("cat %s", path), 30)
+    if err != nil {
+      fmt.Printf("Failed to view file on %s: %v\n", selectedVM.Name, err)
+      fmt.Printf("Output: %s\n", output)
+      continue
+    }
+
+    fmt.Printf("%s\n", output)
+    fmt.Println(strings.Repeat("=", 80))
+  }
+
+  return nil
+}
+
+// handleVMFileMkdir 处理 vm file mkdir 命令
+func (c *CLI) handleVMFileMkdir(vmNames, groupNames []string, path string, parents bool) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 构建命令
+  cmd := "mkdir"
+  if parents {
+    cmd += " -p"
+  }
+  cmd += fmt.Sprintf(" %s", path)
+
+  // 遍历所有 VM 并创建目录
+  for _, selectedVM := range vms {
+    fmt.Printf("Creating directory on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Command: %s\n", cmd)
+
+    // 执行命令
+    output, err := c.client.VMExec(selectedVM.Name, cmd, 30)
+    if err != nil {
+      fmt.Printf("Failed to create directory on %s: %v\n", selectedVM.Name, err)
+      fmt.Printf("Output: %s\n", output)
+      continue
+    }
+
+    fmt.Printf("Directory created successfully on %s\n", selectedVM.Name)
+  }
+
+  return nil
+}
+
+// handleVMFileRm 处理 vm file rm 命令
+func (c *CLI) handleVMFileRm(vmNames, groupNames []string, path string, recursive bool) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 构建命令
+  cmd := "rm"
+  if recursive {
+    cmd += " -rf"
+  }
+  cmd += fmt.Sprintf(" %s", path)
+
+  // 遍历所有 VM 并删除文件
+  for _, selectedVM := range vms {
+    fmt.Printf("Removing on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Command: %s\n", cmd)
+
+    // 执行命令
+    output, err := c.client.VMExec(selectedVM.Name, cmd, 30)
+    if err != nil {
+      fmt.Printf("Failed to remove on %s: %v\n", selectedVM.Name, err)
+      fmt.Printf("Output: %s\n", output)
+      continue
+    }
+
+    fmt.Printf("Removed successfully on %s\n", selectedVM.Name)
+  }
+
+  return nil
+}
+
+// handleVMFileChmod 处理 vm file chmod 命令
+func (c *CLI) handleVMFileChmod(vmNames, groupNames []string, path, mode string) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 构建命令
+  cmd := fmt.Sprintf("chmod %s %s", mode, path)
+
+  // 遍历所有 VM 并修改权限
+  for _, selectedVM := range vms {
+    fmt.Printf("Changing permissions on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Command: %s\n", cmd)
+
+    // 执行命令
+    output, err := c.client.VMExec(selectedVM.Name, cmd, 30)
+    if err != nil {
+      fmt.Printf("Failed to change permissions on %s: %v\n", selectedVM.Name, err)
+      fmt.Printf("Output: %s\n", output)
+      continue
+    }
+
+    fmt.Printf("Permissions changed successfully on %s\n", selectedVM.Name)
+  }
+
+  return nil
+}
+
+// handleVMFileChown 处理 vm file chown 命令
+func (c *CLI) handleVMFileChown(vmNames, groupNames []string, path, owner string) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 构建命令
+  cmd := fmt.Sprintf("chown %s %s", owner, path)
+
+  // 遍历所有 VM 并修改所有者
+  for _, selectedVM := range vms {
+    fmt.Printf("Changing owner on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Command: %s\n", cmd)
+
+    // 执行命令
+    output, err := c.client.VMExec(selectedVM.Name, cmd, 30)
+    if err != nil {
+      fmt.Printf("Failed to change owner on %s: %v\n", selectedVM.Name, err)
+      fmt.Printf("Output: %s\n", output)
+      continue
+    }
+
+    fmt.Printf("Owner changed successfully on %s\n", selectedVM.Name)
   }
 
   return nil
