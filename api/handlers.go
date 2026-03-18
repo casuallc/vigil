@@ -777,6 +777,244 @@ func (s *Server) handleVmFileDownload(w http.ResponseWriter, r *http.Request) {
   }
 }
 
+// handleVmFileDelete 处理删除文件请求
+func (s *Server) handleVmFileDelete(w http.ResponseWriter, r *http.Request) {
+  // 解析 URL 参数
+  vars := mux.Vars(r)
+  vmName := vars["name"]
+  if vmName == "" {
+    writeError(w, http.StatusBadRequest, "vm name is required in path")
+    return
+  }
+
+  type FileDeleteRequest struct {
+    Path string `json:"path"`
+  }
+
+  var req FileDeleteRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 获取 VM 信息
+  vmInfo, err := s.vmManager.GetVM(vmName)
+  if err != nil {
+    writeError(w, http.StatusNotFound, err.Error())
+    return
+  }
+
+  // 创建 SSH 客户端
+  sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
+    Host:     vmInfo.IP,
+    Port:     vmInfo.Port,
+    Username: vmInfo.Username,
+    Password: vmInfo.Password,
+    KeyPath:  vmInfo.KeyPath,
+  })
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  // 连接到 SSH 服务器
+  if err := sshClient.Connect(vmInfo.IP, vmInfo.Port); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+  defer sshClient.Close()
+
+  // 删除文件
+  if _, err := sshClient.ExecuteCommand("rm " + req.Path); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "File deleted successfully"})
+}
+
+// handleVmFileMkdir 处理创建目录请求
+func (s *Server) handleVmFileMkdir(w http.ResponseWriter, r *http.Request) {
+  // 解析 URL 参数
+  vars := mux.Vars(r)
+  vmName := vars["name"]
+  if vmName == "" {
+    writeError(w, http.StatusBadRequest, "vm name is required in path")
+    return
+  }
+
+  type MkdirRequest struct {
+    Path    string `json:"path"`
+    Parents bool   `json:"parents"`
+  }
+
+  var req MkdirRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 获取 VM 信息
+  vmInfo, err := s.vmManager.GetVM(vmName)
+  if err != nil {
+    writeError(w, http.StatusNotFound, err.Error())
+    return
+  }
+
+  // 创建 SSH 客户端
+  sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
+    Host:     vmInfo.IP,
+    Port:     vmInfo.Port,
+    Username: vmInfo.Username,
+    Password: vmInfo.Password,
+    KeyPath:  vmInfo.KeyPath,
+  })
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  // 连接到 SSH 服务器
+  if err := sshClient.Connect(vmInfo.IP, vmInfo.Port); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+  defer sshClient.Close()
+
+  // 创建目录
+  cmd := "mkdir"
+  if req.Parents {
+    cmd += " -p"
+  }
+  cmd += " " + req.Path
+
+  if _, err := sshClient.ExecuteCommand(cmd); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "Directory created successfully"})
+}
+
+// handleVmFileTouch 处理创建文件请求
+func (s *Server) handleVmFileTouch(w http.ResponseWriter, r *http.Request) {
+  // 解析 URL 参数
+  vars := mux.Vars(r)
+  vmName := vars["name"]
+  if vmName == "" {
+    writeError(w, http.StatusBadRequest, "vm name is required in path")
+    return
+  }
+
+  type TouchRequest struct {
+    Path string `json:"path"`
+  }
+
+  var req TouchRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 获取 VM 信息
+  vmInfo, err := s.vmManager.GetVM(vmName)
+  if err != nil {
+    writeError(w, http.StatusNotFound, err.Error())
+    return
+  }
+
+  // 创建 SSH 客户端
+  sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
+    Host:     vmInfo.IP,
+    Port:     vmInfo.Port,
+    Username: vmInfo.Username,
+    Password: vmInfo.Password,
+    KeyPath:  vmInfo.KeyPath,
+  })
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  // 连接到 SSH 服务器
+  if err := sshClient.Connect(vmInfo.IP, vmInfo.Port); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+  defer sshClient.Close()
+
+  // 创建文件
+  if _, err := sshClient.ExecuteCommand("touch " + req.Path); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "File created successfully"})
+}
+
+// handleVmFileRmdir 处理删除目录请求
+func (s *Server) handleVmFileRmdir(w http.ResponseWriter, r *http.Request) {
+  // 解析 URL 参数
+  vars := mux.Vars(r)
+  vmName := vars["name"]
+  if vmName == "" {
+    writeError(w, http.StatusBadRequest, "vm name is required in path")
+    return
+  }
+
+  type RmdirRequest struct {
+    Path      string `json:"path"`
+    Recursive bool   `json:"recursive"`
+  }
+
+  var req RmdirRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // 获取 VM 信息
+  vmInfo, err := s.vmManager.GetVM(vmName)
+  if err != nil {
+    writeError(w, http.StatusNotFound, err.Error())
+    return
+  }
+
+  // 创建 SSH 客户端
+  sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
+    Host:     vmInfo.IP,
+    Port:     vmInfo.Port,
+    Username: vmInfo.Username,
+    Password: vmInfo.Password,
+    KeyPath:  vmInfo.KeyPath,
+  })
+  if err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  // 连接到 SSH 服务器
+  if err := sshClient.Connect(vmInfo.IP, vmInfo.Port); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+  defer sshClient.Close()
+
+  // 删除目录
+  cmd := "rm"
+  if req.Recursive {
+    cmd += " -r"
+  }
+  cmd += " " + req.Path
+
+  if _, err := sshClient.ExecuteCommand(cmd); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "Directory deleted successfully"})
+}
+
 // ------------------------- File Management Handlers -------------------------
 
 // handleFileList 处理列出文件的请求

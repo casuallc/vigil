@@ -146,3 +146,5 @@ build/
 output/
 release/
 pkg/
+/bbx-cli
+/bbx-server

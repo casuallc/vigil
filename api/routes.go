@@ -73,6 +73,10 @@ func (s *Server) Router() *mux.Router {
 	r.HandleFunc("/api/vms/files/{name}/upload", s.handleVmFileUpload).Methods("POST")
 	r.HandleFunc("/api/vms/files/{name}/download", s.handleVmFileDownload).Methods("POST")
 	r.HandleFunc("/api/vms/files/{name}/list", s.handleVmFileList).Methods("POST")
+	r.HandleFunc("/api/vms/files/{name}/delete", s.handleVmFileDelete).Methods("POST")
+	r.HandleFunc("/api/vms/files/{name}/mkdir", s.handleVmFileMkdir).Methods("POST")
+	r.HandleFunc("/api/vms/files/{name}/touch", s.handleVmFileTouch).Methods("POST")
+	r.HandleFunc("/api/vms/files/{name}/rmdir", s.handleVmFileRmdir).Methods("POST")
 
 	// VM Permission endpoints
 	r.HandleFunc("/api/vms/permissions/{name}", s.handleAddPermission).Methods("POST")

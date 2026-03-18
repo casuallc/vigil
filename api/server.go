@@ -191,6 +191,14 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
         action = audit.ActionFileDownload
       case strings.Contains(path, "/list"):
         action = audit.ActionFileList
+      case strings.Contains(path, "/delete"):
+        action = audit.ActionFileDelete
+      case strings.Contains(path, "/mkdir"):
+        action = audit.ActionFileMkdir
+      case strings.Contains(path, "/touch"):
+        action = audit.ActionFileTouch
+      case strings.Contains(path, "/rmdir"):
+        action = audit.ActionFileRmdir
       }
       resource = r.URL.Query().Get("vm_name")
     case strings.HasPrefix(path, "/api/vms/permissions"):

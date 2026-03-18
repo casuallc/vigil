@@ -38,6 +38,10 @@
 | VM 文件管理 | /api/vms/files/{name}/upload                         | POST | 上传文件到 VM |
 | VM 文件管理 | /api/vms/files/{name}/download                       | POST | 从 VM 下载文件 |
 | VM 文件管理 | /api/vms/files/{name}/list                           | POST | 列出 VM 中的文件 |
+| VM 文件管理 | /api/vms/files/{name}/delete                         | POST | 删除 VM 上的文件 |
+| VM 文件管理 | /api/vms/files/{name}/mkdir                          | POST | 在 VM 上新建文件夹 |
+| VM 文件管理 | /api/vms/files/{name}/touch                          | POST | 在 VM 上新建文件 |
+| VM 文件管理 | /api/vms/files/{name}/rmdir                          | POST | 删除 VM 上的文件夹 |
 | 权限管理 | /api/vms/permissions/{name}                          | POST | 添加权限 |
 | 权限管理 | /api/vms/permissions/{name}                          | DELETE | 移除权限 |
 | 权限管理 | /api/vms/permissions/{name}/check                    | POST | 检查权限 |
@@ -673,6 +677,106 @@
     "depth": 1
   }
 ]
+```
+
+#### POST /api/vms/files/{name}/delete
+
+**功能描述**：删除 VM 上的文件
+
+**请求参数**：
+- 路径参数：
+  - `name`：VM 名称
+- 请求体：
+  - `path`：文件路径
+
+**请求体示例**：
+```json
+{
+  "path": "/tmp/old.log"
+}
+```
+
+**响应格式**：
+```json
+{
+  "message": "File deleted successfully"
+}
+```
+
+#### POST /api/vms/files/{name}/mkdir
+
+**功能描述**：在 VM 上新建文件夹
+
+**请求参数**：
+- 路径参数：
+  - `name`：VM 名称
+- 请求体：
+  - `path`：目录路径
+  - `parents`：是否创建父目录（可选，默认 false）
+
+**请求体示例**：
+```json
+{
+  "path": "/home/app/logs",
+  "parents": true
+}
+```
+
+**响应格式**：
+```json
+{
+  "message": "Directory created successfully"
+}
+```
+
+#### POST /api/vms/files/{name}/touch
+
+**功能描述**：在 VM 上新建文件
+
+**请求参数**：
+- 路径参数：
+  - `name`：VM 名称
+- 请求体：
+  - `path`：文件路径
+
+**请求体示例**：
+```json
+{
+  "path": "/tmp/newfile.txt"
+}
+```
+
+**响应格式**：
+```json
+{
+  "message": "File created successfully"
+}
+```
+
+#### POST /api/vms/files/{name}/rmdir
+
+**功能描述**：删除 VM 上的文件夹
+
+**请求参数**：
+- 路径参数：
+  - `name`：VM 名称
+- 请求体：
+  - `path`：目录路径
+  - `recursive`：是否递归删除（可选，默认 false）
+
+**请求体示例**：
+```json
+{
+  "path": "/var/log/nginx",
+  "recursive": true
+}
+```
+
+**响应格式**：
+```json
+{
+  "message": "Directory deleted successfully"
+}
 ```
 
 ### 3.11 权限管理

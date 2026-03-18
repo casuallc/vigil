@@ -171,6 +171,9 @@ func (c *CLI) setupVMFileCommand() *cobra.Command {
   fileCmd.AddCommand(c.setupVMFileRmCommand())
   fileCmd.AddCommand(c.setupVMFileChmodCommand())
   fileCmd.AddCommand(c.setupVMFileChownCommand())
+  fileCmd.AddCommand(c.setupVMFileDeleteCommand())
+  fileCmd.AddCommand(c.setupVMFileTouchCommand())
+  fileCmd.AddCommand(c.setupVMFileRmdirCommand())
 
   return fileCmd
 }
@@ -372,6 +375,77 @@ func (c *CLI) setupVMFileChownCommand() *cobra.Command {
   chownCmd.MarkFlagRequired("owner")
 
   return chownCmd
+}
+
+// setupVMFileDeleteCommand 设置 vm file delete 命令
+func (c *CLI) setupVMFileDeleteCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var path string
+
+  deleteCmd := &cobra.Command{
+    Use:   "delete",
+    Short: "Delete file on VM",
+    Long:  "Delete a file from a virtual machine",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMFileDelete(vmNames, groupNames, path)
+    },
+  }
+
+  deleteCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  deleteCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  deleteCmd.Flags().StringVarP(&path, "path", "p", "", "File path on VM")
+  deleteCmd.MarkFlagRequired("path")
+
+  return deleteCmd
+}
+
+// setupVMFileTouchCommand 设置 vm file touch 命令
+func (c *CLI) setupVMFileTouchCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var path string
+
+  touchCmd := &cobra.Command{
+    Use:   "touch",
+    Short: "Create file on VM",
+    Long:  "Create an empty file on a virtual machine",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMFileTouch(vmNames, groupNames, path)
+    },
+  }
+
+  touchCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  touchCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  touchCmd.Flags().StringVarP(&path, "path", "p", "", "File path on VM")
+  touchCmd.MarkFlagRequired("path")
+
+  return touchCmd
+}
+
+// setupVMFileRmdirCommand 设置 vm file rmdir 命令
+func (c *CLI) setupVMFileRmdirCommand() *cobra.Command {
+  var vmNames []string
+  var groupNames []string
+  var path string
+  var recursive bool
+
+  rmdirCmd := &cobra.Command{
+    Use:   "rmdir",
+    Short: "Remove directory on VM",
+    Long:  "Remove a directory from a virtual machine",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMFileRmdir(vmNames, groupNames, path, recursive)
+    },
+  }
+
+  rmdirCmd.Flags().StringArrayVarP(&vmNames, "vm", "v", []string{}, "VM names (can be used multiple times)")
+  rmdirCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
+  rmdirCmd.Flags().StringVarP(&path, "path", "p", "", "Directory path on VM")
+  rmdirCmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Remove directories recursively")
+  rmdirCmd.MarkFlagRequired("path")
+
+  return rmdirCmd
 }
 
 // setupVMUpdateCommand 设置vm update命令
@@ -1845,6 +1919,100 @@ func (c *CLI) handleVMFileChown(vmNames, groupNames []string, path, owner string
     }
 
     fmt.Printf("Owner changed successfully on %s\n", selectedVM.Name)
+  }
+
+  return nil
+}
+
+// handleVMFileDelete 处理 vm file delete 命令
+func (c *CLI) handleVMFileDelete(vmNames, groupNames []string, path string) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 遍历所有 VM 并删除文件
+  for _, selectedVM := range vms {
+    fmt.Printf("Deleting file on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Path: %s\n", path)
+
+    // 使用 API 客户端删除文件
+    err := c.client.VMFileDelete(selectedVM.Name, path)
+    if err != nil {
+      fmt.Printf("Failed to delete file on %s: %v\n", selectedVM.Name, err)
+      continue
+    }
+
+    fmt.Printf("File deleted successfully on %s\n", selectedVM.Name)
+  }
+
+  return nil
+}
+
+// handleVMFileTouch 处理 vm file touch 命令
+func (c *CLI) handleVMFileTouch(vmNames, groupNames []string, path string) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 遍历所有 VM 并创建文件
+  for _, selectedVM := range vms {
+    fmt.Printf("Creating file on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Path: %s\n", path)
+
+    // 使用 API 客户端创建文件
+    err := c.client.VMFileTouch(selectedVM.Name, path)
+    if err != nil {
+      fmt.Printf("Failed to create file on %s: %v\n", selectedVM.Name, err)
+      continue
+    }
+
+    fmt.Printf("File created successfully on %s\n", selectedVM.Name)
+  }
+
+  return nil
+}
+
+// handleVMFileRmdir 处理 vm file rmdir 命令
+func (c *CLI) handleVMFileRmdir(vmNames, groupNames []string, path string, recursive bool) error {
+  // 获取目标 VM 列表
+  vms, err := c.getTargetVMs(vmNames, groupNames)
+  if err != nil {
+    return err
+  }
+
+  // 检查是否找到了目标 VM
+  if len(vms) == 0 {
+    return fmt.Errorf("no VMs found for the specified names or groups")
+  }
+
+  // 遍历所有 VM 并删除目录
+  for _, selectedVM := range vms {
+    fmt.Printf("Removing directory on VM: %s (%s)\n", selectedVM.Name, selectedVM.IP)
+    fmt.Printf("Path: %s\n", path)
+    fmt.Printf("Recursive: %v\n", recursive)
+
+    // 使用 API 客户端删除目录
+    err := c.client.VMFileRmdir(selectedVM.Name, path, recursive)
+    if err != nil {
+      fmt.Printf("Failed to remove directory on %s: %v\n", selectedVM.Name, err)
+      continue
+    }
+
+    fmt.Printf("Directory removed successfully on %s\n", selectedVM.Name)
   }
 
   return nil

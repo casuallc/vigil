@@ -298,6 +298,9 @@ bbx-cli vm file [command]
 | `rm` | 删除虚拟机上的文件或目录 |
 | `chmod` | 修改虚拟机上的文件权限 |
 | `chown` | 修改虚拟机上的文件所有者 |
+| `delete` | 删除虚拟机上的文件 |
+| `touch` | 在虚拟机上新建文件 |
+| `rmdir` | 删除虚拟机上的目录 |
 
 #### vm file upload
 
@@ -546,6 +549,100 @@ bbx-cli vm file chown --vm <vm_name> --group <group_name> --path <path> --owner 
 
 # 在组中所有虚拟机上修改所有者
 ./bbx-cli vm file chown --group web --path /var/log/nginx --owner nginx:nginx
+```
+
+#### vm file delete
+
+删除虚拟机上的文件。
+
+**语法：**
+
+```
+bbx-cli vm file delete --vm <vm_name> --group <group_name> --path <path>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--path` | `-p` | 文件路径 | 是 | - |
+
+**示例：**
+
+```bash
+# 删除指定虚拟机上的文件
+./bbx-cli vm file delete --vm vm1 --path /tmp/old.log
+
+# 在多个虚拟机上删除文件
+./bbx-cli vm file delete --vm vm1 --vm vm2 --path /tmp/cache.txt
+
+# 在组中所有虚拟机上删除文件
+./bbx-cli vm file delete --group web --path /tmp/error.log
+```
+
+#### vm file touch
+
+在虚拟机上新建空文件。
+
+**语法：**
+
+```
+bbx-cli vm file touch --vm <vm_name> --group <group_name> --path <path>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--path` | `-p` | 文件路径 | 是 | - |
+
+**示例：**
+
+```bash
+# 在指定虚拟机上创建空文件
+./bbx-cli vm file touch --vm vm1 --path /tmp/newfile.txt
+
+# 在多个虚拟机上创建文件
+./bbx-cli vm file touch --vm vm1 --vm vm2 --path /var/log/app.log
+
+# 在组中所有虚拟机上创建文件
+./bbx-cli vm file touch --group web --path /var/www/html/.maintenance
+```
+
+#### vm file rmdir
+
+删除虚拟机上的目录。
+
+**语法：**
+
+```
+bbx-cli vm file rmdir --vm <vm_name> --group <group_name> --path <path> --recursive
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | VM 名称（可多次使用） | 否 | - |
+| `--group` | `-g` | 组名称（可多次使用） | 否 | - |
+| `--path` | `-p` | 目录路径 | 是 | - |
+| `--recursive` | `-r` | 是否递归删除 | 否 | false |
+
+**示例：**
+
+```bash
+# 删除指定虚拟机上的空目录
+./bbx-cli vm file rmdir --vm vm1 --path /tmp/olddir
+
+# 递归删除目录及其内容
+./bbx-cli vm file rmdir --vm vm1 --path /var/log/nginx --recursive
+
+# 在组中所有虚拟机上删除目录
+./bbx-cli vm file rmdir --group web --path /tmp/cache --recursive
 ```
 
 ### vm update

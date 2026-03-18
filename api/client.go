@@ -896,6 +896,84 @@ func (c *Client) VMFileList(vmName, path string, maxDepth int) ([]file.Info, err
   return files, nil
 }
 
+// VMFileDelete 删除 VM 中的文件
+func (c *Client) VMFileDelete(vmName, path string) error {
+  reqBody := map[string]interface{}{
+    "path": path,
+  }
+
+  // 发送请求，使用新的路由格式
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/vms/files/%s/delete", vmName), reqBody)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// VMFileMkdir 在 VM 上创建目录
+func (c *Client) VMFileMkdir(vmName, path string, parents bool) error {
+  reqBody := map[string]interface{}{
+    "path":    path,
+    "parents": parents,
+  }
+
+  // 发送请求，使用新的路由格式
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/vms/files/%s/mkdir", vmName), reqBody)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// VMFileTouch 在 VM 上创建文件
+func (c *Client) VMFileTouch(vmName, path string) error {
+  reqBody := map[string]interface{}{
+    "path": path,
+  }
+
+  // 发送请求，使用新的路由格式
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/vms/files/%s/touch", vmName), reqBody)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// VMFileRmdir 删除 VM 中的目录
+func (c *Client) VMFileRmdir(vmName, path string, recursive bool) error {
+  reqBody := map[string]interface{}{
+    "path":      path,
+    "recursive": recursive,
+  }
+
+  // 发送请求，使用新的路由格式
+  resp, err := c.doRequest("POST", fmt.Sprintf("/api/vms/files/%s/rmdir", vmName), reqBody)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
 // FileList 列出文件
 func (c *Client) FileList(path string, maxDepth int) ([]file.Info, error) {
   var files []file.Info

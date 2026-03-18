@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(./bbx-cli vm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(\"/tmp/vm_part1.go\")",
+      "Bash(\"/tmp/vm_part2.go\")"
     ]
   }
 }
