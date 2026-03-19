@@ -25,7 +25,7 @@ bbx-cli vm [command]
 | `permission` | 虚拟机权限管理 |
 | `exec` | 在 VM 上执行命令 |
 | `ping` | 测试 VM 连接 |
-| `ssh connections` | 列出活动的 SSH 连接 |
+| `ssh connections` | 按 VM、用户或客户端 IP 过滤活动的 SSH 连接 |
 | `ssh disconnect` | 关闭 SSH 连接 |
 
 ## 命令详情
@@ -950,7 +950,43 @@ bbx-cli vm ssh connections
 
 ```bash
 # 列出所有活动的 SSH 连接
+### vm ssh connections
+
+按 VM、用户或客户端 IP 过滤活动的 SSH 连接。
+
+**语法：**
+
+```
+bbx-cli vm ssh connections-filter --vm <vm_name> --user <username> --client-ip <ip_address>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--vm` | `-v` | 过滤连接的 VM 名称 | 否 | - |
+| `--user` | `-u` | 过滤连接的用户名 | 否 | - |
+| `--client-ip` | `-i` | 过滤连接的客户端 IP | 否 | - |
+
+所有参数都是可选的，可以组合使用以进一步缩小过滤范围。
+
+**示例：**
+
+```bash
+# 列出所有活动 SSH 连接
 ./bbx-cli vm ssh connections
+
+# 列出特定用户的活动 SSH 连接
+./bbx-cli vm ssh connections --user admin
+
+# 列出特定 VM 的活动 SSH 连接
+./bbx-cli vm ssh connections --vm vm1
+
+# 列出特定客户端 IP 的活动 SSH 连接
+./bbx-cli vm ssh connections --client-ip 192.168.1.100
+
+# 组合过滤条件
+./bbx-cli vm ssh connections --user admin --vm vm1
 ```
 
 **输出示例：**
@@ -959,7 +995,7 @@ bbx-cli vm ssh connections
 ID                   VM Name              Client IP            Username           Duration
 ----------------------------------------------------------------------------------------------------
 vm1-1623456789000    vm1                  192.168.1.100        admin              5m23s
-vm2-1623456789100    vm2                  192.168.1.101        authenticated      12s
+vm3-1623456789200    vm3                  192.168.1.102        admin              2m15s
 ```
 
 ### vm ssh disconnect

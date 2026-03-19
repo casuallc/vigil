@@ -1245,10 +1245,29 @@ func (c *Client) VMPing(vmName string) (*PingResult, error) {
   return &result, nil
 }
 
-// ListSSHConnections lists all active SSH connections
-func (c *Client) ListSSHConnections() ([]*SSHConnectionInfo, error) {
+// ListSSHConnections lists active SSH connections with filters
+func (c *Client) ListSSHConnections(vmName, userName, clientIP string) ([]*SSHConnectionInfo, error) {
   var connections []*SSHConnectionInfo
-  resp, err := c.doRequest("GET", "/api/vms/ssh/connections", nil)
+
+  // Build query parameters
+  params := []string{}
+  if vmName != "" {
+    params = append(params, "vm_name="+vmName)
+  }
+  if userName != "" {
+    params = append(params, "user_name="+userName)
+  }
+  if clientIP != "" {
+    params = append(params, "client_ip="+clientIP)
+  }
+
+  // Build URL with parameters
+  url := "/api/vms/ssh/connections/filter"
+  if len(params) > 0 {
+    url += "?" + strings.Join(params, "&")
+  }
+
+  resp, err := c.doRequest("GET", url, nil)
   if err != nil {
     return nil, err
   }

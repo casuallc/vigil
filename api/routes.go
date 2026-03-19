@@ -17,94 +17,94 @@ limitations under the License.
 package api
 
 import (
-	"github.com/gorilla/mux"
+  "github.com/gorilla/mux"
 )
 
 // Router 定义API路由注册函数
 func (s *Server) Router() *mux.Router {
-	r := mux.NewRouter()
+  r := mux.NewRouter()
 
-	// Process management endpoints
-	r.HandleFunc("/api/processes/scan", s.handleScanProcesses).Methods("GET")
-	r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/add", s.handleAddProcess).Methods("POST")
-	r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/start", s.handleStartProcess).Methods("POST")
-	r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/stop", s.handleStopProcess).Methods("POST")
-	r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/restart", s.handleRestartProcess).Methods("POST")
-	r.HandleFunc("/api/namespaces/{namespace}/processes/{name}", s.handleGetProcess).Methods("GET")
-	r.HandleFunc("/api/namespaces/{namespace}/processes/{name}", s.handleEditProcess).Methods("PUT")
-	r.HandleFunc("/api/namespaces/{namespace}/processes/{name}", s.handleDeleteProcess).Methods("DELETE")
-	r.HandleFunc("/api/namespaces/{namespace}/processes", s.handleListProcesses).Methods("GET")
+  // Process management endpoints
+  r.HandleFunc("/api/processes/scan", s.handleScanProcesses).Methods("GET")
+  r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/add", s.handleAddProcess).Methods("POST")
+  r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/start", s.handleStartProcess).Methods("POST")
+  r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/stop", s.handleStopProcess).Methods("POST")
+  r.HandleFunc("/api/namespaces/{namespace}/processes/{name}/restart", s.handleRestartProcess).Methods("POST")
+  r.HandleFunc("/api/namespaces/{namespace}/processes/{name}", s.handleGetProcess).Methods("GET")
+  r.HandleFunc("/api/namespaces/{namespace}/processes/{name}", s.handleEditProcess).Methods("PUT")
+  r.HandleFunc("/api/namespaces/{namespace}/processes/{name}", s.handleDeleteProcess).Methods("DELETE")
+  r.HandleFunc("/api/namespaces/{namespace}/processes", s.handleListProcesses).Methods("GET")
 
-	// Resource monitoring endpoints
-	r.HandleFunc("/api/resources/system", s.handleGetSystemResources).Methods("GET")
-	r.HandleFunc("/api/resources/process/{pid}", s.handleGetProcessResources).Methods("GET")
+  // Resource monitoring endpoints
+  r.HandleFunc("/api/resources/system", s.handleGetSystemResources).Methods("GET")
+  r.HandleFunc("/api/resources/process/{pid}", s.handleGetProcessResources).Methods("GET")
 
-	// Configuration endpoints
-	r.HandleFunc("/api/config", s.handleGetConfig).Methods("GET")
-	r.HandleFunc("/api/config", s.handleUpdateConfig).Methods("PUT")
+  // Configuration endpoints
+  r.HandleFunc("/api/config", s.handleGetConfig).Methods("GET")
+  r.HandleFunc("/api/config", s.handleUpdateConfig).Methods("PUT")
 
-	// Health check
-	r.HandleFunc("/health", s.handleHealthCheck).Methods("GET")
+  // Health check
+  r.HandleFunc("/health", s.handleHealthCheck).Methods("GET")
 
-	// Execute command endpoint
-	r.HandleFunc("/api/exec", s.handleExecuteCommand).Methods("POST")
+  // Execute command endpoint
+  r.HandleFunc("/api/exec", s.handleExecuteCommand).Methods("POST")
 
-	// Cosmic inspection endpoint
-	r.HandleFunc("/api/inspect", s.handleCosmicInspect).Methods("POST")
+  // Cosmic inspection endpoint
+  r.HandleFunc("/api/inspect", s.handleCosmicInspect).Methods("POST")
 
-	// VM Server Management endpoints
-	r.HandleFunc("/api/vms/servers/{name}", s.handleAddVM).Methods("POST")
-	r.HandleFunc("/api/vms/servers", s.handleListVMs).Methods("GET")
-	r.HandleFunc("/api/vms/servers/{name}", s.handleGetVM).Methods("GET")
-	r.HandleFunc("/api/vms/servers/{name}", s.handleUpdateVM).Methods("PUT")
-	r.HandleFunc("/api/vms/servers/{name}", s.handleDeleteVM).Methods("DELETE")
+  // VM Server Management endpoints
+  r.HandleFunc("/api/vms/servers/{name}", s.handleAddVM).Methods("POST")
+  r.HandleFunc("/api/vms/servers", s.handleListVMs).Methods("GET")
+  r.HandleFunc("/api/vms/servers/{name}", s.handleGetVM).Methods("GET")
+  r.HandleFunc("/api/vms/servers/{name}", s.handleUpdateVM).Methods("PUT")
+  r.HandleFunc("/api/vms/servers/{name}", s.handleDeleteVM).Methods("DELETE")
 
-	// VM Group Management endpoints
-	r.HandleFunc("/api/vms/groups/{name}", s.handleAddGroup).Methods("POST")
-	r.HandleFunc("/api/vms/groups", s.handleListGroups).Methods("GET")
-	r.HandleFunc("/api/vms/groups/{name}", s.handleGetGroup).Methods("GET")
-	r.HandleFunc("/api/vms/groups/{name}", s.handleUpdateGroup).Methods("PUT")
-	r.HandleFunc("/api/vms/groups/{name}", s.handleDeleteGroup).Methods("DELETE")
+  // VM Group Management endpoints
+  r.HandleFunc("/api/vms/groups/{name}", s.handleAddGroup).Methods("POST")
+  r.HandleFunc("/api/vms/groups", s.handleListGroups).Methods("GET")
+  r.HandleFunc("/api/vms/groups/{name}", s.handleGetGroup).Methods("GET")
+  r.HandleFunc("/api/vms/groups/{name}", s.handleUpdateGroup).Methods("PUT")
+  r.HandleFunc("/api/vms/groups/{name}", s.handleDeleteGroup).Methods("DELETE")
 
-	// VM SSH endpoints
-	r.HandleFunc("/api/vms/ssh/ws", s.handleSSHWebSocket)
-	r.HandleFunc("/api/vms/ssh/connections", s.handleListSSHConnections).Methods("GET")
-	r.HandleFunc("/api/vms/ssh/connections", s.handleCloseAllSSHConnections).Methods("DELETE")
-	r.HandleFunc("/api/vms/ssh/connections/{id}", s.handleCloseSSHConnection).Methods("DELETE")
+  // VM SSH endpoints
+  r.HandleFunc("/api/vms/ssh/ws", s.handleSSHWebSocket)
+  r.HandleFunc("/api/vms/ssh/connections", s.handleListSSHConnectionsWithFilters).Methods("GET")
+  r.HandleFunc("/api/vms/ssh/connections", s.handleCloseAllSSHConnections).Methods("DELETE")
+  r.HandleFunc("/api/vms/ssh/connections/{id}", s.handleCloseSSHConnection).Methods("DELETE")
 
-	// VM File Management endpoints
-	r.HandleFunc("/api/vms/files/{name}/upload", s.handleVmFileUpload).Methods("POST")
-	r.HandleFunc("/api/vms/files/{name}/download", s.handleVmFileDownload).Methods("POST")
-	r.HandleFunc("/api/vms/files/{name}/list", s.handleVmFileList).Methods("POST")
-	r.HandleFunc("/api/vms/files/{name}/delete", s.handleVmFileDelete).Methods("POST")
-	r.HandleFunc("/api/vms/files/{name}/mkdir", s.handleVmFileMkdir).Methods("POST")
-	r.HandleFunc("/api/vms/files/{name}/touch", s.handleVmFileTouch).Methods("POST")
-	r.HandleFunc("/api/vms/files/{name}/rmdir", s.handleVmFileRmdir).Methods("POST")
+  // VM File Management endpoints
+  r.HandleFunc("/api/vms/files/{name}/upload", s.handleVmFileUpload).Methods("POST")
+  r.HandleFunc("/api/vms/files/{name}/download", s.handleVmFileDownload).Methods("POST")
+  r.HandleFunc("/api/vms/files/{name}/list", s.handleVmFileList).Methods("POST")
+  r.HandleFunc("/api/vms/files/{name}/delete", s.handleVmFileDelete).Methods("POST")
+  r.HandleFunc("/api/vms/files/{name}/mkdir", s.handleVmFileMkdir).Methods("POST")
+  r.HandleFunc("/api/vms/files/{name}/touch", s.handleVmFileTouch).Methods("POST")
+  r.HandleFunc("/api/vms/files/{name}/rmdir", s.handleVmFileRmdir).Methods("POST")
 
-	// VM Permission endpoints
-	r.HandleFunc("/api/vms/permissions/{name}", s.handleAddPermission).Methods("POST")
-	r.HandleFunc("/api/vms/permissions/{name}", s.handleRemovePermission).Methods("DELETE")
-	r.HandleFunc("/api/vms/permissions/{name}/check", s.handleCheckPermission).Methods("POST")
-	r.HandleFunc("/api/vms/servers/{name}/permissions", s.handleListPermissions).Methods("GET")
+  // VM Permission endpoints
+  r.HandleFunc("/api/vms/permissions/{name}", s.handleAddPermission).Methods("POST")
+  r.HandleFunc("/api/vms/permissions/{name}", s.handleRemovePermission).Methods("DELETE")
+  r.HandleFunc("/api/vms/permissions/{name}/check", s.handleCheckPermission).Methods("POST")
+  r.HandleFunc("/api/vms/servers/{name}/permissions", s.handleListPermissions).Methods("GET")
 
-	// VM Exec and Ping endpoints
-	r.HandleFunc("/api/vms/servers/{name}/exec", s.handleVMExec).Methods("POST")
-	r.HandleFunc("/api/vms/servers/{name}/ping", s.handleVMPing).Methods("GET")
+  // VM Exec and Ping endpoints
+  r.HandleFunc("/api/vms/servers/{name}/exec", s.handleVMExec).Methods("POST")
+  r.HandleFunc("/api/vms/servers/{name}/ping", s.handleVMPing).Methods("GET")
 
-	// File Management endpoints
-	r.HandleFunc("/api/files/upload", s.handleFileUpload).Methods("POST")
-	r.HandleFunc("/api/files/download", s.handleFileDownload).Methods("POST")
-	r.HandleFunc("/api/files/list", s.handleFileList).Methods("POST")
-	r.HandleFunc("/api/files/delete", s.handleFileDelete).Methods("POST")
-	r.HandleFunc("/api/files/copy", s.handleFileCopy).Methods("POST")
-	r.HandleFunc("/api/files/move", s.handleFileMove).Methods("POST")
+  // File Management endpoints
+  r.HandleFunc("/api/files/upload", s.handleFileUpload).Methods("POST")
+  r.HandleFunc("/api/files/download", s.handleFileDownload).Methods("POST")
+  r.HandleFunc("/api/files/list", s.handleFileList).Methods("POST")
+  r.HandleFunc("/api/files/delete", s.handleFileDelete).Methods("POST")
+  r.HandleFunc("/api/files/copy", s.handleFileCopy).Methods("POST")
+  r.HandleFunc("/api/files/move", s.handleFileMove).Methods("POST")
 
-	// User management endpoints
-	r.HandleFunc("/api/users/register", s.handleRegisterUser).Methods("POST")
-	r.HandleFunc("/api/users", s.handleListUsers).Methods("GET")
-	r.HandleFunc("/api/users/{username}", s.handleGetUser).Methods("GET")
-	r.HandleFunc("/api/users/{username}", s.handleUpdateUser).Methods("PUT")
-	r.HandleFunc("/api/users/{username}", s.handleDeleteUser).Methods("DELETE")
+  // User management endpoints
+  r.HandleFunc("/api/users/register", s.handleRegisterUser).Methods("POST")
+  r.HandleFunc("/api/users", s.handleListUsers).Methods("GET")
+  r.HandleFunc("/api/users/{username}", s.handleGetUser).Methods("GET")
+  r.HandleFunc("/api/users/{username}", s.handleUpdateUser).Methods("PUT")
+  r.HandleFunc("/api/users/{username}", s.handleDeleteUser).Methods("DELETE")
 
-	return r
+  return r
 }

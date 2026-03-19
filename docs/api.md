@@ -57,6 +57,11 @@
 | 文件管理 | /api/files/delete                                    | POST | 删除文件 |
 | 文件管理 | /api/files/copy                                      | POST | 复制文件 |
 | 文件管理 | /api/files/move                                      | POST | 移动文件 |
+| 用户管理 | /api/users/register                                | POST | 注册用户 |
+| 用户管理 | /api/users                                         | GET | 列出用户 |
+| 用户管理 | /api/users/{username}                              | GET | 获取用户详情 |
+| 用户管理 | /api/users/{username}                              | PUT | 更新用户 |
+| 用户管理 | /api/users/{username}                              | DELETE | 删除用户 |
 
 ## 3. 详细接口说明
 
@@ -1138,6 +1143,122 @@
 **响应格式**：
 - 成功：200 OK
 - 失败：400 Bad Request 或 500 Internal Server Error
+
+### 3.15 用户管理
+
+#### POST /api/users/register
+
+**功能描述**：注册新用户
+
+**请求参数**：
+- 请求体：
+  - `username`：用户名
+  - `password`：密码
+  - `email`：邮箱（可选）
+
+**请求体示例**：
+```json
+{
+  "username": "newuser",
+  "password": "securepassword",
+  "email": "newuser@example.com"
+}
+```
+
+**响应格式**：
+```json
+{
+  "message": "User registered successfully",
+  "username": "newuser"
+}
+```
+
+**错误响应**：
+```json
+{
+  "error": "Username already exists"
+}
+```
+
+#### GET /api/users
+
+**功能描述**：列出所有用户
+
+**请求参数**：无
+
+**响应格式**：
+```json
+[
+  {
+    "username": "user1",
+    "email": "user1@example.com",
+    "created_at": "2023-01-01T00:00:00Z"
+  },
+  {
+    "username": "user2",
+    "email": "user2@example.com",
+    "created_at": "2023-01-02T00:00:00Z"
+  }
+]
+```
+
+#### GET /api/users/{username}
+
+**功能描述**：获取用户详情
+
+**请求参数**：
+- `username`：用户名（路径参数）
+
+**响应格式**：
+```json
+{
+  "username": "username",
+  "email": "user@example.com",
+  "created_at": "2023-01-01T00:00:00Z",
+  "last_login": "2023-01-02T10:30:00Z"
+}
+```
+
+#### PUT /api/users/{username}
+
+**功能描述**：更新用户信息
+
+**请求参数**：
+- `username`：用户名（路径参数）
+- 请求体：
+  - `email`：邮箱（可选）
+  - `password`：密码（可选）
+
+**请求体示例**：
+```json
+{
+  "email": "updated@example.com",
+  "password": "newpassword"
+}
+```
+
+**响应格式**：
+```json
+{
+  "message": "User updated successfully",
+  "username": "username"
+}
+```
+
+#### DELETE /api/users/{username}
+
+**功能描述**：删除用户
+
+**请求参数**：
+- `username`：用户名（路径参数）
+
+**响应格式**：
+```json
+{
+  "message": "User deleted successfully",
+  "username": "username"
+}
+```
 
 ## 4. 错误处理
 

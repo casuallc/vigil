@@ -1587,7 +1587,35 @@ func (s *Server) handleVMPing(w http.ResponseWriter, r *http.Request) {
 // handleListSSHConnections handles the GET /api/vms/ssh/connections endpoint
 func (s *Server) handleListSSHConnections(w http.ResponseWriter, r *http.Request) {
   connections := s.GetSSHConnections()
-  writeJSON(w, http.StatusOK, connections)
+
+  // Get filter parameters from query
+  vmName := r.URL.Query().Get("vm_name")
+  userName := r.URL.Query().Get("user_name")
+  clientIP := r.URL.Query().Get("client_ip")
+
+  // Apply filters if provided
+  var filteredConnections []*SSHConnectionInfo
+  for _, conn := range connections {
+    match := true
+
+    if vmName != "" && conn.VMName != vmName {
+      match = false
+    }
+
+    if userName != "" && conn.Username != userName {
+      match = false
+    }
+
+    if clientIP != "" && conn.ClientIP != clientIP {
+      match = false
+    }
+
+    if match {
+      filteredConnections = append(filteredConnections, conn)
+    }
+  }
+
+  writeJSON(w, http.StatusOK, filteredConnections)
 }
 
 // handleCloseSSHConnection handles the DELETE /api/vms/ssh/connections/{id} endpoint

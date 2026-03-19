@@ -744,16 +744,22 @@ func (c *CLI) setupVMPingCommand() *cobra.Command {
   return pingCmd
 }
 
-// setupVMSSHConnectionsCommand 设置 vm ssh connections 命令
+// setupVMSSHConnectionsCommand 设置 vm ssh connections-by-user 命令
 func (c *CLI) setupVMSSHConnectionsCommand() *cobra.Command {
+  var vmName, username, clientIP string
+
   connectionsCmd := &cobra.Command{
     Use:   "ssh connections",
-    Short: "List active SSH connections",
-    Long:  "List all active SSH connections to VMs",
+    Short: "List active SSH connections filtered by VM, user or client IP",
+    Long:  "List active SSH connections to VMs filtered by VM name, username, or client IP",
     RunE: func(cmd *cobra.Command, args []string) error {
-      return c.handleVMSSHConnections()
+      return c.handleVMSSHConnections(vmName, username, clientIP)
     },
   }
+
+  connectionsCmd.Flags().StringVarP(&vmName, "vm", "v", "", "Filter connections by VM name")
+  connectionsCmd.Flags().StringVarP(&username, "user", "u", "", "Filter connections by username")
+  connectionsCmd.Flags().StringVarP(&clientIP, "client-ip", "i", "", "Filter connections by client IP")
 
   return connectionsCmd
 }
@@ -2054,15 +2060,25 @@ func (c *CLI) handleVMFileRmdir(vmNames, groupNames []string, path string, recur
   return nil
 }
 
-// handleVMSSHConnections 处理 vm ssh connections 命令
-func (c *CLI) handleVMSSHConnections() error {
-  connections, err := c.client.ListSSHConnections()
+// handleVMSSHConnections 处理 vm ssh connections-by-user 命令
+func (c *CLI) handleVMSSHConnections(vmName, username, clientIP string) error {
+  connections, err := c.client.ListSSHConnections(vmName, username, clientIP)
   if err != nil {
     return fmt.Errorf("failed to list SSH connections: %v", err)
   }
 
   if len(connections) == 0 {
-    fmt.Println("No active SSH connections found.")
+    fmt.Printf("No active SSH connections found")
+    if vmName != "" {
+      fmt.Printf(" for VM: %s", vmName)
+    }
+    if username != "" {
+      fmt.Printf(" for user: %s", username)
+    }
+    if clientIP != "" {
+      fmt.Printf(" for client IP: %s", clientIP)
+    }
+    fmt.Println(".")
     return nil
   }
 
