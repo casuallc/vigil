@@ -42,6 +42,7 @@ type Server struct {
   config      *config.Config
   manager     *proc.Manager
   monitor     *proc.Monitor
+  resourceMonitor *proc.ResourceMonitor
   vmManager   *vm.Manager
   auditLogger *audit.Logger
 }
@@ -49,6 +50,8 @@ type Server struct {
 // NewServerWithManager creates a new API server with an existing proc manager
 func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server {
   monitor := proc.NewMonitor(manager)
+  // Initialize resource monitor with cache TTL of 5 seconds and collection interval of 3 seconds
+  resourceMonitor := proc.NewResourceMonitor(manager, 5*time.Second, 3*time.Second, true, true)
   vmManager := vm.NewManagerWithConfig("vms.json", config.Security.EncryptionKey)
 
   // 创建审计日志目录
@@ -61,13 +64,19 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     // 继续运行，即使审计日志初始化失败
   }
 
-  return &Server{
-    config:      config,
-    manager:     manager,
-    monitor:     monitor,
-    vmManager:   vmManager,
-    auditLogger: auditLogger,
+  server := &Server{
+    config:          config,
+    manager:         manager,
+    monitor:         monitor,
+    resourceMonitor: resourceMonitor,
+    vmManager:       vmManager,
+    auditLogger:     auditLogger,
   }
+
+  // Start the resource monitor
+  resourceMonitor.Start()
+
+  return server
 }
 
 // 添加日志中间件函数
@@ -331,5 +340,13 @@ func (s *Server) Start() error {
   } else {
     log.Printf("Starting API server on %s (HTTP)", addr)
     return http.ListenAndServe(addr, handler)
+  }
+}
+
+// Stop stops the HTTP server and cleans up resources
+func (s *Server) Stop() {
+  // Stop the resource monitor
+  if s.resourceMonitor != nil {
+    s.resourceMonitor.Stop()
   }
 }

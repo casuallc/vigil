@@ -150,6 +150,13 @@ func (s *Server) handleStartProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSystemResources(w http.ResponseWriter, r *http.Request) {
+  // Try to get from cache first
+  if resources, found := s.resourceMonitor.GetCachedSystemResources(); found {
+    writeJSON(w, http.StatusOK, resources)
+    return
+  }
+
+  // Fall back to real-time collection if cache is not available
   resources, err := proc.GetSystemResourceUsage()
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
@@ -169,6 +176,13 @@ func (s *Server) handleGetProcessResources(w http.ResponseWriter, r *http.Reques
     return
   }
 
+  // Try to get from cache first
+  if resources, found := s.resourceMonitor.GetCachedProcessResources(pid); found {
+    writeJSON(w, http.StatusOK, resources)
+    return
+  }
+
+  // Fall back to real-time collection if cache is not available
   resources, err := proc.GetUnixProcessResourceUsage(pid)
   if err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
