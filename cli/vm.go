@@ -54,6 +54,8 @@ func (c *CLI) setupVMCommands() *cobra.Command {
   vmCmd.AddCommand(c.setupVMPermissionCommand())
   vmCmd.AddCommand(c.setupVMExecCommand())
   vmCmd.AddCommand(c.setupVMPingCommand())
+  vmCmd.AddCommand(c.setupVMSSHConnectionsCommand())
+  vmCmd.AddCommand(c.setupVMSSHDisconnectCommand())
 
   return vmCmd
 }
@@ -740,6 +742,40 @@ func (c *CLI) setupVMPingCommand() *cobra.Command {
   pingCmd.Flags().StringArrayVarP(&groupNames, "group", "g", []string{}, "Group names (can be used multiple times)")
 
   return pingCmd
+}
+
+// setupVMSSHConnectionsCommand 设置 vm ssh connections 命令
+func (c *CLI) setupVMSSHConnectionsCommand() *cobra.Command {
+  connectionsCmd := &cobra.Command{
+    Use:   "ssh connections",
+    Short: "List active SSH connections",
+    Long:  "List all active SSH connections to VMs",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMSSHConnections()
+    },
+  }
+
+  return connectionsCmd
+}
+
+// setupVMSSHDisconnectCommand 设置 vm ssh disconnect 命令
+func (c *CLI) setupVMSSHDisconnectCommand() *cobra.Command {
+  var connID string
+  var all bool
+
+  disconnectCmd := &cobra.Command{
+    Use:   "ssh disconnect",
+    Short: "Close SSH connections",
+    Long:  "Close specific or all SSH connections",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleVMSSHDisconnect(connID, all)
+    },
+  }
+
+  disconnectCmd.Flags().StringVarP(&connID, "id", "i", "", "Connection ID to close")
+  disconnectCmd.Flags().BoolVarP(&all, "all", "a", false, "Close all connections")
+
+  return disconnectCmd
 }
 
 // ------------------------- Command Handlers -------------------------
@@ -2015,5 +2051,58 @@ func (c *CLI) handleVMFileRmdir(vmNames, groupNames []string, path string, recur
     fmt.Printf("Directory removed successfully on %s\n", selectedVM.Name)
   }
 
+  return nil
+}
+
+// handleVMSSHConnections 处理 vm ssh connections 命令
+func (c *CLI) handleVMSSHConnections() error {
+  connections, err := c.client.ListSSHConnections()
+  if err != nil {
+    return fmt.Errorf("failed to list SSH connections: %v", err)
+  }
+
+  if len(connections) == 0 {
+    fmt.Println("No active SSH connections found.")
+    return nil
+  }
+
+  fmt.Printf("%-20s %-20s %-20s %-20s %-15s\n", "ID", "VM Name", "Client IP", "Username", "Duration")
+  fmt.Println(strings.Repeat("-", 100))
+
+  for _, conn := range connections {
+    fmt.Printf("%-20s %-20s %-20s %-20s %-15s\n",
+      conn.ID,
+      conn.VMName,
+      conn.ClientIP,
+      conn.Username,
+      conn.Duration)
+  }
+
+  return nil
+}
+
+// handleVMSSHDisconnect 处理 vm ssh disconnect 命令
+func (c *CLI) handleVMSSHDisconnect(connID string, all bool) error {
+  if all {
+    // Close all connections
+    count, err := c.client.CloseAllSSHConnections()
+    if err != nil {
+      return fmt.Errorf("failed to close all SSH connections: %v", err)
+    }
+    fmt.Printf("Closed %d SSH connections successfully.\n", count)
+    return nil
+  }
+
+  if connID == "" {
+    return fmt.Errorf("connection ID is required when not using --all flag")
+  }
+
+  // Close specific connection
+  err := c.client.CloseSSHConnection(connID)
+  if err != nil {
+    return fmt.Errorf("failed to close SSH connection: %v", err)
+  }
+
+  fmt.Printf("SSH connection %s closed successfully.\n", connID)
   return nil
 }

@@ -1387,6 +1387,28 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
   ctx, cancel := context.WithCancel(context.Background())
   defer cancel()
 
+  // Generate a unique connection ID
+  connID := fmt.Sprintf("%s-%d", vmName, time.Now().UnixNano())
+
+  // Get client IP
+  clientIP := r.RemoteAddr
+  if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+    clientIP = forwardedFor
+  }
+
+  // Get username (authenticated user or anonymous)
+  username := s.getConnectionUser(r)
+
+  // Register the connection
+  s.RegisterSSHConnection(connID, vmName, clientIP, username)
+  log.Printf("SSH connection registered: ID=%s, VM=%s, ClientIP=%s, User=%s", connID, vmName, clientIP, username)
+
+  // Ensure connection is unregistered when session ends
+  defer func() {
+    s.UnregisterSSHConnection(connID)
+    log.Printf("SSH connection unregistered: ID=%s", connID)
+  }()
+
   // ---------------- 输入：WS → SSH ----------------
   go func() {
     defer cancel()
@@ -1557,5 +1579,40 @@ func (s *Server) handleVMPing(w http.ResponseWriter, r *http.Request) {
     "success": true,
     "status":  "OK",
     "latency": latency.String(),
+  })
+}
+
+// handleListSSHConnections handles the GET /api/vms/ssh/connections endpoint
+func (s *Server) handleListSSHConnections(w http.ResponseWriter, r *http.Request) {
+  connections := s.GetSSHConnections()
+  writeJSON(w, http.StatusOK, connections)
+}
+
+// handleCloseSSHConnection handles the DELETE /api/vms/ssh/connections/{id} endpoint
+func (s *Server) handleCloseSSHConnection(w http.ResponseWriter, r *http.Request) {
+  vars := mux.Vars(r)
+  id := vars["id"]
+
+  if id == "" {
+    writeError(w, http.StatusBadRequest, "connection ID is required")
+    return
+  }
+
+  success := s.CloseSSHConnection(id)
+  if !success {
+    writeError(w, http.StatusNotFound, "connection not found")
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "connection closed successfully"})
+}
+
+// handleCloseAllSSHConnections handles the DELETE /api/vms/ssh/connections endpoint
+func (s *Server) handleCloseAllSSHConnections(w http.ResponseWriter, r *http.Request) {
+  count := s.CloseAllSSHConnections()
+
+  writeJSON(w, http.StatusOK, map[string]interface{}{
+    "message": "all connections closed successfully",
+    "count":   count,
   })
 }

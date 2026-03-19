@@ -22,14 +22,6 @@ import (
   "encoding/base64"
   "encoding/json"
   "fmt"
-  "io"
-  "mime/multipart"
-  "net/http"
-  "net/url"
-  "os"
-  "path/filepath"
-  "strings"
-
   "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/file"
@@ -37,6 +29,13 @@ import (
   "github.com/casuallc/vigil/proc"
   "github.com/casuallc/vigil/vm"
   "github.com/gorilla/websocket"
+  "io"
+  "mime/multipart"
+  "net/http"
+  "net/url"
+  "os"
+  "path/filepath"
+  "strings"
 )
 
 // Client represents the HTTP client for the Vigil API
@@ -1243,4 +1242,62 @@ func (c *Client) VMPing(vmName string) (*PingResult, error) {
   }
 
   return &result, nil
+}
+
+// ListSSHConnections lists all active SSH connections
+func (c *Client) ListSSHConnections() ([]*SSHConnectionInfo, error) {
+  var connections []*SSHConnectionInfo
+  resp, err := c.doRequest("GET", "/api/vms/ssh/connections", nil)
+  if err != nil {
+    return nil, err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return nil, c.errorFromResponse(resp)
+  }
+
+  if err := c.getJSONResponse(resp, &connections); err != nil {
+    return nil, err
+  }
+
+  return connections, nil
+}
+
+// CloseSSHConnection closes a specific SSH connection
+func (c *Client) CloseSSHConnection(id string) error {
+  resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/vms/ssh/connections/%s", id), nil)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// CloseAllSSHConnections closes all SSH connections
+func (c *Client) CloseAllSSHConnections() (int, error) {
+  resp, err := c.doRequest("DELETE", "/api/vms/ssh/connections", nil)
+  if err != nil {
+    return 0, err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return 0, c.errorFromResponse(resp)
+  }
+
+  // Parse the response to get the count
+  var result map[string]interface{}
+  if err := c.getJSONResponse(resp, &result); err != nil {
+    return 0, err
+  }
+
+  count, ok := result["count"].(float64)
+  if !ok {
+    return 0, fmt.Errorf("could not parse count from response")
+  }
+
+  return int(count), nil
 }

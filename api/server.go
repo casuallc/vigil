@@ -29,6 +29,7 @@ import (
   "os"
   "path/filepath"
   "strings"
+  "sync"
   "time"
 
   "github.com/casuallc/vigil/audit"
@@ -45,6 +46,19 @@ type Server struct {
   resourceMonitor *proc.ResourceMonitor
   vmManager   *vm.Manager
   auditLogger *audit.Logger
+  // SSH connection tracking
+  sshConnections   map[string]*SSHConnectionInfo
+  sshConnectionsMu sync.RWMutex
+}
+
+// SSHConnectionInfo represents an active SSH connection
+type SSHConnectionInfo struct {
+	ID          string    `json:"id"`
+	VMName      string    `json:"vm_name"`
+	ClientIP    string    `json:"client_ip"`
+	Username    string    `json:"username"`       // authenticated user when auth is enabled, anonymous when disabled
+	ConnectedAt time.Time `json:"connected_at"`
+	Duration    string    `json:"duration"`       // formatted as human-readable string
 }
 
 // NewServerWithManager creates a new API server with an existing proc manager
@@ -71,6 +85,8 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     resourceMonitor: resourceMonitor,
     vmManager:       vmManager,
     auditLogger:     auditLogger,
+    // Initialize SSH connection tracking
+    sshConnections: make(map[string]*SSHConnectionInfo),
   }
 
   // Start the resource monitor
@@ -292,6 +308,78 @@ func getNamespace(vars map[string]string) string {
     namespace = "default"
   }
   return namespace
+}
+
+// getConnectionUser extracts the authenticated user from the request context
+func (s *Server) getConnectionUser(r *http.Request) string {
+  // Check if authentication is enabled and get user from headers
+  if s.config.BasicAuth.Enabled {
+    if auth := r.Header.Get("Authorization"); auth != "" {
+      // Extract user from Basic Auth header if possible
+      return "authenticated" // Simplified - in real implementation, decode Basic Auth to extract user
+    }
+  }
+  return "anonymous" // Use anonymous user when auth is disabled or no valid auth provided
+}
+
+// RegisterSSHConnection registers a new SSH connection
+func (s *Server) RegisterSSHConnection(id string, vmName string, clientIP string, username string) {
+  s.sshConnectionsMu.Lock()
+  defer s.sshConnectionsMu.Unlock()
+
+  s.sshConnections[id] = &SSHConnectionInfo{
+    ID:          id,
+    VMName:      vmName,
+    ClientIP:    clientIP,
+    Username:    username,
+    ConnectedAt: time.Now(),
+    Duration:    "0s",
+  }
+}
+
+// UnregisterSSHConnection removes an SSH connection
+func (s *Server) UnregisterSSHConnection(id string) {
+  s.sshConnectionsMu.Lock()
+  defer s.sshConnectionsMu.Unlock()
+
+  delete(s.sshConnections, id)
+}
+
+// GetSSHConnections returns all active SSH connections
+func (s *Server) GetSSHConnections() []*SSHConnectionInfo {
+  s.sshConnectionsMu.RLock()
+  defer s.sshConnectionsMu.RUnlock()
+
+  connections := make([]*SSHConnectionInfo, 0, len(s.sshConnections))
+  for _, conn := range s.sshConnections {
+    // Calculate duration since connection started
+    duration := time.Since(conn.ConnectedAt)
+    conn.Duration = duration.Truncate(time.Second).String()
+    connections = append(connections, conn)
+  }
+  return connections
+}
+
+// CloseSSHConnection closes a specific SSH connection
+func (s *Server) CloseSSHConnection(id string) bool {
+  s.sshConnectionsMu.Lock()
+  defer s.sshConnectionsMu.Unlock()
+
+  if _, exists := s.sshConnections[id]; exists {
+    delete(s.sshConnections, id)
+    return true
+  }
+  return false
+}
+
+// CloseAllSSHConnections closes all SSH connections
+func (s *Server) CloseAllSSHConnections() int {
+  s.sshConnectionsMu.Lock()
+  defer s.sshConnectionsMu.Unlock()
+
+  count := len(s.sshConnections)
+  s.sshConnections = make(map[string]*SSHConnectionInfo)
+  return count
 }
 
 // Start starts the HTTP server

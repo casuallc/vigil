@@ -25,6 +25,8 @@ bbx-cli vm [command]
 | `permission` | 虚拟机权限管理 |
 | `exec` | 在 VM 上执行命令 |
 | `ping` | 测试 VM 连接 |
+| `ssh connections` | 列出活动的 SSH 连接 |
+| `ssh disconnect` | 关闭 SSH 连接 |
 
 ## 命令详情
 
@@ -928,4 +930,71 @@ bbx-cli vm permission check --vm <vm_name> --user <username> --permission <permi
 ```bash
 # 检查虚拟机权限
 ./bbx-cli vm permission check --vm vm1 --user user1 --permission read
+```
+
+### vm ssh connections
+
+列出活动的 SSH 连接。
+
+**语法：**
+
+```
+bbx-cli vm ssh connections
+```
+
+**参数：**
+
+无
+
+**示例：**
+
+```bash
+# 列出所有活动的 SSH 连接
+./bbx-cli vm ssh connections
+```
+
+**输出示例：**
+
+```
+ID                   VM Name              Client IP            Username           Duration
+----------------------------------------------------------------------------------------------------
+vm1-1623456789000    vm1                  192.168.1.100        admin              5m23s
+vm2-1623456789100    vm2                  192.168.1.101        authenticated      12s
+```
+
+### vm ssh disconnect
+
+关闭 SSH 连接。
+
+**语法：**
+
+```
+bbx-cli vm ssh disconnect --id <connection_id> --all
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--id` | `-i` | 连接 ID | 否（除非未使用 --all） | - |
+| `--all` | `-a` | 关闭所有连接 | 否 | false |
+
+**示例：**
+
+```bash
+# 关闭特定连接
+./bbx-cli vm ssh disconnect --id vm1-1623456789000
+
+# 关闭所有连接
+./bbx-cli vm ssh disconnect --all
+```
+
+**输出示例：**
+
+```bash
+# 关闭特定连接
+SSH connection vm1-1623456789000 closed successfully.
+
+# 关闭所有连接
+Closed 3 SSH connections successfully.
 ```

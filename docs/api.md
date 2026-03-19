@@ -48,6 +48,9 @@
 | 权限管理 | /api/vms/servers/{name}/permissions                  | GET | 列出权限 |
 | VM 命令执行 | /api/vms/servers/{name}/exec                           | POST | 在 VM 上执行命令 |
 | VM 连接测试 | /api/vms/servers/{name}/ping                           | GET | 测试 VM 连接 |
+| VM SSH 连接管理 | /api/vms/ssh/connections                             | GET | 列出活动的 SSH 连接 |
+| VM SSH 连接管理 | /api/vms/ssh/connections                             | DELETE | 关闭所有 SSH 连接 |
+| VM SSH 连接管理 | /api/vms/ssh/connections/{id}                        | DELETE | 关闭特定 SSH 连接 |
 | 文件管理 | /api/files/upload                                    | POST | 上传文件 |
 | 文件管理 | /api/files/download                                  | POST | 下载文件 |
 | 文件管理 | /api/files/list                                      | POST | 列出文件 |
@@ -604,7 +607,57 @@
 3. 连接建立后，客户端可以发送 SSH 命令，服务端返回命令执行结果
 4. 支持窗口大小调整，客户端可以发送 `resize:{"cols":120,"rows":40}` 格式的消息调整终端大小
 
-### 3.10 VM 文件管理
+### 3.10 VM SSH 连接管理
+
+#### GET /api/vms/ssh/connections
+
+**功能描述**：列出活动的 SSH 连接
+
+**请求参数**：无
+
+**响应格式**：
+```json
+[
+  {
+    "id": "connection-id",
+    "vm_name": "vm-name",
+    "client_ip": "192.168.1.100",
+    "username": "authenticated-user",
+    "connected_at": "2023-01-01T12:00:00Z",
+    "duration": "5m23s"
+  }
+]
+```
+
+#### DELETE /api/vms/ssh/connections
+
+**功能描述**：关闭所有 SSH 连接
+
+**请求参数**：无
+
+**响应格式**：
+```json
+{
+  "message": "All SSH connections closed successfully",
+  "count": 3
+}
+```
+
+#### DELETE /api/vms/ssh/connections/{id}
+
+**功能描述**：关闭特定 SSH 连接
+
+**请求参数**：
+- `id`：连接 ID（路径参数）
+
+**响应格式**：
+```json
+{
+  "message": "SSH connection closed successfully"
+}
+```
+
+### 3.11 VM 文件管理
 
 #### POST /api/vms/files/{name}/upload
 
