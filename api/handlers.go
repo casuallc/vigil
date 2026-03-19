@@ -1705,27 +1705,30 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Check if requesting user has admin role
-  username, _, ok := r.BasicAuth()
-  if !ok {
-    writeError(w, http.StatusUnauthorized, "Authentication required")
-    return
-  }
-
-  // Check if it's the super admin (from config) or a registered admin
-  isSuperAdmin := s.config.BasicAuth.Enabled && username == s.config.BasicAuth.Username
-  isAdmin := false
-
-  if !isSuperAdmin && s.userDatabase != nil {
-    if user, exists := s.userDatabase.GetUser(username); exists && user.Role == "admin" {
-      isAdmin = true
+  // Check if authentication is required based on config
+  if s.config.BasicAuth.Enabled {
+    // Check if requesting user has admin role
+    username, _, ok := r.BasicAuth()
+    if !ok {
+      writeError(w, http.StatusUnauthorized, "Authentication required")
+      return
     }
-  }
 
-  // Only super admin or admin users can list all users
-  if !isSuperAdmin && !isAdmin {
-    writeError(w, http.StatusForbidden, "Access denied: Admin role required to list users")
-    return
+    // Check if it's the super admin (from config) or a registered admin
+    isSuperAdmin := username == s.config.BasicAuth.Username
+    isAdmin := false
+
+    if !isSuperAdmin && s.userDatabase != nil {
+      if user, exists := s.userDatabase.GetUser(username); exists && user.Role == "admin" {
+        isAdmin = true
+      }
+    }
+
+    // Only super admin or admin users can list all users
+    if !isSuperAdmin && !isAdmin {
+      writeError(w, http.StatusForbidden, "Access denied: Admin role required to list users")
+      return
+    }
   }
 
   // Get all users
@@ -1764,28 +1767,36 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Check if requesting user has permission to view this user
-  requestingUsername, _, ok := r.BasicAuth()
-  if !ok {
-    writeError(w, http.StatusUnauthorized, "Authentication required")
-    return
-  }
-
-  // Check if it's the super admin (from config)
-  isSuperAdmin := s.config.BasicAuth.Enabled && requestingUsername == s.config.BasicAuth.Username
-
-  // Check if requesting user is an admin
-  isAdmin := false
-  if !isSuperAdmin && s.userDatabase != nil {
-    if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
-      isAdmin = true
+  // Check if authentication is required based on config
+  requestingUsername := ""
+  if s.config.BasicAuth.Enabled {
+    // Check if requesting user has permission to view this user
+    var ok bool
+    requestingUsername, _, ok = r.BasicAuth()
+    if !ok {
+      writeError(w, http.StatusUnauthorized, "Authentication required")
+      return
     }
-  }
 
-  // Allow access if it's the super admin, admin, or the user is requesting their own info
-  if !isSuperAdmin && !isAdmin && requestingUsername != targetUsername {
-    writeError(w, http.StatusForbidden, "Access denied: Cannot access other user's information")
-    return
+    // Check if it's the super admin (from config)
+    isSuperAdmin := requestingUsername == s.config.BasicAuth.Username
+
+    // Check if requesting user is an admin
+    isAdmin := false
+    if !isSuperAdmin && s.userDatabase != nil {
+      if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
+        isAdmin = true
+      }
+    }
+
+    // Allow access if it's the super admin, admin, or the user is requesting their own info
+    if !isSuperAdmin && !isAdmin && requestingUsername != targetUsername {
+      writeError(w, http.StatusForbidden, "Access denied: Cannot access other user's information")
+      return
+    }
+  } else {
+    // When auth is disabled, allow access to user info (may need to adjust this logic based on requirements)
+    requestingUsername = "anonymous"  // Or some default value when auth is disabled
   }
 
   // Get the user
@@ -1837,36 +1848,44 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Check if requesting user has permission to update this user
-  requestingUsername, _, ok := r.BasicAuth()
-  if !ok {
-    writeError(w, http.StatusUnauthorized, "Authentication required")
-    return
-  }
-
-  // Check if it's the super admin (from config)
-  isSuperAdmin := s.config.BasicAuth.Enabled && requestingUsername == s.config.BasicAuth.Username
-
-  // Check if requesting user is an admin
-  isAdmin := false
-  if !isSuperAdmin && s.userDatabase != nil {
-    if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
-      isAdmin = true
+  // Check if authentication is required based on config
+  requestingUsername := ""
+  if s.config.BasicAuth.Enabled {
+    // Check if requesting user has permission to update this user
+    var ok bool
+    requestingUsername, _, ok = r.BasicAuth()
+    if !ok {
+      writeError(w, http.StatusUnauthorized, "Authentication required")
+      return
     }
-  }
 
-  // Determine if user can update (either super admin, admin, or updating their own account)
-  canUpdate := isSuperAdmin || isAdmin || requestingUsername == targetUsername
+    // Check if it's the super admin (from config)
+    isSuperAdmin := requestingUsername == s.config.BasicAuth.Username
 
-  if !canUpdate {
-    writeError(w, http.StatusForbidden, "Access denied: Cannot update other user's information")
-    return
-  }
+    // Check if requesting user is an admin
+    isAdmin := false
+    if !isSuperAdmin && s.userDatabase != nil {
+      if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
+        isAdmin = true
+      }
+    }
 
-  // Prevent non-admin users from changing roles
-  if !isSuperAdmin && !isAdmin && updateData.Role != "" {
-    writeError(w, http.StatusForbidden, "Access denied: Regular users cannot change roles")
-    return
+    // Determine if user can update (either super admin, admin, or updating their own account)
+    canUpdate := isSuperAdmin || isAdmin || requestingUsername == targetUsername
+
+    if !canUpdate {
+      writeError(w, http.StatusForbidden, "Access denied: Cannot update other user's information")
+      return
+    }
+
+    // Prevent non-admin users from changing roles
+    if !isSuperAdmin && !isAdmin && updateData.Role != "" {
+      writeError(w, http.StatusForbidden, "Access denied: Regular users cannot change roles")
+      return
+    }
+  } else {
+    // When auth is disabled, allow updates (may need to adjust this logic based on requirements)
+    requestingUsername = "anonymous"  // Or some default value when auth is disabled
   }
 
   // Prepare updated user data
@@ -1907,34 +1926,42 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Check if requesting user has permission to delete this user
-  requestingUsername, _, ok := r.BasicAuth()
-  if !ok {
-    writeError(w, http.StatusUnauthorized, "Authentication required")
-    return
-  }
-
-  // Check if it's the super admin (from config)
-  isSuperAdmin := s.config.BasicAuth.Enabled && requestingUsername == s.config.BasicAuth.Username
-
-  // Check if requesting user is an admin
-  isAdmin := false
-  if !isSuperAdmin && s.userDatabase != nil {
-    if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
-      isAdmin = true
+  // Check if authentication is required based on config
+  requestingUsername := ""
+  if s.config.BasicAuth.Enabled {
+    // Check if requesting user has permission to delete this user
+    var ok bool
+    requestingUsername, _, ok = r.BasicAuth()
+    if !ok {
+      writeError(w, http.StatusUnauthorized, "Authentication required")
+      return
     }
-  }
 
-  // Only super admin or admin users can delete users
-  if !isSuperAdmin && !isAdmin {
-    writeError(w, http.StatusForbidden, "Access denied: Admin role required to delete users")
-    return
-  }
+    // Check if it's the super admin (from config)
+    isSuperAdmin := requestingUsername == s.config.BasicAuth.Username
 
-  // Prevent deletion of the super admin user
-  if targetUsername == s.config.BasicAuth.Username {
-    writeError(w, http.StatusForbidden, "Access denied: Cannot delete super admin user")
-    return
+    // Check if requesting user is an admin
+    isAdmin := false
+    if !isSuperAdmin && s.userDatabase != nil {
+      if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
+        isAdmin = true
+      }
+    }
+
+    // Only super admin or admin users can delete users
+    if !isSuperAdmin && !isAdmin {
+      writeError(w, http.StatusForbidden, "Access denied: Admin role required to delete users")
+      return
+    }
+
+    // Prevent deletion of the super admin user
+    if targetUsername == s.config.BasicAuth.Username {
+      writeError(w, http.StatusForbidden, "Access denied: Cannot delete super admin user")
+      return
+    }
+  } else {
+    // When auth is disabled, allow deletion (may need to adjust this logic based on requirements)
+    requestingUsername = "anonymous"  // Or some default value when auth is disabled
   }
 
   // Delete the user

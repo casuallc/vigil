@@ -749,7 +749,7 @@ func (c *CLI) setupVMSSHConnectionsCommand() *cobra.Command {
   var vmName, username, clientIP string
 
   connectionsCmd := &cobra.Command{
-    Use:   "ssh connections",
+    Use:   "connections",
     Short: "List active SSH connections filtered by VM, user or client IP",
     Long:  "List active SSH connections to VMs filtered by VM name, username, or client IP",
     RunE: func(cmd *cobra.Command, args []string) error {
@@ -770,7 +770,7 @@ func (c *CLI) setupVMSSHDisconnectCommand() *cobra.Command {
   var all bool
 
   disconnectCmd := &cobra.Command{
-    Use:   "ssh disconnect",
+    Use:   "disconnect",
     Short: "Close SSH connections",
     Long:  "Close specific or all SSH connections",
     RunE: func(cmd *cobra.Command, args []string) error {
