@@ -20,10 +20,12 @@ import (
   "context"
   "encoding/json"
   "fmt"
+  "github.com/casuallc/vigil/models"
   "io"
   "log"
   "net"
   "net/http"
+  "os"
   "path/filepath"
   "strconv"
   "strings"
@@ -1615,4 +1617,307 @@ func (s *Server) handleCloseAllSSHConnections(w http.ResponseWriter, r *http.Req
     "message": "all connections closed successfully",
     "count":   count,
   })
+}
+
+// handleRegisterUser handles the POST /api/users/register endpoint
+func (s *Server) handleRegisterUser(w http.ResponseWriter, r *http.Request) {
+  // Only allow registration if user database exists
+  if s.userDatabase == nil {
+    writeError(w, http.StatusInternalServerError, "User database not available")
+    return
+  }
+
+  // Parse request body
+  var user models.User
+  if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+    writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+    return
+  }
+
+  // Validate required fields
+  if user.Username == "" || user.Password == "" {
+    writeError(w, http.StatusBadRequest, "Username and password are required")
+    return
+  }
+
+  // Check if user already exists
+  if _, exists := s.userDatabase.GetUser(user.Username); exists {
+    writeError(w, http.StatusConflict, "User already exists")
+    return
+  }
+
+  // Set role to "user" by default if not specified
+  if user.Role == "" {
+    user.Role = "user"
+  }
+
+  // Generate a unique ID for the user
+  user.ID = fmt.Sprintf("usr_%d", time.Now().Unix())
+
+  // Create the user
+  if err := s.userDatabase.CreateUser(&user); err != nil {
+    writeError(w, http.StatusInternalServerError, "Failed to create user: "+err.Error())
+    return
+  }
+
+  // Return success response (without password)
+  responseUser := user
+  responseUser.Password = "" // Don't return password
+  writeJSON(w, http.StatusCreated, map[string]interface{}{
+    "message": "User registered successfully",
+    "user":    responseUser,
+  })
+}
+
+// handleListUsers handles the GET /api/users endpoint
+func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
+  // Only allow if user database exists
+  if s.userDatabase == nil {
+    writeError(w, http.StatusInternalServerError, "User database not available")
+    return
+  }
+
+  // Check if requesting user has admin role
+  username, _, ok := r.BasicAuth()
+  if !ok {
+    writeError(w, http.StatusUnauthorized, "Authentication required")
+    return
+  }
+
+  // Check if it's the super admin (from config) or a registered admin
+  isSuperAdmin := s.config.BasicAuth.Enabled && username == s.config.BasicAuth.Username
+  isAdmin := false
+
+  if !isSuperAdmin && s.userDatabase != nil {
+    if user, exists := s.userDatabase.GetUser(username); exists && user.Role == "admin" {
+      isAdmin = true
+    }
+  }
+
+  // Only super admin or admin users can list all users
+  if !isSuperAdmin && !isAdmin {
+    writeError(w, http.StatusForbidden, "Access denied: Admin role required to list users")
+    return
+  }
+
+  // Get all users
+  users := s.userDatabase.GetAllUsers()
+
+  // Create response without passwords
+  responseUsers := make([]map[string]interface{}, len(users))
+  for i, user := range users {
+    responseUsers[i] = map[string]interface{}{
+      "id":         user.ID,
+      "username":   user.Username,
+      "email":      user.Email,
+      "role":       user.Role,
+      "created_at": user.CreatedAt,
+      "updated_at": user.UpdatedAt,
+    }
+  }
+
+  writeJSON(w, http.StatusOK, responseUsers)
+}
+
+// handleGetUser handles the GET /api/users/{username} endpoint
+func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
+  // Only allow if user database exists
+  if s.userDatabase == nil {
+    writeError(w, http.StatusInternalServerError, "User database not available")
+    return
+  }
+
+  // Get username from path variables
+  vars := mux.Vars(r)
+  targetUsername := vars["username"]
+
+  if targetUsername == "" {
+    writeError(w, http.StatusBadRequest, "Username is required")
+    return
+  }
+
+  // Check if requesting user has permission to view this user
+  requestingUsername, _, ok := r.BasicAuth()
+  if !ok {
+    writeError(w, http.StatusUnauthorized, "Authentication required")
+    return
+  }
+
+  // Check if it's the super admin (from config)
+  isSuperAdmin := s.config.BasicAuth.Enabled && requestingUsername == s.config.BasicAuth.Username
+
+  // Check if requesting user is an admin
+  isAdmin := false
+  if !isSuperAdmin && s.userDatabase != nil {
+    if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
+      isAdmin = true
+    }
+  }
+
+  // Allow access if it's the super admin, admin, or the user is requesting their own info
+  if !isSuperAdmin && !isAdmin && requestingUsername != targetUsername {
+    writeError(w, http.StatusForbidden, "Access denied: Cannot access other user's information")
+    return
+  }
+
+  // Get the user
+  user, exists := s.userDatabase.GetUser(targetUsername)
+  if !exists {
+    writeError(w, http.StatusNotFound, "User not found")
+    return
+  }
+
+  // Create response without password
+  responseUser := map[string]interface{}{
+    "id":         user.ID,
+    "username":   user.Username,
+    "email":      user.Email,
+    "role":       user.Role,
+    "created_at": user.CreatedAt,
+    "updated_at": user.UpdatedAt,
+  }
+
+  writeJSON(w, http.StatusOK, responseUser)
+}
+
+// handleUpdateUser handles the PUT /api/users/{username} endpoint
+func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+  // Only allow if user database exists
+  if s.userDatabase == nil {
+    writeError(w, http.StatusInternalServerError, "User database not available")
+    return
+  }
+
+  // Get username from path variables
+  vars := mux.Vars(r)
+  targetUsername := vars["username"]
+
+  if targetUsername == "" {
+    writeError(w, http.StatusBadRequest, "Username is required")
+    return
+  }
+
+  // Parse request body
+  var updateData struct {
+    Email    string `json:"email"`
+    Role     string `json:"role"`
+    Password string `json:"password"`
+  }
+
+  if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+    writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+    return
+  }
+
+  // Check if requesting user has permission to update this user
+  requestingUsername, _, ok := r.BasicAuth()
+  if !ok {
+    writeError(w, http.StatusUnauthorized, "Authentication required")
+    return
+  }
+
+  // Check if it's the super admin (from config)
+  isSuperAdmin := s.config.BasicAuth.Enabled && requestingUsername == s.config.BasicAuth.Username
+
+  // Check if requesting user is an admin
+  isAdmin := false
+  if !isSuperAdmin && s.userDatabase != nil {
+    if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
+      isAdmin = true
+    }
+  }
+
+  // Determine if user can update (either super admin, admin, or updating their own account)
+  canUpdate := isSuperAdmin || isAdmin || requestingUsername == targetUsername
+
+  if !canUpdate {
+    writeError(w, http.StatusForbidden, "Access denied: Cannot update other user's information")
+    return
+  }
+
+  // Prevent non-admin users from changing roles
+  if !isSuperAdmin && !isAdmin && updateData.Role != "" {
+    writeError(w, http.StatusForbidden, "Access denied: Regular users cannot change roles")
+    return
+  }
+
+  // Prepare updated user data
+  updatedUser := &models.User{
+    Username: targetUsername,
+    Email:    updateData.Email,
+    Role:     updateData.Role,
+    Password: updateData.Password, // Will be hashed in UpdateUser if not empty
+  }
+
+  // Update the user
+  if err := s.userDatabase.UpdateUser(targetUsername, updatedUser); err != nil {
+    if os.IsNotExist(err) {
+      writeError(w, http.StatusNotFound, "User not found")
+      return
+    }
+    writeError(w, http.StatusInternalServerError, "Failed to update user: "+err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "User updated successfully"})
+}
+
+// handleDeleteUser handles the DELETE /api/users/{username} endpoint
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+  // Only allow if user database exists
+  if s.userDatabase == nil {
+    writeError(w, http.StatusInternalServerError, "User database not available")
+    return
+  }
+
+  // Get username from path variables
+  vars := mux.Vars(r)
+  targetUsername := vars["username"]
+
+  if targetUsername == "" {
+    writeError(w, http.StatusBadRequest, "Username is required")
+    return
+  }
+
+  // Check if requesting user has permission to delete this user
+  requestingUsername, _, ok := r.BasicAuth()
+  if !ok {
+    writeError(w, http.StatusUnauthorized, "Authentication required")
+    return
+  }
+
+  // Check if it's the super admin (from config)
+  isSuperAdmin := s.config.BasicAuth.Enabled && requestingUsername == s.config.BasicAuth.Username
+
+  // Check if requesting user is an admin
+  isAdmin := false
+  if !isSuperAdmin && s.userDatabase != nil {
+    if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
+      isAdmin = true
+    }
+  }
+
+  // Only super admin or admin users can delete users
+  if !isSuperAdmin && !isAdmin {
+    writeError(w, http.StatusForbidden, "Access denied: Admin role required to delete users")
+    return
+  }
+
+  // Prevent deletion of the super admin user
+  if targetUsername == s.config.BasicAuth.Username {
+    writeError(w, http.StatusForbidden, "Access denied: Cannot delete super admin user")
+    return
+  }
+
+  // Delete the user
+  if err := s.userDatabase.DeleteUser(targetUsername); err != nil {
+    if os.IsNotExist(err) {
+      writeError(w, http.StatusNotFound, "User not found")
+      return
+    }
+    writeError(w, http.StatusInternalServerError, "Failed to delete user: "+err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
 }

@@ -98,5 +98,13 @@ func (s *Server) Router() *mux.Router {
 	r.HandleFunc("/api/files/delete", s.handleFileDelete).Methods("POST")
 	r.HandleFunc("/api/files/copy", s.handleFileCopy).Methods("POST")
 	r.HandleFunc("/api/files/move", s.handleFileMove).Methods("POST")
+
+	// User management endpoints
+	r.HandleFunc("/api/users/register", s.handleRegisterUser).Methods("POST")
+	r.HandleFunc("/api/users", s.handleListUsers).Methods("GET")
+	r.HandleFunc("/api/users/{username}", s.handleGetUser).Methods("GET")
+	r.HandleFunc("/api/users/{username}", s.handleUpdateUser).Methods("PUT")
+	r.HandleFunc("/api/users/{username}", s.handleDeleteUser).Methods("DELETE")
+
 	return r
 }

@@ -36,6 +36,7 @@ import (
   "os"
   "path/filepath"
   "strings"
+  "time"
 )
 
 // Client represents the HTTP client for the Vigil API
@@ -1300,4 +1301,116 @@ func (c *Client) CloseAllSSHConnections() (int, error) {
   }
 
   return int(count), nil
+}
+
+// User represents a user in the system (for API client use)
+type User struct {
+  ID        string    `json:"id"`
+  Username  string    `json:"username"`
+  Email     string    `json:"email,omitempty"`
+  Role      string    `json:"role"`
+  CreatedAt time.Time `json:"created_at"`
+  UpdatedAt time.Time `json:"updated_at"`
+}
+
+// RegisterUser registers a new user
+func (c *Client) RegisterUser(username, password, email, role string) error {
+  userData := map[string]string{
+    "username": username,
+    "password": password,
+    "email":    email,
+    "role":     role,
+  }
+
+  resp, err := c.doRequest("POST", "/api/users/register", userData)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusCreated {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// ListUsers lists all users
+func (c *Client) ListUsers() ([]User, error) {
+  var users []User
+  resp, err := c.doRequest("GET", "/api/users", nil)
+  if err != nil {
+    return nil, err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return nil, c.errorFromResponse(resp)
+  }
+
+  if err := c.getJSONResponse(resp, &users); err != nil {
+    return nil, err
+  }
+
+  return users, nil
+}
+
+// GetUser gets user details
+func (c *Client) GetUser(username string) (User, error) {
+  var user User
+  resp, err := c.doRequest("GET", fmt.Sprintf("/api/users/%s", username), nil)
+  if err != nil {
+    return user, err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return user, c.errorFromResponse(resp)
+  }
+
+  if err := c.getJSONResponse(resp, &user); err != nil {
+    return user, err
+  }
+
+  return user, nil
+}
+
+// UpdateUser updates user information
+func (c *Client) UpdateUser(username, email, role, password string) error {
+  updateData := make(map[string]string)
+  if email != "" {
+    updateData["email"] = email
+  }
+  if role != "" {
+    updateData["role"] = role
+  }
+  if password != "" {
+    updateData["password"] = password
+  }
+
+  if len(updateData) == 0 {
+    return fmt.Errorf("no fields to update")
+  }
+
+  resp, err := c.doRequest("PUT", fmt.Sprintf("/api/users/%s", username), updateData)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// DeleteUser deletes a user
+func (c *Client) DeleteUser(username string) error {
+  resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/users/%s", username), nil)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
 }

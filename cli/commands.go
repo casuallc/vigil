@@ -75,6 +75,10 @@ OS/Arch:   %s/%s
   fileCmd := c.setupFileCommand()
   rootCmd.AddCommand(fileCmd)
 
+  // Add User commands
+  userCmd := c.setupUserCommands()
+  rootCmd.AddCommand(userCmd)
+
   // Global flags
   rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:8181", "API server host address")
   rootCmd.PersistentFlags().BoolVar(&insecureSkipVerify, "insecure", false, "Skip TLS certificate verification")

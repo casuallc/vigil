@@ -34,18 +34,20 @@ import (
 
   "github.com/casuallc/vigil/audit"
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/models"
   "github.com/casuallc/vigil/proc"
   "github.com/casuallc/vigil/vm"
 )
 
 // Server represents the HTTP API server
 type Server struct {
-  config      *config.Config
-  manager     *proc.Manager
-  monitor     *proc.Monitor
+  config          *config.Config
+  manager         *proc.Manager
+  monitor         *proc.Monitor
   resourceMonitor *proc.ResourceMonitor
-  vmManager   *vm.Manager
-  auditLogger *audit.Logger
+  vmManager       *vm.Manager
+  userDatabase    *models.UserDatabase
+  auditLogger     *audit.Logger
   // SSH connection tracking
   sshConnections   map[string]*SSHConnectionInfo
   sshConnectionsMu sync.RWMutex
@@ -53,12 +55,12 @@ type Server struct {
 
 // SSHConnectionInfo represents an active SSH connection
 type SSHConnectionInfo struct {
-	ID          string    `json:"id"`
-	VMName      string    `json:"vm_name"`
-	ClientIP    string    `json:"client_ip"`
-	Username    string    `json:"username"`       // authenticated user when auth is enabled, anonymous when disabled
-	ConnectedAt time.Time `json:"connected_at"`
-	Duration    string    `json:"duration"`       // formatted as human-readable string
+  ID          string    `json:"id"`
+  VMName      string    `json:"vm_name"`
+  ClientIP    string    `json:"client_ip"`
+  Username    string    `json:"username"` // authenticated user when auth is enabled, anonymous when disabled
+  ConnectedAt time.Time `json:"connected_at"`
+  Duration    string    `json:"duration"` // formatted as human-readable string
 }
 
 // NewServerWithManager creates a new API server with an existing proc manager
@@ -67,6 +69,12 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
   // Initialize resource monitor with cache TTL of 5 seconds and collection interval of 3 seconds
   resourceMonitor := proc.NewResourceMonitor(manager, 5*time.Second, 3*time.Second, true, true)
   vmManager := vm.NewManagerWithConfig("vms.json", config.Security.EncryptionKey)
+
+  // Create user database
+  userDatabase, err := models.NewUserDatabase("conf/users.json")
+  if err != nil {
+    log.Printf("Warning: failed to initialize user database: %v", err)
+  }
 
   // 创建审计日志目录
   auditLogDir := filepath.Join("logs", "audit")
@@ -84,6 +92,7 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     monitor:         monitor,
     resourceMonitor: resourceMonitor,
     vmManager:       vmManager,
+    userDatabase:    userDatabase,
     auditLogger:     auditLogger,
     // Initialize SSH connection tracking
     sshConnections: make(map[string]*SSHConnectionInfo),
@@ -275,16 +284,44 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
   })
 }
 
-// BasicAuthMiddleware enforces HTTP Basic Auth.
-func BasicAuthMiddleware(username, password string, next http.Handler) http.Handler {
+// BasicAuthMiddleware enforces HTTP Basic Auth with dual authentication.
+// First checks super admin credentials from config, then checks user database.
+func (s *Server) BasicAuthMiddleware(next http.Handler) http.Handler {
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     u, p, ok := r.BasicAuth()
-    if !ok || u != username || p != password {
+    if !ok {
       w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
       http.Error(w, "Unauthorized", http.StatusUnauthorized)
       return
     }
-    next.ServeHTTP(w, r)
+
+    // First, check if it's the super admin user from config
+    if s.config.BasicAuth.Enabled && u == s.config.BasicAuth.Username && p == s.config.BasicAuth.Password {
+      // Super admin has full access - pass through
+      next.ServeHTTP(w, r)
+      return
+    }
+
+    // Second, check against registered users in the user database
+    if s.userDatabase != nil {
+      isValid, err := s.userDatabase.ValidatePassword(u, p)
+      if err != nil {
+        log.Printf("Error validating user password: %v", err)
+        w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
+        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        return
+      }
+
+      if isValid {
+        // Valid registered user - pass through
+        next.ServeHTTP(w, r)
+        return
+      }
+    }
+
+    // Neither super admin nor registered user matched
+    w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
+    http.Error(w, "Unauthorized", http.StatusUnauthorized)
   })
 }
 
@@ -393,7 +430,7 @@ func (s *Server) Start() error {
 
   var handler http.Handler = loggedRouter
   if s.config.BasicAuth.Enabled {
-    handler = BasicAuthMiddleware(s.config.BasicAuth.Username, s.config.BasicAuth.Password, handler)
+    handler = s.BasicAuthMiddleware(handler)
     log.Printf("Basic Auth enabled for API")
   } else {
     log.Printf("Basic Auth not configured; API runs without authentication")
