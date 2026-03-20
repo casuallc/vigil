@@ -70,8 +70,8 @@ type HTTPSConfig struct {
 
 // DatabaseConfig represents the database configuration
 type DatabaseConfig struct {
-  Driver   string `yaml:"driver"`   // "sqlite3" or "json"
-  Path     string `yaml:"path"`     // Database file path
+  Driver string `yaml:"driver"` // "sqlite" or "json"
+  Path   string `yaml:"path"`   // Database file path
 }
 
 // AppConfig represents the configuration of a managed application

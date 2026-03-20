@@ -37,7 +37,7 @@ import (
   "github.com/casuallc/vigil/models"
   "github.com/casuallc/vigil/proc"
   "github.com/casuallc/vigil/vm"
-  _ "github.com/mattn/go-sqlite3"
+  _ "modernc.org/sqlite"
 )
 
 // Server represents the HTTP API server
@@ -69,7 +69,11 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
   monitor := proc.NewMonitor(manager)
   // Initialize resource monitor with cache TTL of 5 seconds and collection interval of 3 seconds
   resourceMonitor := proc.NewResourceMonitor(manager, 5*time.Second, 3*time.Second, true, true)
-  vmManager := vm.NewManagerWithConfig("vms.json", config.Security.EncryptionKey)
+
+  // Determine VM database path
+  vmDBPath := "data/vms.db"
+  vmManager := vm.NewManagerWithConfig(vmDBPath, config.Security.EncryptionKey)
+  log.Printf("VM database initialized at %s", vmDBPath)
 
   // Create SQLite user database
   var userDatabase *models.SQLiteUserDatabase
@@ -78,11 +82,11 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
   // Determine database path from config or use default
   dbPath := config.Database.Path
   if dbPath == "" {
-    dbPath = "conf/users.db"
+    dbPath = "data/users.db"
   }
 
-  // Use SQLite if driver is sqlite3 or not specified (default to sqlite3)
-  if config.Database.Driver == "" || config.Database.Driver == "sqlite3" {
+  // Use SQLite if driver is sqlite or not specified (default to sqlite)
+  if config.Database.Driver == "" || config.Database.Driver == "sqlite" {
     userDatabase, err = models.NewSQLiteUserDatabase(dbPath)
     if err != nil {
       log.Printf("Warning: failed to initialize SQLite user database: %v", err)
@@ -501,5 +505,10 @@ func (s *Server) Stop() {
   // Stop the resource monitor
   if s.resourceMonitor != nil {
     s.resourceMonitor.Stop()
+  }
+
+  // Close VM database connection
+  if s.vmManager != nil {
+    s.vmManager.Close()
   }
 }

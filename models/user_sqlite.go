@@ -9,6 +9,7 @@ import (
   "sync"
   "time"
 
+  dbsql "github.com/casuallc/vigil/sql"
   "golang.org/x/crypto/bcrypt"
 )
 
@@ -28,7 +29,7 @@ func NewSQLiteUserDatabase(path string) (*SQLiteUserDatabase, error) {
   }
 
   // Open SQLite database
-  db, err := sql.Open("sqlite3", path)
+  db, err := sql.Open("sqlite", path)
   if err != nil {
     return nil, err
   }
@@ -49,22 +50,12 @@ func NewSQLiteUserDatabase(path string) (*SQLiteUserDatabase, error) {
 
 // initDB initializes the database schema
 func (ud *SQLiteUserDatabase) initDB() error {
-  schema := `
-	CREATE TABLE IF NOT EXISTS users (
-		id TEXT PRIMARY KEY,
-		username TEXT UNIQUE NOT NULL,
-		password TEXT NOT NULL,
-		email TEXT DEFAULT '',
-		role TEXT DEFAULT 'user',
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);
+  schema, err := dbsql.LoadUsersSchema()
+  if err != nil {
+    return err
+  }
 
-	CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-	CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-	`
-
-  _, err := ud.db.Exec(schema)
+  _, err = ud.db.Exec(schema)
   return err
 }
 

@@ -1273,7 +1273,7 @@ Vigil 使用 SQLite 数据库存储用户信息，配置文件位于 `conf/confi
 
 ```yaml
 database:
-  driver: sqlite3      # 数据库驱动，目前支持 sqlite3
+  driver: sqlite      # 数据库驱动，目前支持 sqlite
   path: ./conf/users.db  # 数据库文件路径
 ```
 
