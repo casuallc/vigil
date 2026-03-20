@@ -1417,6 +1417,8 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
     for {
       messageType, payload, err := ws.ReadMessage()
       if err != nil {
+        // WebSocket connection closed or error occurred
+        log.Printf("WebSocket read error for connection %s: %v", connID, err)
         return
       }
 
@@ -1461,16 +1463,38 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
     for {
       n, err := reader.Read(buf)
       if n > 0 {
-        ws.WriteMessage(websocket.BinaryMessage, buf[:n])
+        if err := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
+          // WebSocket connection closed or error occurred
+          log.Printf("WebSocket write error for connection %s: %v", connID, err)
+          return
+        }
       }
       if err != nil {
+        log.Printf("SSH output error for connection %s: %v", connID, err)
         return
       }
     }
   }()
 
+  // Wait for context cancellation (WebSocket disconnect or error)
   <-ctx.Done()
-  session.Wait()
+  log.Printf("WebSocket connection closed: ID=%s", connID)
+
+  // Close session explicitly to clean up SSH resources
+  // Use a timeout to prevent blocking forever if session.Close() hangs
+  done := make(chan struct{})
+  go func() {
+    session.Close()
+    close(done)
+  }()
+
+  select {
+  case <-done:
+    // Session closed normally
+  case <-time.After(2 * time.Second):
+    // Timeout - session close is stuck, but we still return to let defer run
+    log.Printf("SSH session close timeout for connection %s", connID)
+  }
 }
 
 // handleVMExec 处理 VM 命令执行请求
