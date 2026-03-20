@@ -23,6 +23,11 @@ type User struct {
   LastLoginAt *time.Time `json:"last_login_at,omitempty"`
   LastLoginIP string     `json:"last_login_ip,omitempty"`
   LoginCount  int        `json:"login_count"`
+  // Profile fields
+  Avatar   string `json:"avatar,omitempty"`    // User avatar URL
+  Nickname string `json:"nickname,omitempty"`  // User nickname
+  Region   string `json:"region,omitempty"`    // User region/location
+  Configs  string `json:"configs,omitempty"`   // User configuration (JSON string, can be large)
 }
 
 // UserDatabase manages user data with concurrency safety

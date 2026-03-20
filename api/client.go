@@ -1330,6 +1330,11 @@ type User struct {
   Role      string    `json:"role"`
   CreatedAt time.Time `json:"created_at"`
   UpdatedAt time.Time `json:"updated_at"`
+  // Profile fields
+  Avatar   string `json:"avatar,omitempty"`    // User avatar URL
+  Nickname string `json:"nickname,omitempty"`  // User nickname
+  Region   string `json:"region,omitempty"`    // User region/location
+  Configs  string `json:"configs,omitempty"`   // User configuration (JSON string)
 }
 
 // RegisterUser registers a new user
@@ -1347,6 +1352,68 @@ func (c *Client) RegisterUser(username, password, email, role string) error {
   }
 
   if resp.StatusCode != http.StatusCreated {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// RegisterUserExtended registers a new user with extended profile fields
+func (c *Client) RegisterUserExtended(username, password, email, role, nickname, avatar, region string) error {
+  userData := map[string]string{
+    "username": username,
+    "password": password,
+    "email":    email,
+    "role":     role,
+    "nickname": nickname,
+    "avatar":   avatar,
+    "region":   region,
+  }
+
+  resp, err := c.doRequest("POST", "/api/users/register", userData)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusCreated {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// UpdateUserExtended updates user information with extended profile fields
+func (c *Client) UpdateUserExtended(username, email, role, password, nickname, avatar, region string) error {
+  updateData := make(map[string]string)
+  if email != "" {
+    updateData["email"] = email
+  }
+  if role != "" {
+    updateData["role"] = role
+  }
+  if password != "" {
+    updateData["password"] = password
+  }
+  if nickname != "" {
+    updateData["nickname"] = nickname
+  }
+  if avatar != "" {
+    updateData["avatar"] = avatar
+  }
+  if region != "" {
+    updateData["region"] = region
+  }
+
+  if len(updateData) == 0 {
+    return fmt.Errorf("no fields to update")
+  }
+
+  resp, err := c.doRequest("PUT", fmt.Sprintf("/api/users/%s", username), updateData)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
     return c.errorFromResponse(resp)
   }
 
@@ -1423,6 +1490,43 @@ func (c *Client) UpdateUser(username, email, role, password string) error {
 // DeleteUser deletes a user
 func (c *Client) DeleteUser(username string) error {
   resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/users/%s", username), nil)
+  if err != nil {
+    return err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return c.errorFromResponse(resp)
+  }
+
+  return nil
+}
+
+// GetUserConfigs gets user configuration
+func (c *Client) GetUserConfigs(username string) (string, error) {
+  resp, err := c.doRequest("GET", fmt.Sprintf("/api/users/%s/configs", username), nil)
+  if err != nil {
+    return "", err
+  }
+
+  if resp.StatusCode != http.StatusOK {
+    return "", c.errorFromResponse(resp)
+  }
+
+  var result map[string]string
+  if err := c.getJSONResponse(resp, &result); err != nil {
+    return "", err
+  }
+
+  return result["configs"], nil
+}
+
+// UpdateUserConfigs updates user configuration
+func (c *Client) UpdateUserConfigs(username, configs string) error {
+  reqBody := map[string]string{
+    "configs": configs,
+  }
+
+  resp, err := c.doRequest("PUT", fmt.Sprintf("/api/users/%s/configs", username), reqBody)
   if err != nil {
     return err
   }

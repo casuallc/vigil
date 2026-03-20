@@ -2101,3 +2101,133 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 
   writeJSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
 }
+
+// handleGetUserConfigs handles the GET /api/users/{username}/configs endpoint
+func (s *Server) handleGetUserConfigs(w http.ResponseWriter, r *http.Request) {
+  // Only allow if user database exists
+  if s.userDatabase == nil {
+    writeError(w, http.StatusInternalServerError, "User database not available")
+    return
+  }
+
+  // Get username from path variables
+  vars := mux.Vars(r)
+  targetUsername := vars["username"]
+
+  if targetUsername == "" {
+    writeError(w, http.StatusBadRequest, "Username is required")
+    return
+  }
+
+  // Check authentication
+  if s.config.BasicAuth.Enabled {
+    requestingUsername, _, ok := r.BasicAuth()
+    if !ok {
+      writeError(w, http.StatusUnauthorized, "Authentication required")
+      return
+    }
+
+    // Check if it's the super admin, admin, or the user is requesting their own configs
+    isSuperAdmin := requestingUsername == s.config.BasicAuth.Username
+    isAdmin := false
+    if !isSuperAdmin && s.userDatabase != nil {
+      if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
+        isAdmin = true
+      }
+    }
+
+    if !isSuperAdmin && !isAdmin && requestingUsername != targetUsername {
+      writeError(w, http.StatusForbidden, "Access denied: Cannot access other user's configuration")
+      return
+    }
+  }
+
+  // Get the user
+  user, exists := s.userDatabase.GetUser(targetUsername)
+  if !exists {
+    writeError(w, http.StatusNotFound, "User not found")
+    return
+  }
+
+  // Return configs (empty string if not set)
+  writeJSON(w, http.StatusOK, map[string]string{
+    "configs": user.Configs,
+  })
+}
+
+// handleUpdateUserConfigs handles the PUT /api/users/{username}/configs endpoint
+func (s *Server) handleUpdateUserConfigs(w http.ResponseWriter, r *http.Request) {
+  // Only allow if user database exists
+  if s.userDatabase == nil {
+    writeError(w, http.StatusInternalServerError, "User database not available")
+    return
+  }
+
+  // Get username from path variables
+  vars := mux.Vars(r)
+  targetUsername := vars["username"]
+
+  if targetUsername == "" {
+    writeError(w, http.StatusBadRequest, "Username is required")
+    return
+  }
+
+  // Parse request body
+  var req struct {
+    Configs string `json:"configs"`
+  }
+
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+    return
+  }
+
+  // Check authentication
+  requestingUsername := ""
+  if s.config.BasicAuth.Enabled {
+    var ok bool
+    requestingUsername, _, ok = r.BasicAuth()
+    if !ok {
+      writeError(w, http.StatusUnauthorized, "Authentication required")
+      return
+    }
+
+    // Check if it's the super admin, admin, or the user is updating their own configs
+    isSuperAdmin := requestingUsername == s.config.BasicAuth.Username
+    isAdmin := false
+    if !isSuperAdmin && s.userDatabase != nil {
+      if user, exists := s.userDatabase.GetUser(requestingUsername); exists && user.Role == "admin" {
+        isAdmin = true
+      }
+    }
+
+    if !isSuperAdmin && !isAdmin && requestingUsername != targetUsername {
+      writeError(w, http.StatusForbidden, "Access denied: Cannot update other user's configuration")
+      return
+    }
+  }
+
+  // Get the user to check existence
+  _, exists := s.userDatabase.GetUser(targetUsername)
+  if !exists {
+    writeError(w, http.StatusNotFound, "User not found")
+    return
+  }
+
+  // Update the user's configs
+  updatedUser := &models.User{
+    Username: targetUsername,
+    Configs:  req.Configs,
+  }
+
+  if err := s.userDatabase.UpdateUser(targetUsername, updatedUser); err != nil {
+    if os.IsNotExist(err) {
+      writeError(w, http.StatusNotFound, "User not found")
+      return
+    }
+    writeError(w, http.StatusInternalServerError, "Failed to update user configs: "+err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "User configs updated successfully"})
+}

@@ -106,6 +106,8 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/users/{username}", s.handleGetUser).Methods("GET")
   r.HandleFunc("/api/users/{username}", s.handleUpdateUser).Methods("PUT")
   r.HandleFunc("/api/users/{username}", s.handleDeleteUser).Methods("DELETE")
+  r.HandleFunc("/api/users/{username}/configs", s.handleGetUserConfigs).Methods("GET")
+  r.HandleFunc("/api/users/{username}/configs", s.handleUpdateUserConfigs).Methods("PUT")
 
   return r
 }

@@ -69,7 +69,7 @@ func (ud *SQLiteUserDatabase) GetUser(username string) (*User, bool) {
   ud.mu.RLock()
   defer ud.mu.RUnlock()
 
-  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count
+  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count, avatar, nickname, region, configs
 			  FROM users WHERE username = ?`
 
   var user User
@@ -85,6 +85,10 @@ func (ud *SQLiteUserDatabase) GetUser(username string) (*User, bool) {
     &lastLoginAt,
     &user.LastLoginIP,
     &user.LoginCount,
+    &user.Avatar,
+    &user.Nickname,
+    &user.Region,
+    &user.Configs,
   )
 
   if err == sql.ErrNoRows {
@@ -116,8 +120,8 @@ func (ud *SQLiteUserDatabase) CreateUser(user *User) error {
   ud.mu.Lock()
   defer ud.mu.Unlock()
 
-  query := `INSERT INTO users (id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count)
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  query := `INSERT INTO users (id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count, avatar, nickname, region, configs)
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
   _, err = ud.db.Exec(query,
     user.ID,
@@ -130,6 +134,10 @@ func (ud *SQLiteUserDatabase) CreateUser(user *User) error {
     user.LastLoginAt,
     user.LastLoginIP,
     user.LoginCount,
+    user.Avatar,
+    user.Nickname,
+    user.Region,
+    user.Configs,
   )
 
   // Handle unique constraint violation
@@ -183,6 +191,24 @@ func (ud *SQLiteUserDatabase) UpdateUser(username string, updatedUser *User) err
     args = append(args, updatedUser.Username)
   }
 
+  // Profile fields
+  if updatedUser.Avatar != "" {
+    updates = append(updates, "avatar = ?")
+    args = append(args, updatedUser.Avatar)
+  }
+  if updatedUser.Nickname != "" {
+    updates = append(updates, "nickname = ?")
+    args = append(args, updatedUser.Nickname)
+  }
+  if updatedUser.Region != "" {
+    updates = append(updates, "region = ?")
+    args = append(args, updatedUser.Region)
+  }
+  if updatedUser.Configs != "" {
+    updates = append(updates, "configs = ?")
+    args = append(args, updatedUser.Configs)
+  }
+
   // Always update updated_at
   updates = append(updates, "updated_at = ?")
   args = append(args, time.Now())
@@ -220,7 +246,7 @@ func (ud *SQLiteUserDatabase) GetAllUsers() []*User {
   ud.mu.RLock()
   defer ud.mu.RUnlock()
 
-  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count FROM users`
+  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count, avatar, nickname, region, configs FROM users`
 
   rows, err := ud.db.Query(query)
   if err != nil {
@@ -243,6 +269,10 @@ func (ud *SQLiteUserDatabase) GetAllUsers() []*User {
       &lastLoginAt,
       &user.LastLoginIP,
       &user.LoginCount,
+      &user.Avatar,
+      &user.Nickname,
+      &user.Region,
+      &user.Configs,
     )
     if err == nil {
       if lastLoginAt.Valid {
@@ -280,7 +310,7 @@ func (ud *SQLiteUserDatabase) GetUserByID(id string) (*User, bool) {
   ud.mu.RLock()
   defer ud.mu.RUnlock()
 
-  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count
+  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count, avatar, nickname, region, configs
 			  FROM users WHERE id = ?`
 
   var user User
@@ -296,6 +326,10 @@ func (ud *SQLiteUserDatabase) GetUserByID(id string) (*User, bool) {
     &lastLoginAt,
     &user.LastLoginIP,
     &user.LoginCount,
+    &user.Avatar,
+    &user.Nickname,
+    &user.Region,
+    &user.Configs,
   )
 
   if err == sql.ErrNoRows {

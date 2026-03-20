@@ -63,6 +63,8 @@
 | 用户管理 | /api/users/{username}                              | GET | 获取用户详情 |
 | 用户管理 | /api/users/{username}                              | PUT | 更新用户 |
 | 用户管理 | /api/users/{username}                              | DELETE | 删除用户 |
+| 用户管理 | /api/users/{username}/configs                      | GET | 获取用户配置 |
+| 用户管理 | /api/users/{username}/configs                      | PUT | 更新用户配置 |
 
 ## 3. 详细接口说明
 
@@ -1157,16 +1159,23 @@
 
 **请求参数**：
 - 请求体：
-  - `username`：用户名
-  - `password`：密码
+  - `username`：用户名（必填）
+  - `password`：密码（必填）
   - `email`：邮箱（可选）
+  - `role`：角色（可选，默认：user）
+  - `nickname`：昵称（可选）
+  - `avatar`：头像 URL（可选）
+  - `region`：地区（可选）
 
 **请求体示例**：
 ```json
 {
   "username": "newuser",
   "password": "securepassword",
-  "email": "newuser@example.com"
+  "email": "newuser@example.com",
+  "nickname": "张三",
+  "avatar": "https://example.com/avatars/user.jpg",
+  "region": "北京"
 }
 ```
 
@@ -1174,7 +1183,17 @@
 ```json
 {
   "message": "User registered successfully",
-  "username": "newuser"
+  "user": {
+    "id": "usr_1234567890",
+    "username": "newuser",
+    "email": "newuser@example.com",
+    "role": "user",
+    "nickname": "张三",
+    "avatar": "https://example.com/avatars/user.jpg",
+    "region": "北京",
+    "created_at": "2023-01-01T00:00:00Z",
+    "updated_at": "2023-01-01T00:00:00Z"
+  }
 }
 ```
 
@@ -1195,14 +1214,26 @@
 ```json
 [
   {
+    "id": "usr_1234567890",
     "username": "user1",
     "email": "user1@example.com",
-    "created_at": "2023-01-01T00:00:00Z"
+    "role": "user",
+    "nickname": "张三",
+    "avatar": "https://example.com/avatars/user1.jpg",
+    "region": "北京",
+    "created_at": "2023-01-01T00:00:00Z",
+    "updated_at": "2023-01-01T00:00:00Z"
   },
   {
+    "id": "usr_1234567891",
     "username": "user2",
     "email": "user2@example.com",
-    "created_at": "2023-01-02T00:00:00Z"
+    "role": "admin",
+    "nickname": "李四",
+    "avatar": "https://example.com/avatars/user2.jpg",
+    "region": "上海",
+    "created_at": "2023-01-02T00:00:00Z",
+    "updated_at": "2023-01-02T00:00:00Z"
   }
 ]
 ```
@@ -1217,10 +1248,15 @@
 **响应格式**：
 ```json
 {
+  "id": "usr_1234567890",
   "username": "username",
   "email": "user@example.com",
+  "role": "user",
+  "nickname": "张三",
+  "avatar": "https://example.com/avatars/user.jpg",
+  "region": "北京",
   "created_at": "2023-01-01T00:00:00Z",
-  "last_login": "2023-01-02T10:30:00Z"
+  "updated_at": "2023-01-01T00:00:00Z"
 }
 ```
 
@@ -1233,12 +1269,17 @@
 - 请求体：
   - `email`：邮箱（可选）
   - `password`：密码（可选）
+  - `nickname`：昵称（可选）
+  - `avatar`：头像 URL（可选）
+  - `region`：地区（可选）
 
 **请求体示例**：
 ```json
 {
   "email": "updated@example.com",
-  "password": "newpassword"
+  "nickname": "新昵称",
+  "avatar": "https://example.com/avatars/new.jpg",
+  "region": "深圳"
 }
 ```
 
@@ -1265,6 +1306,48 @@
 }
 ```
 
+#### GET /api/users/{username}/configs
+
+**功能描述**：获取用户配置信息
+
+**请求参数**：
+- `username`：用户名（路径参数）
+
+**响应格式**：
+```json
+{
+  "configs": "{\"theme\":\"dark\",\"language\":\"zh-CN\",\"notifications\":true}"
+}
+```
+
+#### PUT /api/users/{username}/configs
+
+**功能描述**：更新用户配置信息
+
+**请求参数**：
+- `username`：用户名（路径参数）
+- 请求体：
+  - `configs`：配置信息（JSON 字符串，可以存储大型配置）
+
+**请求体示例**：
+```json
+{
+  "configs": "{\"theme\":\"dark\",\"language\":\"zh-CN\",\"notifications\":true,\"customSettings\":{\"fontSize\":14,\"sidebar\":\"collapsed\"}}"
+}
+```
+
+**响应格式**：
+```json
+{
+  "message": "User configs updated successfully"
+}
+```
+
+**注意事项**：
+- `configs` 字段支持存储大型 JSON 字符串（最大可达 1MB 以上）
+- 建议将配置存储为 JSON 格式的字符串
+- 配置内容应根据业务需求自行解析和处理
+
 ## 3.16 数据库配置
 
 Vigil 使用 SQLite 数据库存储用户信息，配置文件位于 `conf/config.yaml`。
@@ -1290,6 +1373,13 @@ database:
 | role | TEXT | 角色（admin/user） |
 | created_at | DATETIME | 创建时间 |
 | updated_at | DATETIME | 更新时间 |
+| last_login_at | DATETIME | 最后登录时间 |
+| last_login_ip | TEXT | 最后登录 IP |
+| login_count | INTEGER | 登录次数 |
+| avatar | TEXT | 头像 URL |
+| nickname | TEXT | 昵称 |
+| region | TEXT | 地区 |
+| configs | TEXT | 用户配置（JSON 字符串） |
 
 ### 数据迁移
 
