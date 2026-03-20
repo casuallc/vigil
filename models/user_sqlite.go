@@ -3,13 +3,12 @@ package models
 import (
   "database/sql"
   "encoding/json"
-  "errors"
   "os"
   "path/filepath"
+  "strings"
   "sync"
   "time"
 
-  "github.com/mattn/go-sqlite3"
   "golang.org/x/crypto/bcrypt"
 )
 
@@ -132,8 +131,7 @@ func (ud *SQLiteUserDatabase) CreateUser(user *User) error {
   )
 
   // Handle unique constraint violation
-  var sqliteErr sqlite3.Error
-  if errors.As(err, &sqliteErr) && errors.Is(sqliteErr.Code, sqlite3.ErrConstraint) {
+  if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
     return sql.ErrNoRows // Return a more meaningful error
   }
 
@@ -148,7 +146,7 @@ func (ud *SQLiteUserDatabase) UpdateUser(username string, updatedUser *User) err
   // Check if user exists
   var existingUsername string
   err := ud.db.QueryRow("SELECT username FROM users WHERE username = ?", username).Scan(&existingUsername)
-  if errors.Is(err, sql.ErrNoRows) {
+  if err == sql.ErrNoRows {
     return os.ErrNotExist
   }
   if err != nil {
@@ -204,7 +202,7 @@ func (ud *SQLiteUserDatabase) DeleteUser(username string) error {
   // Check if user exists
   var existingUsername string
   err := ud.db.QueryRow("SELECT username FROM users WHERE username = ?", username).Scan(&existingUsername)
-  if errors.Is(err, sql.ErrNoRows) {
+  if err == sql.ErrNoRows {
     return os.ErrNotExist
   }
   if err != nil {
@@ -257,7 +255,7 @@ func (ud *SQLiteUserDatabase) ValidatePassword(username, password string) (bool,
 
   var storedHash string
   err := ud.db.QueryRow(query, username).Scan(&storedHash)
-  if errors.Is(err, sql.ErrNoRows) {
+  if err == sql.ErrNoRows {
     return false, nil
   }
   if err != nil {
@@ -287,7 +285,7 @@ func (ud *SQLiteUserDatabase) GetUserByID(id string) (*User, bool) {
     &user.UpdatedAt,
   )
 
-  if errors.Is(err, sql.ErrNoRows) {
+  if err == sql.ErrNoRows {
     return nil, false
   }
   if err != nil {

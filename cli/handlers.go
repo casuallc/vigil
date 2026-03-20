@@ -26,7 +26,7 @@ import (
   "time"
 
   "github.com/casuallc/vigil/common"
-  "github.com/casuallc/vigil/proc"
+
   "gopkg.in/yaml.v3" // 导入yaml包用于YAML格式输出
 )
 
@@ -515,7 +515,7 @@ func (c *CLI) handleSystemResources() error {
   if resources.MemoryTotal > 0 {
     fmt.Printf("  Memory Usage: %s / %s (%.2f%%)\n",
       resources.MemoryUsageHuman,
-      proc.FormatBytes(resources.MemoryTotal),
+      common.FormatBytes(resources.MemoryTotal),
       resources.MemoryUsedPercent)
   } else {
     fmt.Printf("  Memory Usage: %s\n", resources.MemoryUsageHuman)
@@ -541,14 +541,14 @@ func (c *CLI) handleSystemResources() error {
         continue
       }
 
-      sizeStr := proc.FormatBytes(du.Total)
-      usedStr := proc.FormatBytes(du.Used)
+      sizeStr := common.FormatBytes(du.Total)
+      usedStr := common.FormatBytes(du.Used)
       // 使用服务端提供的 Free 作为 Avail
       availVal := du.Free
       if availVal == 0 && du.Total >= du.Used {
         availVal = du.Total - du.Used
       }
-      availStr := proc.FormatBytes(availVal)
+      availStr := common.FormatBytes(availVal)
       useStr := fmt.Sprintf("%d%%", int(du.UsedPercent+0.5))
 
       r := row{dev: du.Device, sizeStr: sizeStr, usedStr: usedStr, availStr: availStr, useStr: useStr, mount: du.Mountpoint}
@@ -587,8 +587,8 @@ func (c *CLI) handleSystemResources() error {
     for _, dio := range resources.DiskIODevices {
       fmt.Printf("    - %s: read=%s, write=%s (reads=%d, writes=%d)\n",
         dio.Device,
-        proc.FormatBytes(dio.ReadBytes),
-        proc.FormatBytes(dio.WriteBytes),
+        common.FormatBytes(dio.ReadBytes),
+        common.FormatBytes(dio.WriteBytes),
         dio.ReadCount,
         dio.WriteCount)
     }
@@ -612,8 +612,8 @@ func (c *CLI) handleSystemResources() error {
   }
 
   // 保留原有总体IO输出（可选）
-  fmt.Printf("  Total Disk IO: %s\n", proc.FormatBytes(resources.DiskIO))
-  fmt.Printf("  Network IO: %s\n", proc.FormatBytes(resources.NetworkIO))
+  fmt.Printf("  Total Disk IO: %s\n", common.FormatBytes(resources.DiskIO))
+  fmt.Printf("  Network IO: %s\n", common.FormatBytes(resources.NetworkIO))
 
   return nil
 }
@@ -642,19 +642,19 @@ func (c *CLI) handleProcessResources(pid int) error {
 
   // 内存相关
   fmt.Println("  Memory:")
-  fmt.Printf("    Virtual (VMS): %s\n", proc.FormatBytes(resources.MemoryVMS))
-  fmt.Printf("    Resident (RSS): %s\n", proc.FormatBytes(resources.MemoryRSS))
+  fmt.Printf("    Virtual (VMS): %s\n", common.FormatBytes(resources.MemoryVMS))
+  fmt.Printf("    Resident (RSS): %s\n", common.FormatBytes(resources.MemoryRSS))
   if resources.MemoryShared > 0 {
-    fmt.Printf("    Shared: %s\n", proc.FormatBytes(resources.MemoryShared))
+    fmt.Printf("    Shared: %s\n", common.FormatBytes(resources.MemoryShared))
   }
   if resources.MemoryHeap > 0 {
-    fmt.Printf("    Heap: %s\n", proc.FormatBytes(resources.MemoryHeap))
+    fmt.Printf("    Heap: %s\n", common.FormatBytes(resources.MemoryHeap))
   }
 
   // I/O 相关
   fmt.Println("  I/O:")
-  fmt.Printf("    Read: %s (%d reads)\n", proc.FormatBytes(resources.IOReadBytes), resources.IOReadCount)
-  fmt.Printf("    Write: %s (%d writes)\n", proc.FormatBytes(resources.IOWriteBytes), resources.IOWriteCount)
+  fmt.Printf("    Read: %s (%d reads)\n", common.FormatBytes(resources.IOReadBytes), resources.IOReadCount)
+  fmt.Printf("    Write: %s (%d writes)\n", common.FormatBytes(resources.IOWriteBytes), resources.IOWriteCount)
   if resources.IOReadTimeMS > 0 || resources.IOWriteTimeMS > 0 {
     fmt.Printf("    IO Wait: %dms (read), %dms (write)\n", resources.IOReadTimeMS, resources.IOWriteTimeMS)
   }
@@ -709,8 +709,8 @@ func (c *CLI) handleProcessResources(pid int) error {
   }
 
   // 总体IO（保留）
-  fmt.Printf("  Total Disk IO: %s\n", proc.FormatBytes(resources.DiskIO))
-  fmt.Printf("  Network IO: %s\n", proc.FormatBytes(resources.NetworkIO))
+  fmt.Printf("  Total Disk IO: %s\n", common.FormatBytes(resources.DiskIO))
+  fmt.Printf("  Network IO: %s\n", common.FormatBytes(resources.NetworkIO))
 
   return nil
 }

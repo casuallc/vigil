@@ -1700,6 +1700,64 @@ func (s *Server) handleRegisterUser(w http.ResponseWriter, r *http.Request) {
   })
 }
 
+// handleUserLogin handles the POST /api/users/login endpoint
+func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
+  // Check if user database is available
+  if s.userDatabase == nil {
+    writeError(w, http.StatusInternalServerError, "User database not available")
+    return
+  }
+
+  // Parse request body
+  var loginReq struct {
+    Username string `json:"username"`
+    Password string `json:"password"`
+  }
+  if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+    writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+    return
+  }
+
+  // Validate required fields
+  if loginReq.Username == "" || loginReq.Password == "" {
+    writeError(w, http.StatusBadRequest, "Username and password are required")
+    return
+  }
+
+  // Validate password
+  isValid, err := s.userDatabase.ValidatePassword(loginReq.Username, loginReq.Password)
+  if err != nil {
+    log.Printf("Error validating password for user %s: %v", loginReq.Username, err)
+    writeError(w, http.StatusInternalServerError, "Failed to validate credentials")
+    return
+  }
+
+  if !isValid {
+    writeError(w, http.StatusUnauthorized, "Invalid username or password")
+    return
+  }
+
+  // Get user info
+  user, exists := s.userDatabase.GetUser(loginReq.Username)
+  if !exists {
+    writeError(w, http.StatusNotFound, "User not found")
+    return
+  }
+
+  // Return success response with user info (without password)
+  writeJSON(w, http.StatusOK, map[string]interface{}{
+    "message": "Login successful",
+    "user": map[string]interface{}{
+      "id":         user.ID,
+      "username":   user.Username,
+      "email":      user.Email,
+      "role":       user.Role,
+      "created_at": user.CreatedAt,
+      "updated_at": user.UpdatedAt,
+    },
+  })
+}
+
 // handleListUsers handles the GET /api/users endpoint
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
   // Only allow if user database exists

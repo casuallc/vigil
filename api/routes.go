@@ -101,6 +101,7 @@ func (s *Server) Router() *mux.Router {
 
   // User management endpoints
   r.HandleFunc("/api/users/register", s.handleRegisterUser).Methods("POST")
+  r.HandleFunc("/api/users/login", s.handleUserLogin).Methods("POST")
   r.HandleFunc("/api/users", s.handleListUsers).Methods("GET")
   r.HandleFunc("/api/users/{username}", s.handleGetUser).Methods("GET")
   r.HandleFunc("/api/users/{username}", s.handleUpdateUser).Methods("PUT")

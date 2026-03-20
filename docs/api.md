@@ -58,6 +58,7 @@
 | 文件管理 | /api/files/copy                                      | POST | 复制文件 |
 | 文件管理 | /api/files/move                                      | POST | 移动文件 |
 | 用户管理 | /api/users/register                                | POST | 注册用户 |
+| 用户管理 | /api/users/login                                   | POST | 用户登录 |
 | 用户管理 | /api/users                                         | GET | 列出用户 |
 | 用户管理 | /api/users/{username}                              | GET | 获取用户详情 |
 | 用户管理 | /api/users/{username}                              | PUT | 更新用户 |
@@ -1264,6 +1265,36 @@
 }
 ```
 
+## 3.16 数据库配置
+
+Vigil 使用 SQLite 数据库存储用户信息，配置文件位于 `conf/config.yaml`。
+
+### 数据库配置项
+
+```yaml
+database:
+  driver: sqlite3      # 数据库驱动，目前支持 sqlite3
+  path: ./conf/users.db  # 数据库文件路径
+```
+
+### 数据库表结构
+
+用户表 `users` 结构如下：
+
+| 字段名 | 类型 | 描述 |
+|--------|------|------|
+| id | TEXT | 用户唯一标识 |
+| username | TEXT | 用户名（唯一） |
+| password | TEXT | 密码（bcrypt 加密） |
+| email | TEXT | 邮箱地址 |
+| role | TEXT | 角色（admin/user） |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+### 数据迁移
+
+如果之前使用 JSON 文件存储用户数据（`conf/users.json`），系统会在启动时自动迁移到 SQLite 数据库。
+
 ## 4. 错误处理
 
 API 使用标准 HTTP 状态码来表示错误：
@@ -1271,7 +1302,9 @@ API 使用标准 HTTP 状态码来表示错误：
 | 状态码 | 描述 |
 |--------|------|
 | 400 Bad Request | 请求参数错误 |
+| 401 Unauthorized | 认证失败 |
 | 404 Not Found | 资源未找到 |
+| 409 Conflict | 资源冲突（如用户已存在） |
 | 500 Internal Server Error | 服务器内部错误 |
 
 错误响应格式：
@@ -1283,10 +1316,40 @@ API 使用标准 HTTP 状态码来表示错误：
 
 ## 5. 认证
 
-API 支持 Basic Auth 认证，需要在请求头中添加 Authorization 字段：
+API 支持两种认证方式：
+
+### 5.1 Basic Auth（配置文件中预设的超级管理员）
+
+需要在请求头中添加 Authorization 字段：
 
 ```
 Authorization: Basic base64(username:password)
+```
+
+### 5.2 数据库用户认证
+
+通过 `/api/users/login` 接口获取用户信息，随后可使用 Basic Auth 访问需要认证的接口。
+
+**登录示例**：
+
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' http://localhost:8181/api/users/login
+```
+
+**响应示例**：
+
+```json
+{
+  "message": "Login successful",
+  "user": {
+    "id": "usr_1773976593",
+    "username": "admin",
+    "email": "admin@example.com",
+    "role": "admin",
+    "created_at": "2026-03-20T11:16:33.071675+08:00",
+    "updated_at": "2026-03-20T11:16:33.071675+08:00"
+  }
+}
 ```
 
 ## 6. 版本控制
@@ -1364,6 +1427,12 @@ func main() {
 ```
 
 ## 10. 变更日志
+
+### v1.1.0
+
+- 新增用户登录接口 `/api/users/login`
+- 用户数据迁移到 SQLite 数据库
+- 支持启动时自动从 JSON 文件迁移用户数据
 
 ### v1.0.0
 
