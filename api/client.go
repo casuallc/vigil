@@ -1262,12 +1262,12 @@ func (c *Client) ListSSHConnections(vmName, userName, clientIP string) ([]*SSHCo
   }
 
   // Build URL with parameters
-  url := "/api/vms/ssh/connections/filter"
+  connectionUrl := "/api/vms/ssh/connections"
   if len(params) > 0 {
-    url += "?" + strings.Join(params, "&")
+    connectionUrl += "?" + strings.Join(params, "&")
   }
 
-  resp, err := c.doRequest("GET", url, nil)
+  resp, err := c.doRequest("GET", connectionUrl, nil)
   if err != nil {
     return nil, err
   }

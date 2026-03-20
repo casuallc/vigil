@@ -73,13 +73,13 @@ func (ud *UserDatabase) loadFromFile() error {
 
 // saveToFile saves users to the JSON file
 func (ud *UserDatabase) saveToFile() error {
+	// First acquire read lock, copy users, then release the lock before file I/O
 	ud.mu.RLock()
-	defer ud.mu.RUnlock()
-
 	users := make([]User, 0, len(ud.users))
 	for _, user := range ud.users {
 		users = append(users, *user)
 	}
+	ud.mu.RUnlock()
 
 	data, err := json.MarshalIndent(users, "", "  ")
 	if err != nil {
@@ -106,10 +106,7 @@ func (ud *UserDatabase) GetUser(username string) (*User, bool) {
 
 // CreateUser creates a new user with a hashed password
 func (ud *UserDatabase) CreateUser(user *User) error {
-	ud.mu.Lock()
-	defer ud.mu.Unlock()
-
-	// Hash the password before storing
+	// Hash the password before acquiring the lock
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -119,6 +116,10 @@ func (ud *UserDatabase) CreateUser(user *User) error {
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
 
+	// Now acquire lock only for updating the in-memory storage and saving to file
+	ud.mu.Lock()
+	defer ud.mu.Unlock()
+
 	ud.users[user.Username] = user
 
 	return ud.saveToFile()
@@ -126,6 +127,18 @@ func (ud *UserDatabase) CreateUser(user *User) error {
 
 // UpdateUser updates an existing user
 func (ud *UserDatabase) UpdateUser(username string, updatedUser *User) error {
+	var hashedPassword []byte
+	var err error
+
+	// Check if password is being updated, hash it outside the lock
+	if updatedUser.Password != "" {
+		hashedPassword, err = bcrypt.GenerateFromPassword([]byte(updatedUser.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Acquire lock only for updating the in-memory storage
 	ud.mu.Lock()
 	defer ud.mu.Unlock()
 
@@ -134,12 +147,8 @@ func (ud *UserDatabase) UpdateUser(username string, updatedUser *User) error {
 		return os.ErrNotExist
 	}
 
-	// If password is being updated, hash it
+	// Apply changes after checking existence
 	if updatedUser.Password != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(updatedUser.Password), bcrypt.DefaultCost)
-		if err != nil {
-			return err
-		}
 		existingUser.Password = string(hashedPassword)
 	}
 
@@ -194,9 +203,9 @@ func (ud *UserDatabase) GetAllUsers() []*User {
 // ValidatePassword validates a password against the stored hash
 func (ud *UserDatabase) ValidatePassword(username, password string) (bool, error) {
 	ud.mu.RLock()
-	defer ud.mu.RUnlock()
-
 	user, exists := ud.users[username]
+	ud.mu.RUnlock()
+
 	if !exists {
 		return false, nil
 	}
