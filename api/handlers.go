@@ -64,7 +64,7 @@ func (s *Server) handleScanProcesses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAddProcess(w http.ResponseWriter, r *http.Request) {
-  var process proc.ManagedProcess
+  var process models.ManagedProcess
   if err := json.NewDecoder(r.Body).Decode(&process); err != nil {
     writeError(w, http.StatusBadRequest, err.Error())
     return
@@ -269,7 +269,7 @@ func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
   namespace := getNamespace(vars)
   name := vars["name"]
 
-  var updatedProcess proc.ManagedProcess
+  var updatedProcess models.ManagedProcess
   if err := json.NewDecoder(r.Body).Decode(&updatedProcess); err != nil {
     writeError(w, http.StatusBadRequest, err.Error())
     return
@@ -305,13 +305,13 @@ func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 // 对挂载列表执行去重：优先按 ID 唯一；若无 ID，则按 (Type|Target|Source|Name) 唯一
-func dedupMounts(mounts []proc.Mount) []proc.Mount {
+func dedupMounts(mounts []models.Mount) []models.Mount {
   if len(mounts) == 0 {
     return mounts
   }
   seenID := make(map[string]struct{}, len(mounts))
   seenKey := make(map[string]struct{}, len(mounts))
-  var uniq []proc.Mount
+  var uniq []models.Mount
   for _, m := range mounts {
     if m.ID != "" {
       if _, ok := seenID[m.ID]; ok {

@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package proc
+package models
 
 import (
-  "time"
-
+  "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
+  "time"
 )
 
 // ManagedProcess 是对一个进程的完整声明式描述，包含 Spec（期望状态）和 Status（实际状态）
@@ -382,13 +382,13 @@ type ResourceStats struct {
 
 // SetFormattedValues 设置所有格式化的字段值
 func (rs *ResourceStats) SetFormattedValues() {
-  rs.CPUUsageHuman = FormatCPUUsage(rs.CPUUsage)
-  rs.MemoryUsageHuman = FormatBytes(rs.MemoryUsage)
-  rs.DiskIOHuman = FormatBytes(rs.DiskIO)
-  rs.NetworkIOHuman = FormatBytes(rs.NetworkIO)
+  rs.CPUUsageHuman = common.FormatCPUUsage(rs.CPUUsage)
+  rs.MemoryUsageHuman = common.FormatBytes(rs.MemoryUsage)
+  rs.DiskIOHuman = common.FormatBytes(rs.DiskIO)
+  rs.NetworkIOHuman = common.FormatBytes(rs.NetworkIO)
 }
 
-// 新增：磁盘使用
+// DiskUsageInfo 新增：磁盘使用
 type DiskUsageInfo struct {
   Device      string  `json:"device" yaml:"device"`
   Mountpoint  string  `json:"mountpoint" yaml:"mountpoint"`
@@ -404,7 +404,7 @@ type DiskUsageInfo struct {
   InodesUsedPercent float64 `json:"inodes_used_percent,omitempty" yaml:"inodes_used_percent,omitempty"`
 }
 
-// 新增：磁盘IO（每设备）
+// DiskIOInfo 新增：磁盘IO（每设备）
 type DiskIOInfo struct {
   Device     string `json:"device" yaml:"device"`
   ReadBytes  uint64 `json:"read_bytes" yaml:"read_bytes"`

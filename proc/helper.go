@@ -18,6 +18,7 @@ package proc
 
 import (
   "fmt"
+  "github.com/casuallc/vigil/models"
   "github.com/shirou/gopsutil/v3/process"
   "os"
   "os/exec"
@@ -28,74 +29,8 @@ import (
   "time"
 )
 
-// FormatCPUUsage 将CPU使用率格式化为百分比字符串
-func FormatCPUUsage(usage float64) string {
-  return fmt.Sprintf("%.1f%%", usage)
-}
-
-// FormatBytes 将字节数格式化为人类可读的字符串（如 1K, 1M, 1G）
-func FormatBytes(bytes uint64) string {
-  const (
-    B  = 1
-    KB = 1024 * B
-    MB = 1024 * KB
-    GB = 1024 * MB
-    TB = 1024 * GB
-  )
-
-  switch {
-  case bytes >= TB:
-    return fmt.Sprintf("%.2fTiB", float64(bytes)/TB)
-  case bytes >= GB:
-    return fmt.Sprintf("%.2fGiB", float64(bytes)/GB)
-  case bytes >= MB:
-    return fmt.Sprintf("%.2fMiB", float64(bytes)/MB)
-  case bytes >= KB:
-    return fmt.Sprintf("%.2fKiB", float64(bytes)/KB)
-  default:
-    return fmt.Sprintf("%dB", bytes)
-  }
-}
-
-// ParseBytes 将人类可读的字节字符串（如 1K, 1M, 1G）解析为字节数
-func ParseBytes(s string) (uint64, error) {
-  var (
-    value float64
-    unit  string
-  )
-
-  // 解析数字和单位
-  n, err := fmt.Sscanf(s, "%f%s", &value, &unit)
-  if err != nil || (n != 1 && n != 2) {
-    return 0, fmt.Errorf("invalid format: %s", s)
-  }
-
-  // 默认单位是字节
-  multiplier := uint64(1)
-
-  // 根据单位设置乘数
-  switch strings.ToUpper(unit) {
-  case "B":
-    multiplier = 1
-  case "KB", "K":
-    multiplier = 1024
-  case "MB", "M":
-    multiplier = 1024 * 1024
-  case "GB", "G":
-    multiplier = 1024 * 1024 * 1024
-  case "TB", "T":
-    multiplier = 1024 * 1024 * 1024 * 1024
-  default:
-    if n == 2 {
-      return 0, fmt.Errorf("unknown unit: %s", unit)
-    }
-  }
-
-  return uint64(value) * multiplier, nil
-}
-
 // FillBasicInfo 填充基本信息
-func FillBasicInfo(mp *ManagedProcess, process *process.Process) error {
+func FillBasicInfo(mp *models.ManagedProcess, process *process.Process) error {
   // 进程名称
   name, err := process.Name()
   if err != nil {
@@ -112,7 +47,7 @@ func FillBasicInfo(mp *ManagedProcess, process *process.Process) error {
   createTime := time.UnixMilli(createTimeMs)
   mp.Status.StartTime = &createTime
 
-  mp.Spec.RestartPolicy = RestartPolicyAlways
+  mp.Spec.RestartPolicy = models.RestartPolicyAlways
   mp.Spec.RestartInterval = 10 * time.Second
 
   // 退出码（对于正在运行的进程，这个通常是0或未设置）
@@ -122,7 +57,7 @@ func FillBasicInfo(mp *ManagedProcess, process *process.Process) error {
 }
 
 // FillCommandInfo 填充命令信息
-func FillCommandInfo(mp *ManagedProcess, process *process.Process) error {
+func FillCommandInfo(mp *models.ManagedProcess, process *process.Process) error {
   // 可执行路径
   exe, err := process.Exe()
   if err != nil {
@@ -136,7 +71,7 @@ func FillCommandInfo(mp *ManagedProcess, process *process.Process) error {
   }
 
   if len(cmdline) > 0 {
-    mp.Spec.Exec.StopCommand = &CommandConfig{}
+    mp.Spec.Exec.StopCommand = &models.CommandConfig{}
     mp.Spec.Exec.Command = exe
     if len(cmdline) > 1 {
       mp.Spec.Exec.Args = cmdline[1:]
@@ -147,17 +82,17 @@ func FillCommandInfo(mp *ManagedProcess, process *process.Process) error {
 }
 
 // FillEnvironmentInfo 填充环境变量信息
-func FillEnvironmentInfo(mp *ManagedProcess, process *process.Process) error {
+func FillEnvironmentInfo(mp *models.ManagedProcess, process *process.Process) error {
   envVars, err := process.Environ()
   if err != nil {
     return fmt.Errorf("failed to get environment variables: %w", err)
   }
 
-  mp.Spec.Env = make([]EnvVar, 0, len(envVars))
+  mp.Spec.Env = make([]models.EnvVar, 0, len(envVars))
   for _, envVar := range envVars {
     parts := strings.SplitN(envVar, "=", 2)
     if len(parts) == 2 {
-      mp.Spec.Env = append(mp.Spec.Env, EnvVar{
+      mp.Spec.Env = append(mp.Spec.Env, models.EnvVar{
         Name:  parts[0],
         Value: parts[1],
       })
@@ -168,7 +103,7 @@ func FillEnvironmentInfo(mp *ManagedProcess, process *process.Process) error {
 }
 
 // FillWorkingDir 填充工作目录
-func FillWorkingDir(mp *ManagedProcess, process *process.Process) error {
+func FillWorkingDir(mp *models.ManagedProcess, process *process.Process) error {
   cwd, err := process.Cwd()
   if err != nil {
     return fmt.Errorf("failed to get working directory: %w", err)
@@ -178,7 +113,7 @@ func FillWorkingDir(mp *ManagedProcess, process *process.Process) error {
 }
 
 // FillUserGroupInfo 填充用户和用户组信息
-func FillUserGroupInfo(mp *ManagedProcess, process *process.Process) error {
+func FillUserGroupInfo(mp *models.ManagedProcess, process *process.Process) error {
   // 用户ID
   uids, err := process.Uids()
   if err != nil {
@@ -208,7 +143,7 @@ func FillUserGroupInfo(mp *ManagedProcess, process *process.Process) error {
 }
 
 // FillResourceStats 填充资源统计信息
-func FillResourceStats(mp *ManagedProcess, process *process.Process) error {
+func FillResourceStats(mp *models.ManagedProcess, process *process.Process) error {
   stats, err := GetUnixProcessResourceUsage(int(process.Pid))
   if err != nil {
     return err
@@ -219,16 +154,16 @@ func FillResourceStats(mp *ManagedProcess, process *process.Process) error {
 }
 
 // FillListeningPorts 填充监听端口信息
-func FillListeningPorts(mp *ManagedProcess, process *process.Process) error {
+func FillListeningPorts(mp *models.ManagedProcess, process *process.Process) error {
   connections, err := process.Connections()
   if err != nil {
     return fmt.Errorf("failed to get connections: %w", err)
   }
 
-  var listeningPorts []PortInfo
+  var listeningPorts []models.PortInfo
   for _, conn := range connections {
     if conn.Status == "LISTEN" {
-      portInfo := PortInfo{
+      portInfo := models.PortInfo{
         Port:     int(conn.Laddr.Port),
         Protocol: socketTypeToProtocol(conn.Type),
         Address:  conn.Laddr.IP,

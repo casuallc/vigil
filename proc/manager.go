@@ -19,6 +19,7 @@ package proc
 import (
   "bytes"
   "fmt"
+  "github.com/casuallc/vigil/models"
   "os"
   "os/exec"
   "strconv"
@@ -32,7 +33,7 @@ import (
 // NewManager 创建一个新的进程管理器
 func NewManager() *Manager {
   return &Manager{
-    Processes:         make(map[string]*ManagedProcess),
+    Processes:         make(map[string]*models.ManagedProcess),
     monitoringStarted: make(map[string]bool),
   }
 }
@@ -40,29 +41,29 @@ func NewManager() *Manager {
 // Manager 实现了所有进程管理相关的接口
 // 它实现了 ProcessScanner, ProcessLifecycle, ProcessInfo, ProcessConfig 和 ProcessMonitor 接口
 type Manager struct {
-  Processes map[string]*ManagedProcess
+  Processes map[string]*models.ManagedProcess
   // 新增：监控协程启动标记，避免重复启动
   monitoringStarted map[string]bool
 }
 
 // GetProcesses 获取所有进程的映射
-func (m *Manager) GetProcesses() map[string]*ManagedProcess {
+func (m *Manager) GetProcesses() map[string]*models.ManagedProcess {
   return m.Processes
 }
 
 // GetProcessStatus 获取进程状态
-func (m *Manager) GetProcessStatus(namespace, name string) (ManagedProcess, error) {
+func (m *Manager) GetProcessStatus(namespace, name string) (models.ManagedProcess, error) {
   key := fmt.Sprintf("%s/%s", namespace, name)
   managedProcess, exists := m.Processes[key]
   if !exists {
-    return ManagedProcess{}, fmt.Errorf("process %s/%s is not managed", namespace, name)
+    return models.ManagedProcess{}, fmt.Errorf("process %s/%s is not managed", namespace, name)
   }
   return *managedProcess, nil
 }
 
 // ListManagedProcesses 获取所有已管理的进程
-func (m *Manager) ListManagedProcesses(namespace string) ([]ManagedProcess, error) {
-  result := make([]ManagedProcess, 0)
+func (m *Manager) ListManagedProcesses(namespace string) ([]models.ManagedProcess, error) {
+  result := make([]models.ManagedProcess, 0)
 
   for _, p := range m.Processes {
     // 如果指定了namespace，则只返回该namespace的进程
@@ -74,7 +75,7 @@ func (m *Manager) ListManagedProcesses(namespace string) ([]ManagedProcess, erro
 }
 
 // MonitorProcess 监控进程资源使用情况
-func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error) {
+func (m *Manager) MonitorProcess(namespace, name string) (*models.ResourceStats, error) {
   // 检查进程是否存在
   key := fmt.Sprintf("%s/%s", namespace, name)
   managedProcess, exists := m.Processes[key]
@@ -83,7 +84,7 @@ func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error)
   }
 
   // 检查进程是否正在运行
-  if managedProcess.Status.Phase != PhaseRunning {
+  if managedProcess.Status.Phase != models.PhaseRunning {
     return nil, fmt.Errorf("Process %s/%s is not running", namespace, name)
   }
 
@@ -104,7 +105,7 @@ func (m *Manager) MonitorProcess(namespace, name string) (*ResourceStats, error)
 }
 
 // ScanProcesses 扫描系统进程
-func (m *Manager) ScanProcesses(query string) ([]ManagedProcess, error) {
+func (m *Manager) ScanProcesses(query string) ([]models.ManagedProcess, error) {
   // 根据查询类型选择不同的扫描方法
   if strings.HasPrefix(query, ScriptPrefix) {
     // 直接执行内联脚本
@@ -142,7 +143,7 @@ func (m *Manager) UpdateProcessConfig(namespace, name string, config config.AppC
   managedProcess.Spec.Config = config
 
   // 如果进程正在运行，需要重启来应用新配置
-  if managedProcess.Status.Phase == PhaseRunning {
+  if managedProcess.Status.Phase == models.PhaseRunning {
     // 重启进程
     if err := m.RestartProcess(namespace, name); err != nil {
       // 如果重启失败，恢复旧配置
@@ -183,7 +184,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
   for {
     select {
     case <-ticker.C:
-      if managedProcess.Status.Phase == PhaseRunning {
+      if managedProcess.Status.Phase == models.PhaseRunning {
         // 更新资源使用情况
         stats, err := m.MonitorProcess(namespace, name)
         if err == nil {
@@ -193,7 +194,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
 
     case <-checkTicker.C:
       // 扩展：运行态与非运行态都做重关联检查
-      if managedProcess.Status.Phase == PhaseRunning {
+      if managedProcess.Status.Phase == models.PhaseRunning {
         // 运行态：校验当前 PID 是否仍对应同一逻辑进程（防 PID 复用）
         currentPID := managedProcess.Status.PID
         valid := false
@@ -213,7 +214,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
           reAssociated, _ := m.tryCheckProcess(managedProcess)
           if !reAssociated {
             // 重关联失败，标记停止并按策略后续处理
-            managedProcess.Status.Phase = PhaseStopped
+            managedProcess.Status.Phase = models.PhaseStopped
             managedProcess.Status.PID = 0
           }
         }
@@ -233,7 +234,7 @@ func (m *Manager) startMonitoring(namespace, name string) {
 }
 
 // matchProcess 根据多个特征匹配进程，优先使用用户定义的识别脚本
-func (m *Manager) matchProcess(managedProc *ManagedProcess, sysProcess *process.Process) bool {
+func (m *Manager) matchProcess(managedProc *models.ManagedProcess, sysProcess *process.Process) bool {
   // 如果用户定义了识别脚本，优先使用它
   if managedProc.Spec.ProcessMatcher != nil {
     return m.matchProcessByScript(managedProc, sysProcess)
@@ -244,7 +245,7 @@ func (m *Manager) matchProcess(managedProc *ManagedProcess, sysProcess *process.
 }
 
 // matchProcessByScript 使用用户定义的脚本匹配进程
-func (m *Manager) matchProcessByScript(managedProc *ManagedProcess, sysProcess *process.Process) bool {
+func (m *Manager) matchProcessByScript(managedProc *models.ManagedProcess, sysProcess *process.Process) bool {
   // 获取进程的PID
   pid := int(sysProcess.Pid)
 
@@ -259,7 +260,7 @@ func (m *Manager) matchProcessByScript(managedProc *ManagedProcess, sysProcess *
 }
 
 // matchProcessByAttributes 使用进程属性匹配进程
-func (m *Manager) matchProcessByAttributes(managedProc *ManagedProcess, sysProcess *process.Process) bool {
+func (m *Manager) matchProcessByAttributes(managedProc *models.ManagedProcess, sysProcess *process.Process) bool {
   // 匹配命令行参数
   cmdline, err := sysProcess.Cmdline()
   if err == nil {
@@ -289,7 +290,7 @@ func (m *Manager) matchProcessByAttributes(managedProc *ManagedProcess, sysProce
 }
 
 // getMatchedPIDByScript 直接通过脚本获取匹配的进程ID
-func (m *Manager) getMatchedPIDByScript(managedProc *ManagedProcess) (int, error) {
+func (m *Manager) getMatchedPIDByScript(managedProc *models.ManagedProcess) (int, error) {
   if managedProc.Spec.ProcessMatcher == nil {
     return 0, fmt.Errorf("no process matcher script defined")
   }
@@ -352,7 +353,7 @@ func (m *Manager) getMatchedPIDByScript(managedProc *ManagedProcess) (int, error
 }
 
 // TryMatchProcessByScript 尝试使用用户定义的脚本直接匹配进程ID
-func (m *Manager) TryMatchProcessByScript(managedProc *ManagedProcess) (*ManagedProcess, error) {
+func (m *Manager) TryMatchProcessByScript(managedProc *models.ManagedProcess) (*models.ManagedProcess, error) {
   if managedProc.Spec.ProcessMatcher == nil {
     return nil, fmt.Errorf("no process matcher script defined for proc")
   }
@@ -371,7 +372,7 @@ func (m *Manager) TryMatchProcessByScript(managedProc *ManagedProcess) (*Managed
   // 找到匹配的进程，更新信息
   matchedProcess := *managedProc
   matchedProcess.Status.PID = pid
-  matchedProcess.Status.Phase = PhaseRunning
+  matchedProcess.Status.Phase = models.PhaseRunning
 
   // 获取并更新进程的其他信息
   if err := m.updateProcessInfoFromSystem(&matchedProcess); err != nil {
@@ -383,7 +384,7 @@ func (m *Manager) TryMatchProcessByScript(managedProc *ManagedProcess) (*Managed
 }
 
 // updateProcessInfoFromSystem 从系统中更新进程的详细信息
-func (m *Manager) updateProcessInfoFromSystem(managedProc *ManagedProcess) error {
+func (m *Manager) updateProcessInfoFromSystem(managedProc *models.ManagedProcess) error {
   // 获取系统进程对象
   sysProc, err := process.NewProcess(int32(managedProc.Status.PID))
   if err != nil {
@@ -409,9 +410,9 @@ func (m *Manager) CheckProcesses() {
   // 遍历所有纳管的进程
   for key, managedProc := range m.Processes {
     // 只处理应该运行但当前未运行的进程
-    if managedProc.Status.Phase != PhaseRunning &&
-      (managedProc.Spec.RestartPolicy == RestartPolicyAlways ||
-        managedProc.Spec.RestartPolicy == RestartPolicyOnFailure) {
+    if managedProc.Status.Phase != models.PhaseRunning &&
+      (managedProc.Spec.RestartPolicy == models.RestartPolicyAlways ||
+        managedProc.Spec.RestartPolicy == models.RestartPolicyOnFailure) {
 
       // 尝试通过标识重新发现进程
       checked, err := m.tryCheckProcess(managedProc)
@@ -425,7 +426,7 @@ func (m *Manager) CheckProcesses() {
 }
 
 // tryCheckProcess 尝试通过进程特征检查进程状态
-func (m *Manager) tryCheckProcess(managedProc *ManagedProcess) (bool, error) {
+func (m *Manager) tryCheckProcess(managedProc *models.ManagedProcess) (bool, error) {
   // 如果定义了进程匹配脚本，直接使用脚本获取进程ID
   if managedProc.Spec.ProcessMatcher != nil {
     pid, err := m.getMatchedPIDByScript(managedProc)
@@ -440,7 +441,7 @@ func (m *Manager) tryCheckProcess(managedProc *ManagedProcess) (bool, error) {
 
     // 找到匹配的进程，更新状态
     managedProc.Status.PID = pid
-    managedProc.Status.Phase = PhaseRunning
+    managedProc.Status.Phase = models.PhaseRunning
     now := time.Now()
     managedProc.Status.StartTime = &now
 
@@ -464,7 +465,7 @@ func (m *Manager) tryCheckProcess(managedProc *ManagedProcess) (bool, error) {
       if m.matchProcessByAttributes(managedProc, sysProcess) {
         // 找到匹配的进程，更新状态
         managedProc.Status.PID = int(sysProcess.Pid)
-        managedProc.Status.Phase = PhaseRunning
+        managedProc.Status.Phase = models.PhaseRunning
         now := time.Now()
         managedProc.Status.StartTime = &now
 

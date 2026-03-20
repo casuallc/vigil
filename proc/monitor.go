@@ -18,6 +18,8 @@ package proc
 
 import (
   "fmt"
+  "github.com/casuallc/vigil/common"
+  "github.com/casuallc/vigil/models"
   "github.com/shirou/gopsutil/v3/host"
   gnet "github.com/shirou/gopsutil/v3/net"
   "os"
@@ -48,8 +50,8 @@ func NewMonitor(manager *Manager) *Monitor {
 }
 
 // GetSystemResourceUsage gets system resource usage
-func GetSystemResourceUsage() (ResourceStats, error) {
-  var stats ResourceStats
+func GetSystemResourceUsage() (models.ResourceStats, error) {
+  var stats models.ResourceStats
   var err error
 
   if runtime.GOOS == "windows" {
@@ -114,8 +116,8 @@ func GetProcessNetworkIO(pid int) (uint64, error) {
 }
 
 // GetProcessListeningPorts 获取进程监听的端口信息
-func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
-  var ports []PortInfo
+func GetProcessListeningPorts(pid int) ([]models.PortInfo, error) {
+  var ports []models.PortInfo
 
   // 使用lsof命令获取进程打开的网络连接
   cmd := exec.Command("lsof", "-i", "-P", "-n", "-p", strconv.Itoa(pid))
@@ -173,7 +175,7 @@ func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
       address = addrMatches[1]
     }
 
-    ports = append(ports, PortInfo{
+    ports = append(ports, models.PortInfo{
       Port:     port,
       Protocol: protocol,
       Address:  address,
@@ -184,8 +186,8 @@ func GetProcessListeningPorts(pid int) ([]PortInfo, error) {
 }
 
 // getWindowsSystemResourceUsage gets Windows system resource usage
-func getWindowsSystemResourceUsage() (ResourceStats, error) {
-  var stats ResourceStats
+func getWindowsSystemResourceUsage() (models.ResourceStats, error) {
+  var stats models.ResourceStats
 
   // CPU
   if cpuPercent, err := cpu.Percent(time.Second, false); err == nil && len(cpuPercent) > 0 {
@@ -203,7 +205,7 @@ func getWindowsSystemResourceUsage() (ResourceStats, error) {
   if parts, err := disk.Partitions(true); err == nil {
     for _, p := range parts {
       if du, err := disk.Usage(p.Mountpoint); err == nil {
-        stats.DiskUsages = append(stats.DiskUsages, DiskUsageInfo{
+        stats.DiskUsages = append(stats.DiskUsages, models.DiskUsageInfo{
           Device:      p.Device,
           Mountpoint:  p.Mountpoint,
           Fstype:      p.Fstype,
@@ -220,7 +222,7 @@ func getWindowsSystemResourceUsage() (ResourceStats, error) {
   if ioMap, err := disk.IOCounters(); err == nil {
     var totalIO uint64
     for dev, v := range ioMap {
-      stats.DiskIODevices = append(stats.DiskIODevices, DiskIOInfo{
+      stats.DiskIODevices = append(stats.DiskIODevices, models.DiskIOInfo{
         Device:     dev,
         ReadBytes:  v.ReadBytes,
         WriteBytes: v.WriteBytes,
@@ -239,19 +241,19 @@ func getWindowsSystemResourceUsage() (ResourceStats, error) {
 }
 
 // getUnixSystemResourceUsage gets Unix/Linux/macOS system resource usage
-func getUnixSystemResourceUsage() (ResourceStats, error) {
-  var stats ResourceStats
+func getUnixSystemResourceUsage() (models.ResourceStats, error) {
+  var stats models.ResourceStats
 
   // CPU
   if cpuPercent, err := cpu.Percent(time.Second, false); err == nil && len(cpuPercent) > 0 {
     stats.CPUUsage = cpuPercent[0]
-    stats.CPUUsageHuman = FormatCPUUsage(cpuPercent[0])
+    stats.CPUUsageHuman = common.FormatCPUUsage(cpuPercent[0])
   }
 
   // Memory
   if vm, err := mem.VirtualMemory(); err == nil {
     stats.MemoryUsage = vm.Used
-    stats.MemoryUsageHuman = FormatBytes(vm.Used)
+    stats.MemoryUsageHuman = common.FormatBytes(vm.Used)
     stats.MemoryTotal = vm.Total
     stats.MemoryUsedPercent = vm.UsedPercent
     // 新增：可用内存
@@ -320,7 +322,7 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
       }
 
       if du, err := disk.Usage(p.Mountpoint); err == nil {
-        info := DiskUsageInfo{
+        info := models.DiskUsageInfo{
           Device:      p.Device,
           Mountpoint:  p.Mountpoint,
           Fstype:      p.Fstype,
@@ -345,7 +347,7 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
     var totalIO uint64
     stats.DiskIODevices = stats.DiskIODevices[:0]
     for dev, v := range ioMap {
-      d := DiskIOInfo{
+      d := models.DiskIOInfo{
         Device:     dev,
         ReadBytes:  v.ReadBytes,
         WriteBytes: v.WriteBytes,
@@ -368,12 +370,12 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
       totalIO += v.ReadBytes + v.WriteBytes
     }
     stats.DiskIO = totalIO
-    stats.DiskIOHuman = FormatBytes(totalIO)
+    stats.DiskIOHuman = common.FormatBytes(totalIO)
   }
 
   // System Load
   if la, err := load.Avg(); err == nil {
-    stats.Load = LoadAvg{Load1: la.Load1, Load5: la.Load5, Load15: la.Load15}
+    stats.Load = models.LoadAvg{Load1: la.Load1, Load5: la.Load5, Load15: la.Load15}
   }
 
   // File Descriptor Check (/proc/sys/fs/file-nr)
@@ -388,7 +390,7 @@ func getUnixSystemResourceUsage() (ResourceStats, error) {
       if max > 0 {
         pct = float64(inUse) / float64(max) * 100
       }
-      stats.FD = FDCheck{
+      stats.FD = models.FDCheck{
         CurrentAllocated: allocated,
         InUse:            inUse,
         Max:              max,
@@ -496,8 +498,8 @@ func readSysParam(path string) (string, error) {
 }
 
 // 新增：读取 PSI（/proc/pressure/<kind>），kind=memory/cpu/io
-func readPressureStallInfo(kind string) (PressureStallInfo, error) {
-  var psi PressureStallInfo
+func readPressureStallInfo(kind string) (models.PressureStallInfo, error) {
+  var psi models.PressureStallInfo
   // 仅 Linux 支持
   if runtime.GOOS != "linux" {
     return psi, fmt.Errorf("PSI not supported on %s", runtime.GOOS)
@@ -519,8 +521,8 @@ func readPressureStallInfo(kind string) (PressureStallInfo, error) {
 }
 
 // 新增：解析 PSI 行
-func parsePSILine(line string) PressureStallInfo {
-  var psi PressureStallInfo
+func parsePSILine(line string) models.PressureStallInfo {
+  var psi models.PressureStallInfo
   // 去掉前导 "some "
   parts := strings.Fields(strings.TrimPrefix(line, "some "))
   for _, p := range parts {
@@ -684,13 +686,13 @@ func readPriorityAndPolicy(pid int) (int32, string, error) {
   return priority, policy, nil
 }
 
-func GetUnixProcessResourceUsage(pid int) (*ResourceStats, error) {
+func GetUnixProcessResourceUsage(pid int) (*models.ResourceStats, error) {
   p, err := process.NewProcess(int32(pid))
   if err != nil {
     return nil, err
   }
 
-  stats := &ResourceStats{}
+  stats := &models.ResourceStats{}
 
   // CPU 使用率（采样1s）
   if cpuPercent, err := p.Percent(time.Second); err == nil {
@@ -772,10 +774,10 @@ func GetUnixProcessResourceUsage(pid int) (*ResourceStats, error) {
   }
   if conns, err := p.Connections(); err == nil {
     stats.NetworkConnectionsCount = len(conns)
-    var ports []PortInfo
+    var ports []models.PortInfo
     for _, c := range conns {
       if c.Status == "LISTEN" {
-        ports = append(ports, PortInfo{
+        ports = append(ports, models.PortInfo{
           Port:     int(c.Laddr.Port),
           Protocol: socketTypeToProtocol(c.Type),
           Address:  c.Laddr.IP,

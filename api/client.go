@@ -26,7 +26,7 @@ import (
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/file"
   "github.com/casuallc/vigil/inspection"
-  "github.com/casuallc/vigil/proc"
+  "github.com/casuallc/vigil/models"
   "github.com/casuallc/vigil/vm"
   "github.com/gorilla/websocket"
   "io"
@@ -151,7 +151,7 @@ func (c *Client) getJSONResponse(resp *http.Response, v interface{}) error {
 }
 
 // ScanProcesses Process management methods
-func (c *Client) ScanProcesses(query string) ([]proc.ManagedProcess, error) {
+func (c *Client) ScanProcesses(query string) ([]models.ManagedProcess, error) {
   // 对 query 参数进行 URL 编码，避免空格等特殊字符导致请求错误
   encodedQuery := url.QueryEscape(query)
   resp, err := c.doRequest("GET", fmt.Sprintf("/api/processes/scan?query=%s", encodedQuery), nil)
@@ -163,7 +163,7 @@ func (c *Client) ScanProcesses(query string) ([]proc.ManagedProcess, error) {
     return nil, c.errorFromResponse(resp)
   }
 
-  var processes []proc.ManagedProcess
+  var processes []models.ManagedProcess
   if err := c.getJSONResponse(resp, &processes); err != nil {
     return nil, err
   }
@@ -171,7 +171,7 @@ func (c *Client) ScanProcesses(query string) ([]proc.ManagedProcess, error) {
   return processes, nil
 }
 
-func (c *Client) CreateProcess(process proc.ManagedProcess) error {
+func (c *Client) CreateProcess(process models.ManagedProcess) error {
   resp, err := c.doRequest("POST", fmt.Sprintf("/api/namespaces/%s/processes/%s/add",
     process.Metadata.Namespace, process.Metadata.Name), process)
   if err != nil {
@@ -246,8 +246,8 @@ func (c *Client) RestartProcess(namespace, name string) error {
 }
 
 // GetProcess gets detailed information about a proc
-func (c *Client) GetProcess(namespace, name string) (proc.ManagedProcess, error) {
-  var process proc.ManagedProcess
+func (c *Client) GetProcess(namespace, name string) (models.ManagedProcess, error) {
+  var process models.ManagedProcess
   if namespace == "" {
     namespace = "default"
   }
@@ -271,7 +271,7 @@ func (c *Client) GetProcess(namespace, name string) (proc.ManagedProcess, error)
 }
 
 // ListProcesses lists all managed processes
-func (c *Client) ListProcesses(namespace string) ([]proc.ManagedProcess, error) {
+func (c *Client) ListProcesses(namespace string) ([]models.ManagedProcess, error) {
   var url string
   if namespace == "" {
     url = fmt.Sprintf("/api/processes")
@@ -288,7 +288,7 @@ func (c *Client) ListProcesses(namespace string) ([]proc.ManagedProcess, error) 
     return nil, c.errorFromResponse(resp)
   }
 
-  var processes []proc.ManagedProcess
+  var processes []models.ManagedProcess
   if err := c.getJSONResponse(resp, &processes); err != nil {
     return nil, err
   }
@@ -317,7 +317,7 @@ func (c *Client) DeleteProcess(namespace, name string) error {
 }
 
 // UpdateProcess updates the configuration of a managed proc
-func (c *Client) UpdateProcess(process proc.ManagedProcess) error {
+func (c *Client) UpdateProcess(process models.ManagedProcess) error {
   if process.Metadata.Namespace == "" {
     process.Metadata.Namespace = "default"
   }
@@ -354,8 +354,8 @@ func (c *Client) InspectProcess(namespace, name string, inspectRequest inspectio
   return result, nil
 }
 
-func (c *Client) GetSystemResources() (proc.ResourceStats, error) {
-  var resources proc.ResourceStats
+func (c *Client) GetSystemResources() (models.ResourceStats, error) {
+  var resources models.ResourceStats
   resp, err := c.doRequest("GET", "/api/resources/system", nil)
   if err != nil {
     return resources, err
@@ -372,8 +372,8 @@ func (c *Client) GetSystemResources() (proc.ResourceStats, error) {
   return resources, nil
 }
 
-func (c *Client) GetProcessResources(pid int) (proc.ResourceStats, error) {
-  var resources proc.ResourceStats
+func (c *Client) GetProcessResources(pid int) (models.ResourceStats, error) {
+  var resources models.ResourceStats
   resp, err := c.doRequest("GET", fmt.Sprintf("/api/resources/process/%d", pid), nil)
   if err != nil {
     return resources, err

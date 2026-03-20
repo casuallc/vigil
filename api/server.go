@@ -37,6 +37,7 @@ import (
   "github.com/casuallc/vigil/models"
   "github.com/casuallc/vigil/proc"
   "github.com/casuallc/vigil/vm"
+  _ "github.com/mattn/go-sqlite3"
 )
 
 // Server represents the HTTP API server
@@ -46,7 +47,7 @@ type Server struct {
   monitor         *proc.Monitor
   resourceMonitor *proc.ResourceMonitor
   vmManager       *vm.Manager
-  userDatabase    *models.UserDatabase
+  userDatabase    *models.SQLiteUserDatabase
   auditLogger     *audit.Logger
   // SSH connection tracking
   sshConnections   map[string]*SSHConnectionInfo
@@ -70,20 +71,47 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
   resourceMonitor := proc.NewResourceMonitor(manager, 5*time.Second, 3*time.Second, true, true)
   vmManager := vm.NewManagerWithConfig("vms.json", config.Security.EncryptionKey)
 
-  // Create user database
-  userDatabase, err := models.NewUserDatabase("conf/users.json")
-  if err != nil {
-    log.Printf("Warning: failed to initialize user database: %v", err)
+  // Create SQLite user database
+  var userDatabase *models.SQLiteUserDatabase
+  var err error
+
+  // Determine database path from config or use default
+  dbPath := config.Database.Path
+  if dbPath == "" {
+    dbPath = "conf/users.db"
   }
 
-  // 创建审计日志目录
+  // Use SQLite if driver is sqlite3 or not specified (default to sqlite3)
+  if config.Database.Driver == "" || config.Database.Driver == "sqlite3" {
+    userDatabase, err = models.NewSQLiteUserDatabase(dbPath)
+    if err != nil {
+      log.Printf("Warning: failed to initialize SQLite user database: %v", err)
+    } else {
+      log.Printf("SQLite user database initialized at %s", dbPath)
+
+      // Migrate from JSON file if it exists
+      jsonPath := "conf/users.json"
+      if _, err := os.Stat(jsonPath); err == nil {
+        log.Printf("Found existing JSON user file, migrating to SQLite...")
+        if err := models.MigrateJSONToSQLite(jsonPath, dbPath); err != nil {
+          log.Printf("Warning: failed to migrate users from JSON: %v", err)
+        } else {
+          log.Printf("Users migrated successfully from JSON to SQLite")
+          // Optionally remove the old JSON file after successful migration
+          os.Remove(jsonPath)
+        }
+      }
+    }
+  }
+
+  // Create audit log directory
   auditLogDir := filepath.Join("logs", "audit")
 
-  // 初始化审计日志记录器
+  // Initialize audit logger
   auditLogger, err := audit.NewLogger(auditLogDir)
   if err != nil {
     log.Printf("Warning: failed to initialize audit logger: %v", err)
-    // 继续运行，即使审计日志初始化失败
+    // Continue running even if audit logger initialization fails
   }
 
   server := &Server{

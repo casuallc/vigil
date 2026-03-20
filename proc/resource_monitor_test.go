@@ -17,83 +17,84 @@ limitations under the License.
 package proc
 
 import (
-	"testing"
-	"time"
+  "github.com/casuallc/vigil/models"
+  "testing"
+  "time"
 )
 
 func TestResourceCache(t *testing.T) {
-	cache := NewResourceCache(5 * time.Second) // 5 second TTL
+  cache := NewResourceCache(5 * time.Second) // 5 second TTL
 
-	// Test initial state - should be expired
-	if !cache.IsExpired("system") {
-		t.Error("System cache should initially be expired")
-	}
+  // Test initial state - should be expired
+  if !cache.IsExpired("system") {
+    t.Error("System cache should initially be expired")
+  }
 
-	// Create sample stats
-	stats := ResourceStats{
-		CPUUsage:    10.5,
-		MemoryUsage: 1024,
-	}
+  // Create sample stats
+  stats := models.ResourceStats{
+    CPUUsage:    10.5,
+    MemoryUsage: 1024,
+  }
 
-	// Set system resources
-	cache.SetSystemResources(stats)
+  // Set system resources
+  cache.SetSystemResources(stats)
 
-	// Should not be expired immediately after setting
-	if cache.IsExpired("system") {
-		t.Error("System cache should not be expired right after setting")
-	}
+  // Should not be expired immediately after setting
+  if cache.IsExpired("system") {
+    t.Error("System cache should not be expired right after setting")
+  }
 
-	// Get cached system resources
-	retrievedStats, found := cache.GetSystemResources()
-	if !found {
-		t.Error("Should be able to retrieve system resources after setting them")
-	}
+  // Get cached system resources
+  retrievedStats, found := cache.GetSystemResources()
+  if !found {
+    t.Error("Should be able to retrieve system resources after setting them")
+  }
 
-	if retrievedStats.CPUUsage != stats.CPUUsage {
-		t.Errorf("Retrieved CPU usage %f doesn't match set value %f", retrievedStats.CPUUsage, stats.CPUUsage)
-	}
+  if retrievedStats.CPUUsage != stats.CPUUsage {
+    t.Errorf("Retrieved CPU usage %f doesn't match set value %f", retrievedStats.CPUUsage, stats.CPUUsage)
+  }
 
-	// Test process cache
-	pid := 1234
-	if !cache.IsExpired("process_1234") {
-		t.Error("Process cache should initially be expired")
-	}
+  // Test process cache
+  pid := 1234
+  if !cache.IsExpired("process_1234") {
+    t.Error("Process cache should initially be expired")
+  }
 
-	// Set process resources
-	cache.SetProcessResources(pid, stats)
+  // Set process resources
+  cache.SetProcessResources(pid, stats)
 
-	// Should not be expired immediately after setting
-	if cache.IsExpired("process_1234") {
-		t.Error("Process cache should not be expired right after setting")
-	}
+  // Should not be expired immediately after setting
+  if cache.IsExpired("process_1234") {
+    t.Error("Process cache should not be expired right after setting")
+  }
 
-	// Get cached process resources
-	retrievedProcessStats, found := cache.GetProcessResources(pid)
-	if !found {
-		t.Error("Should be able to retrieve process resources after setting them")
-	}
+  // Get cached process resources
+  retrievedProcessStats, found := cache.GetProcessResources(pid)
+  if !found {
+    t.Error("Should be able to retrieve process resources after setting them")
+  }
 
-	if retrievedProcessStats.MemoryUsage != stats.MemoryUsage {
-		t.Errorf("Retrieved memory usage %d doesn't match set value %d", retrievedProcessStats.MemoryUsage, stats.MemoryUsage)
-	}
+  if retrievedProcessStats.MemoryUsage != stats.MemoryUsage {
+    t.Errorf("Retrieved memory usage %d doesn't match set value %d", retrievedProcessStats.MemoryUsage, stats.MemoryUsage)
+  }
 }
 
 func TestResourceMonitor(t *testing.T) {
-	// Create a dummy manager (could be nil for this test)
-	manager := &Manager{}
+  // Create a dummy manager (could be nil for this test)
+  manager := &Manager{}
 
-	// Create resource monitor with short intervals for testing
-	monitor := NewResourceMonitor(manager, 1*time.Second, 100*time.Millisecond, false, false)
+  // Create resource monitor with short intervals for testing
+  monitor := NewResourceMonitor(manager, 1*time.Second, 100*time.Millisecond, false, false)
 
-	// Start the monitor
-	monitor.Start()
+  // Start the monitor
+  monitor.Start()
 
-	// Give it a moment to run
-	time.Sleep(150 * time.Millisecond)
+  // Give it a moment to run
+  time.Sleep(150 * time.Millisecond)
 
-	// Stop the monitor
-	monitor.Stop()
+  // Stop the monitor
+  monitor.Stop()
 
-	// At this point, we've tested that the monitor can start and stop without error
-	t.Log("ResourceMonitor start/stop test passed")
+  // At this point, we've tested that the monitor can start and stop without error
+  t.Log("ResourceMonitor start/stop test passed")
 }

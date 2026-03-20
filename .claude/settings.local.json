@@ -9,7 +9,12 @@
       "Bash(git commit:*)",
       "Bash(\"/tmp/vm_part1.go\")",
       "Bash(\"/tmp/vm_part2.go\")",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(go get:*)",
+      "Bash(./bbx-server --help)",
+      "Bash(pkill -f bbx-server)",
+      "Bash(taskkill /F /IM bbx-server.exe)",
+      "Bash(go mod:*)"
     ]
   }
 }

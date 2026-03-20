@@ -18,18 +18,19 @@ package proc
 
 import (
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/models"
 )
 
 // ProcessScanner 定义进程扫描相关操作
 type ProcessScanner interface {
   // ScanProcesses 扫描系统进程
-  ScanProcesses(query string) ([]ManagedProcess, error)
+  ScanProcesses(query string) ([]models.ManagedProcess, error)
 }
 
 // ProcessLifecycle 定义进程生命周期管理相关操作
 type ProcessLifecycle interface {
   // CreateProcess 创建并管理一个进程
-  CreateProcess(process ManagedProcess) error
+  CreateProcess(process models.ManagedProcess) error
   // StartProcess 启动一个已管理的进程
   StartProcess(namespace, name string) error
   // StopProcess 停止一个已管理的进程
@@ -43,11 +44,11 @@ type ProcessLifecycle interface {
 // ProcessInfo 定义进程信息查询相关操作
 type ProcessInfo interface {
   // GetProcessStatus 获取进程状态
-  GetProcessStatus(namespace, name string) (ManagedProcess, error)
+  GetProcessStatus(namespace, name string) (models.ManagedProcess, error)
   // ListManagedProcesses 获取所有已管理的进程
-  ListManagedProcesses(namespace string) ([]ManagedProcess, error)
+  ListManagedProcesses(namespace string) ([]models.ManagedProcess, error)
   // GetProcesses 获取所有进程的映射
-  GetProcesses() map[string]*ManagedProcess
+  GetProcesses() map[string]*models.ManagedProcess
 }
 
 // ProcessConfig 定义进程配置相关操作
@@ -63,9 +64,9 @@ type ProcessConfig interface {
 // ProcessMonitor 定义进程监控相关操作
 type ProcessMonitor interface {
   // MonitorProcess 监控进程资源使用情况
-  MonitorProcess(namespace, name string) (*ResourceStats, error)
+  MonitorProcess(namespace, name string) (*models.ResourceStats, error)
   // StartMonitoring 开始监控进程
   StartMonitoring(namespace, name string)
   // TryMatchProcessByScript 尝试使用用户定义的脚本匹配系统中的进程
-  TryMatchProcessByScript(managedProc *ManagedProcess) (*ManagedProcess, error)
+  TryMatchProcessByScript(managedProc *models.ManagedProcess) (*models.ManagedProcess, error)
 }

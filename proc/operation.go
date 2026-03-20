@@ -19,6 +19,7 @@ package proc
 import (
   "errors"
   "fmt"
+  "github.com/casuallc/vigil/models"
   "os"
   "os/exec"
   "path/filepath"
@@ -28,7 +29,7 @@ import (
 )
 
 // CreateProcess implements ProcManager interface to manage a proc
-func (m *Manager) CreateProcess(process ManagedProcess) error {
+func (m *Manager) CreateProcess(process models.ManagedProcess) error {
   // 如果未指定namespace，使用默认namespace
   if process.Metadata.Namespace == "" {
     process.Metadata.Namespace = "default"
@@ -65,7 +66,7 @@ func (m *Manager) DeleteProcess(namespace, name string) error {
   }
 
   // 如果进程正在运行，先停止它
-  if process.Status.Phase == PhaseRunning {
+  if process.Status.Phase == models.PhaseRunning {
     if err := m.StopProcess(namespace, name); err != nil {
       return fmt.Errorf("停止进程失败: %w", err)
     }
@@ -90,16 +91,16 @@ func (m *Manager) StartProcess(namespace, name string) error {
     return fmt.Errorf("proc %s/%s is not managed", namespace, name)
   }
 
-  if process.Status.Phase == PhaseRunning {
+  if process.Status.Phase == models.PhaseRunning {
     return fmt.Errorf("proc %s is already running", name)
   }
 
   // Set proc status to pending
-  process.Status.Phase = PhasePending
+  process.Status.Phase = models.PhasePending
 
   // 在 Linux 下应用目录挂载（bind/tmpfs/named）
   if err := applyMounts(process.Spec.Mounts); err != nil {
-    process.Status.Phase = PhaseFailed
+    process.Status.Phase = models.PhaseFailed
     return fmt.Errorf("failed to apply mounts: %w", err)
   }
 
@@ -113,7 +114,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
     // Use current directory by default
     currentDir, err := os.Getwd()
     if err != nil {
-      process.Status.Phase = PhaseFailed
+      process.Status.Phase = models.PhaseFailed
       return err
     }
     cmd.Dir = currentDir
@@ -129,7 +130,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
   // 确保日志目录存在
   if process.Spec.Log.Dir != "" {
     if err := os.MkdirAll(process.Spec.Log.Dir, 0755); err != nil {
-      process.Status.Phase = PhaseFailed
+      process.Status.Phase = models.PhaseFailed
       return err
     }
   }
@@ -142,7 +143,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
 
   stdout, err := os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%s.stdout.log", name)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
   if err != nil {
-    process.Status.Phase = PhaseFailed
+    process.Status.Phase = models.PhaseFailed
     // 启动失败时清理挂载
     cleanupMounts(process.Spec.Mounts)
     return err
@@ -151,7 +152,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
 
   stderr, err := os.OpenFile(filepath.Join(logDir, fmt.Sprintf("%s.stderr.log", name)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
   if err != nil {
-    process.Status.Phase = PhaseFailed
+    process.Status.Phase = models.PhaseFailed
     // 启动失败时清理挂载
     cleanupMounts(process.Spec.Mounts)
     return err
@@ -174,14 +175,14 @@ func (m *Manager) StartProcess(namespace, name string) error {
   select {
   case err := <-done:
     if err != nil {
-      process.Status.Phase = PhaseFailed
+      process.Status.Phase = models.PhaseFailed
       // 启动失败时清理挂载
       cleanupMounts(process.Spec.Mounts)
       return err
     }
   case <-time.After(timeout):
     // Timeout, kill the proc
-    process.Status.Phase = PhaseFailed
+    process.Status.Phase = models.PhaseFailed
     if cmd.Process != nil {
       cmd.Process.Kill()
     }
@@ -192,7 +193,7 @@ func (m *Manager) StartProcess(namespace, name string) error {
 
   // Update proc information
   process.Status.PID = cmd.Process.Pid
-  process.Status.Phase = PhaseRunning
+  process.Status.Phase = models.PhaseRunning
   now := time.Now()
   process.Status.StartTime = &now
   process.Status.RestartCount++
@@ -206,14 +207,14 @@ func (m *Manager) StartProcess(namespace, name string) error {
       if errors.As(err, &exitErr) {
         if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
           if process.Status.LastTerminationInfo == nil {
-            process.Status.LastTerminationInfo = &TerminationInfo{}
+            process.Status.LastTerminationInfo = &models.TerminationInfo{}
           }
           process.Status.LastTerminationInfo.ExitCode = status.ExitStatus()
         }
       }
     }
 
-    process.Status.Phase = PhaseStopped
+    process.Status.Phase = models.PhaseStopped
     process.Status.PID = 0
 
     // 进程退出后清理挂载（Linux）
@@ -222,13 +223,13 @@ func (m *Manager) StartProcess(namespace, name string) error {
     // 应用重启策略
     shouldRestart := false
     switch process.Spec.RestartPolicy {
-    case RestartPolicyAlways:
+    case models.RestartPolicyAlways:
       shouldRestart = true
-    case RestartPolicyOnFailure:
+    case models.RestartPolicyOnFailure:
       shouldRestart = err != nil
-    case RestartPolicyOnSuccess:
+    case models.RestartPolicyOnSuccess:
       shouldRestart = err == nil
-    case RestartPolicyNever:
+    case models.RestartPolicyNever:
       shouldRestart = false
     }
 
@@ -258,12 +259,12 @@ func (m *Manager) StopProcess(namespace, name string) error {
     return fmt.Errorf("进程 %s/%s 未被纳管", namespace, name)
   }
 
-  if process.Status.Phase == PhaseStopped {
+  if process.Status.Phase == models.PhaseStopped {
     return fmt.Errorf("进程 %s 已经停止", name)
   }
 
   // 设置进程状态为停止中
-  process.Status.Phase = PhaseStopping
+  process.Status.Phase = models.PhaseStopping
 
   // 如果有自定义停止命令，使用它
   if process.Spec.Exec.StopCommand != nil {
@@ -306,7 +307,7 @@ func (m *Manager) StopProcess(namespace, name string) error {
       }
     }
 
-    process.Status.Phase = PhaseStopped
+    process.Status.Phase = models.PhaseStopped
     process.Status.PID = 0
 
     // 停止后清理挂载
@@ -324,7 +325,7 @@ func (m *Manager) StopProcess(namespace, name string) error {
 }
 
 // 新增一个辅助方法，用于强制终止进程
-func (m *Manager) forceStopProcess(process *ManagedProcess) error {
+func (m *Manager) forceStopProcess(process *models.ManagedProcess) error {
   // 获取进程
   sysProcess, err := os.FindProcess(process.Status.PID)
   if err != nil {
@@ -369,7 +370,7 @@ func (m *Manager) forceStopProcess(process *ManagedProcess) error {
     }
   }
 
-  process.Status.Phase = PhaseStopped
+  process.Status.Phase = models.PhaseStopped
   process.Status.PID = 0
   return nil
 }
@@ -392,7 +393,7 @@ func (m *Manager) RestartProcess(namespace, name string) error {
 }
 
 // Linux 下应用挂载（bind/tmpfs/named）
-func applyMounts(mounts []Mount) error {
+func applyMounts(mounts []models.Mount) error {
   if len(mounts) == 0 || runtime.GOOS != "linux" {
     return nil
   }
@@ -488,7 +489,7 @@ func applyMounts(mounts []Mount) error {
 }
 
 // Linux 下卸载挂载（使用懒卸载以尽量避免繁忙状态）
-func cleanupMounts(mounts []Mount) {
+func cleanupMounts(mounts []models.Mount) {
   if len(mounts) == 0 || runtime.GOOS != "linux" {
     return
   }

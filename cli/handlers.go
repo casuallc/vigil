@@ -19,6 +19,7 @@ package cli
 import (
   "fmt"
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/models"
   "os"
   "os/exec"
   "path/filepath"
@@ -62,7 +63,7 @@ func (c *CLI) handleBatchScan(configFile string, register bool, namespace string
       processName := procConfig.Name // 直接使用配置文件中的名称
 
       // 创建要注册的进程
-      managedProc := proc.ManagedProcess{
+      managedProc := models.ManagedProcess{
         Metadata: selectedProcess.Metadata,
         Spec:     selectedProcess.Spec,
         Status:   selectedProcess.Status,
@@ -156,7 +157,7 @@ func (c *CLI) handleScan(query string, registerAfterScan bool, namespace string)
 }
 
 // 修改提示用户注册进程的函数，使用与handleDeleteInteractive类似的交互式选择
-func (c *CLI) promptForRegistration(processes []proc.ManagedProcess, namespace string) error {
+func (c *CLI) promptForRegistration(processes []models.ManagedProcess, namespace string) error {
   // 提取进程名称列表用于显示（与selectProcessInteractively相同的方式）
   processNames := make([]string, len(processes))
   for i, p := range processes {
@@ -191,7 +192,7 @@ func (c *CLI) promptForRegistration(processes []proc.ManagedProcess, namespace s
   }
 
   // 创建要注册的进程
-  managedProc := proc.ManagedProcess{
+  managedProc := models.ManagedProcess{
     Metadata: selectedProcess.Metadata,
     Spec:     selectedProcess.Spec,
     Status:   selectedProcess.Status,
@@ -210,16 +211,16 @@ func (c *CLI) promptForRegistration(processes []proc.ManagedProcess, namespace s
 }
 
 func (c *CLI) handleCreate(name, command string, namespace string) error {
-  process := proc.ManagedProcess{
-    Metadata: proc.Metadata{
+  process := models.ManagedProcess{
+    Metadata: models.Metadata{
       Name:      name,
       Namespace: namespace,
     },
-    Status: proc.Status{
-      Phase: proc.PhaseStopped,
+    Status: models.Status{
+      Phase: models.PhaseStopped,
     },
-    Spec: proc.Spec{
-      Exec: proc.Exec{
+    Spec: models.Spec{
+      Exec: models.Exec{
         Command: command,
       },
     },
@@ -446,7 +447,7 @@ func (c *CLI) handleEdit(name string, namespace string) error {
     return nil
   }
 
-  var updatedProc proc.ManagedProcess
+  var updatedProc models.ManagedProcess
   if err := yaml.Unmarshal(editedData, &updatedProc); err != nil {
     fmt.Println("ERROR failed to parse edited data:", err.Error())
     return nil
@@ -771,7 +772,7 @@ func (c *CLI) handleProcMountAdd(name, namespace string, mountID string, mountTy
     return fmt.Errorf("failed to get process: %w", err)
   }
 
-  m := proc.Mount{
+  m := models.Mount{
     ID:       mountID,
     Type:     mountType,
     Target:   target,
@@ -821,7 +822,7 @@ func (c *CLI) handleProcMountRemove(name, namespace, target string, index int) e
     return nil
   }
 
-  var newMounts []proc.Mount
+  var newMounts []models.Mount
 
   if target != "" {
     for i := range mounts {

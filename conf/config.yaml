@@ -17,6 +17,10 @@ process:
 security:
   encryption_key: 8FVKXDQxzgdEH8DR8wQPnCo6Ke5IwQ+CYdqdmjmi/Lk=
 
+database:
+  driver: sqlite3
+  path: ./conf/users.db
+
 https:
   enabled: false
   cert_path: conf/cert.pem

@@ -21,6 +21,7 @@ import (
   "bytes"
   "fmt"
   "github.com/casuallc/vigil/common"
+  "github.com/casuallc/vigil/models"
   "github.com/shirou/gopsutil/v3/process"
   "os"
   "os/exec"
@@ -39,7 +40,7 @@ const (
 )
 
 // ScanWithScript scans processes using a custom script
-func ScanWithScript(script string) ([]ManagedProcess, error) {
+func ScanWithScript(script string) ([]models.ManagedProcess, error) {
   // 创建一个临时脚本文件
   // 在实际实现中，应该使用更安全的方式处理临时文件
   // 这里为了简化示例，直接执行脚本内容
@@ -56,7 +57,7 @@ func ScanWithScript(script string) ([]ManagedProcess, error) {
   }
 
   // 解析脚本输出，期望每行包含一个PID
-  var processes []ManagedProcess
+  var processes []models.ManagedProcess
   lines := strings.Split(output.String(), "\n")
 
   for _, line := range lines {
@@ -86,13 +87,13 @@ func ScanWithScript(script string) ([]ManagedProcess, error) {
 }
 
 // ScanUnixProcesses scans processes on Unix/Linux/macOS systems
-func ScanUnixProcesses(query string) ([]ManagedProcess, error) {
+func ScanUnixProcesses(query string) ([]models.ManagedProcess, error) {
   dirs, err := os.ReadDir("/proc")
   if err != nil {
     return nil, fmt.Errorf("failed to read /proc: %v", err)
   }
 
-  var processes []ManagedProcess
+  var processes []models.ManagedProcess
   // Compile regex for query matching
   queryRegex, err := regexp.Compile(query)
   if err != nil {
@@ -131,11 +132,11 @@ func ScanUnixProcesses(query string) ([]ManagedProcess, error) {
 }
 
 // GetProcessByPID 获取指定PID的进程详细信息
-func GetProcessByPID(pid int) (*ManagedProcess, error) {
+func GetProcessByPID(pid int) (*models.ManagedProcess, error) {
   // 创建基础结构体
-  manageProcess := &ManagedProcess{
-    Spec: Spec{},
-    Status: Status{
+  manageProcess := &models.ManagedProcess{
+    Spec: models.Spec{},
+    Status: models.Status{
       PID: pid,
     },
   }
@@ -184,17 +185,17 @@ func GetProcessByPID(pid int) (*ManagedProcess, error) {
   }
 
   // 设置状态
-  manageProcess.Status.Phase = PhaseRunning
+  manageProcess.Status.Phase = models.PhaseRunning
 
   return manageProcess, nil
 }
 
 // Helper function to get proc status from /proc (alternative method)
-func getProcessStatusFromProc(pid int) (Phase, error) {
+func getProcessStatusFromProc(pid int) (models.Phase, error) {
   statusPath := filepath.Join("/proc", strconv.Itoa(pid), "status")
   file, err := os.Open(statusPath)
   if err != nil {
-    return PhaseUnknown, err
+    return models.PhaseUnknown, err
   }
   defer file.Close()
 
@@ -207,17 +208,17 @@ func getProcessStatusFromProc(pid int) (Phase, error) {
         state := fields[1]
         switch state {
         case "R", "S", "D": // Running, Sleeping, Uninterruptible sleep
-          return PhaseRunning, nil
+          return models.PhaseRunning, nil
         case "Z": // Zombie
-          return PhaseFailed, nil
+          return models.PhaseFailed, nil
         case "T": // Stopped
-          return PhaseStopped, nil
+          return models.PhaseStopped, nil
         default:
-          return PhaseUnknown, nil
+          return models.PhaseUnknown, nil
         }
       }
     }
   }
 
-  return PhaseUnknown, scanner.Err()
+  return models.PhaseUnknown, scanner.Err()
 }

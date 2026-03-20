@@ -36,6 +36,7 @@ type Config struct {
   Process     ProcConfig     `yaml:"process"`
   Security    SecurityConfig `yaml:"security"`
   HTTPS       HTTPSConfig    `yaml:"https"`
+  Database    DatabaseConfig `yaml:"database"`
   ManagedApps []AppConfig    `yaml:"managed_apps"`
 }
 
@@ -65,6 +66,12 @@ type HTTPSConfig struct {
   Enabled  bool   `yaml:"enabled"`
   CertPath string `yaml:"cert_path"`
   KeyPath  string `yaml:"key_path"`
+}
+
+// DatabaseConfig represents the database configuration
+type DatabaseConfig struct {
+  Driver   string `yaml:"driver"`   // "sqlite3" or "json"
+  Path     string `yaml:"path"`     // Database file path
 }
 
 // AppConfig represents the configuration of a managed application
