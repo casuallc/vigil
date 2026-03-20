@@ -14,7 +14,12 @@
       "Bash(./bbx-server --help)",
       "Bash(pkill -f bbx-server)",
       "Bash(taskkill /F /IM bbx-server.exe)",
-      "Bash(go mod:*)"
+      "Bash(go mod:*)",
+      "Bash(powershell -Command \"\\(Get-Content 'C:\\\\Data\\\\ancoo\\\\vigil\\\\cli\\\\handlers.go'\\) -replace 'proc\\\\.FormatBytes','common.FormatBytes' | Set-Content 'C:\\\\Data\\\\ancoo\\\\vigil\\\\cli\\\\handlers.go'\")",
+      "Bash(git checkout:*)",
+      "Bash(go fmt:*)",
+      "Bash(go run:*)",
+      "Bash(del:*)"
     ]
   }
 }

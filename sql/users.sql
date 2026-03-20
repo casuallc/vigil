@@ -6,7 +6,10 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT DEFAULT '',
     role TEXT DEFAULT 'user',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_login_at DATETIME,
+    last_login_ip TEXT,
+    login_count INTEGER DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);

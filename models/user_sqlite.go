@@ -69,10 +69,11 @@ func (ud *SQLiteUserDatabase) GetUser(username string) (*User, bool) {
   ud.mu.RLock()
   defer ud.mu.RUnlock()
 
-  query := `SELECT id, username, password, email, role, created_at, updated_at
+  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count
 			  FROM users WHERE username = ?`
 
   var user User
+  var lastLoginAt sql.NullTime
   err := ud.db.QueryRow(query, username).Scan(
     &user.ID,
     &user.Username,
@@ -81,6 +82,9 @@ func (ud *SQLiteUserDatabase) GetUser(username string) (*User, bool) {
     &user.Role,
     &user.CreatedAt,
     &user.UpdatedAt,
+    &lastLoginAt,
+    &user.LastLoginIP,
+    &user.LoginCount,
   )
 
   if err == sql.ErrNoRows {
@@ -88,6 +92,10 @@ func (ud *SQLiteUserDatabase) GetUser(username string) (*User, bool) {
   }
   if err != nil {
     return nil, false
+  }
+
+  if lastLoginAt.Valid {
+    user.LastLoginAt = &lastLoginAt.Time
   }
 
   return &user, true
@@ -108,8 +116,8 @@ func (ud *SQLiteUserDatabase) CreateUser(user *User) error {
   ud.mu.Lock()
   defer ud.mu.Unlock()
 
-  query := `INSERT INTO users (id, username, password, email, role, created_at, updated_at)
-			  VALUES (?, ?, ?, ?, ?, ?, ?)`
+  query := `INSERT INTO users (id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count)
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
   _, err = ud.db.Exec(query,
     user.ID,
@@ -119,6 +127,9 @@ func (ud *SQLiteUserDatabase) CreateUser(user *User) error {
     user.Role,
     user.CreatedAt,
     user.UpdatedAt,
+    user.LastLoginAt,
+    user.LastLoginIP,
+    user.LoginCount,
   )
 
   // Handle unique constraint violation
@@ -209,7 +220,7 @@ func (ud *SQLiteUserDatabase) GetAllUsers() []*User {
   ud.mu.RLock()
   defer ud.mu.RUnlock()
 
-  query := `SELECT id, username, password, email, role, created_at, updated_at FROM users`
+  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count FROM users`
 
   rows, err := ud.db.Query(query)
   if err != nil {
@@ -220,6 +231,7 @@ func (ud *SQLiteUserDatabase) GetAllUsers() []*User {
   var users []*User
   for rows.Next() {
     var user User
+    var lastLoginAt sql.NullTime
     err := rows.Scan(
       &user.ID,
       &user.Username,
@@ -228,8 +240,14 @@ func (ud *SQLiteUserDatabase) GetAllUsers() []*User {
       &user.Role,
       &user.CreatedAt,
       &user.UpdatedAt,
+      &lastLoginAt,
+      &user.LastLoginIP,
+      &user.LoginCount,
     )
     if err == nil {
+      if lastLoginAt.Valid {
+        user.LastLoginAt = &lastLoginAt.Time
+      }
       users = append(users, &user)
     }
   }
@@ -262,10 +280,11 @@ func (ud *SQLiteUserDatabase) GetUserByID(id string) (*User, bool) {
   ud.mu.RLock()
   defer ud.mu.RUnlock()
 
-  query := `SELECT id, username, password, email, role, created_at, updated_at
+  query := `SELECT id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count
 			  FROM users WHERE id = ?`
 
   var user User
+  var lastLoginAt sql.NullTime
   err := ud.db.QueryRow(query, id).Scan(
     &user.ID,
     &user.Username,
@@ -274,6 +293,9 @@ func (ud *SQLiteUserDatabase) GetUserByID(id string) (*User, bool) {
     &user.Role,
     &user.CreatedAt,
     &user.UpdatedAt,
+    &lastLoginAt,
+    &user.LastLoginIP,
+    &user.LoginCount,
   )
 
   if err == sql.ErrNoRows {
@@ -281,6 +303,10 @@ func (ud *SQLiteUserDatabase) GetUserByID(id string) (*User, bool) {
   }
   if err != nil {
     return nil, false
+  }
+
+  if lastLoginAt.Valid {
+    user.LastLoginAt = &lastLoginAt.Time
   }
 
   return &user, true
@@ -294,6 +320,27 @@ func (ud *SQLiteUserDatabase) GetUserCount() (int, error) {
   var count int
   err := ud.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
   return count, err
+}
+
+// UpdateLoginStatus updates user login status after successful login
+func (ud *SQLiteUserDatabase) UpdateLoginStatus(username, clientIP string) error {
+  ud.mu.Lock()
+  defer ud.mu.Unlock()
+
+  // First get the current login count
+  var currentCount int
+  err := ud.db.QueryRow("SELECT login_count FROM users WHERE username = ?", username).Scan(&currentCount)
+  if err == sql.ErrNoRows {
+    return os.ErrNotExist
+  }
+  if err != nil {
+    return err
+  }
+
+  // Update login status
+  query := `UPDATE users SET last_login_at = ?, last_login_ip = ?, login_count = ? WHERE username = ?`
+  _, err = ud.db.Exec(query, time.Now(), clientIP, currentCount+1, username)
+  return err
 }
 
 // Helper function to join strings (since strings.Join is not available without import)
@@ -344,15 +391,15 @@ func (ud *SQLiteUserDatabase) ImportFromFile(path string) error {
   }
   defer tx.Rollback()
 
-  stmt, err := tx.Prepare(`INSERT OR REPLACE INTO users (id, username, password, email, role, created_at, updated_at)
-							 VALUES (?, ?, ?, ?, ?, ?, ?)`)
+  stmt, err := tx.Prepare(`INSERT OR REPLACE INTO users (id, username, password, email, role, created_at, updated_at, last_login_at, last_login_ip, login_count)
+							 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
   if err != nil {
     return err
   }
   defer stmt.Close()
 
   for _, user := range users {
-    _, err := stmt.Exec(user.ID, user.Username, user.Password, user.Email, user.Role, user.CreatedAt, user.UpdatedAt)
+    _, err := stmt.Exec(user.ID, user.Username, user.Password, user.Email, user.Role, user.CreatedAt, user.UpdatedAt, user.LastLoginAt, user.LastLoginIP, user.LoginCount)
     if err != nil {
       return err
     }

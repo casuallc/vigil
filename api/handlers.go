@@ -1748,6 +1748,23 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
     return
   }
 
+  // Get client IP
+  clientIP := r.RemoteAddr
+  if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+    clientIP = forwardedFor
+  }
+
+  // Get User-Agent and device info
+  userAgent := r.Header.Get("User-Agent")
+  deviceInfo := ""
+  if strings.Contains(userAgent, "Mobile") {
+    deviceInfo = "mobile"
+  } else if strings.Contains(userAgent, "Tablet") {
+    deviceInfo = "tablet"
+  } else {
+    deviceInfo = "desktop"
+  }
+
   // Validate password
   isValid, err := s.userDatabase.ValidatePassword(loginReq.Username, loginReq.Password)
   if err != nil {
@@ -1757,6 +1774,15 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
   }
 
   if !isValid {
+    // Log failed login attempt
+    if s.loginLogDatabase != nil {
+      user, exists := s.userDatabase.GetUser(loginReq.Username)
+      userID := ""
+      if exists {
+        userID = user.ID
+      }
+      s.loginLogDatabase.LogLogin(loginReq.Username, userID, clientIP, userAgent, deviceInfo, "failed")
+    }
     writeError(w, http.StatusUnauthorized, "Invalid username or password")
     return
   }
@@ -1766,6 +1792,20 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
   if !exists {
     writeError(w, http.StatusNotFound, "User not found")
     return
+  }
+
+  // Update login status in users table
+  if s.userDatabase != nil {
+    if err := s.userDatabase.UpdateLoginStatus(loginReq.Username, clientIP); err != nil {
+      log.Printf("Error updating login status for user %s: %v", loginReq.Username, err)
+    }
+  }
+
+  // Log successful login
+  if s.loginLogDatabase != nil {
+    if err := s.loginLogDatabase.LogLogin(loginReq.Username, user.ID, clientIP, userAgent, deviceInfo, "success"); err != nil {
+      log.Printf("Error logging login for user %s: %v", loginReq.Username, err)
+    }
   }
 
   // Return success response with user info (without password)

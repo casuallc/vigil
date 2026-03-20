@@ -48,6 +48,7 @@ type Server struct {
   resourceMonitor *proc.ResourceMonitor
   vmManager       *vm.Manager
   userDatabase    *models.SQLiteUserDatabase
+  loginLogDatabase *models.LoginLogDatabase
   auditLogger     *audit.Logger
   // SSH connection tracking
   sshConnections   map[string]*SSHConnectionInfo
@@ -110,14 +111,24 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     // Continue running even if audit logger initialization fails
   }
 
+  // Initialize login log database with a separate file
+  loginLogPath := "data/login_logs.db"
+  loginLogDatabase, err := models.NewLoginLogDatabase(loginLogPath)
+  if err != nil {
+    log.Printf("Warning: failed to initialize login log database: %v", err)
+  } else {
+    log.Printf("Login log database initialized at %s", loginLogPath)
+  }
+
   server := &Server{
-    config:          config,
-    manager:         manager,
-    monitor:         monitor,
-    resourceMonitor: resourceMonitor,
-    vmManager:       vmManager,
-    userDatabase:    userDatabase,
-    auditLogger:     auditLogger,
+    config:           config,
+    manager:          manager,
+    monitor:          monitor,
+    resourceMonitor:  resourceMonitor,
+    vmManager:        vmManager,
+    userDatabase:     userDatabase,
+    loginLogDatabase: loginLogDatabase,
+    auditLogger:      auditLogger,
     // Initialize SSH connection tracking
     sshConnections: make(map[string]*SSHConnectionInfo),
   }
@@ -502,5 +513,10 @@ func (s *Server) Stop() {
   // Close VM database connection
   if s.vmManager != nil {
     s.vmManager.Close()
+  }
+
+  // Close login log database connection
+  if s.loginLogDatabase != nil {
+    s.loginLogDatabase.Close()
   }
 }

@@ -19,6 +19,10 @@ type User struct {
   Role      string    `json:"role"` // "admin" or "user"
   CreatedAt time.Time `json:"created_at"`
   UpdatedAt time.Time `json:"updated_at"`
+  // Login status fields
+  LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+  LastLoginIP string     `json:"last_login_ip,omitempty"`
+  LoginCount  int        `json:"login_count"`
 }
 
 // UserDatabase manages user data with concurrency safety

@@ -49,6 +49,11 @@ func LoadProcsSchema() (string, error) {
 	return LoadSchema("procs.sql")
 }
 
+// LoadLoginLogsSchema 加载登录日志表 schema
+func LoadLoginLogsSchema() (string, error) {
+	return LoadSchema("login_logs.sql")
+}
+
 // SplitStatements 将 SQL 内容分割成单独的语句
 func SplitStatements(sql string) []string {
 	// 按分号分割 SQL 语句
