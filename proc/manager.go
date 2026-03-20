@@ -19,6 +19,7 @@ package proc
 import (
   "bytes"
   "fmt"
+  "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/models"
   "os"
   "os/exec"
@@ -42,8 +43,57 @@ func NewManager() *Manager {
 // 它实现了 ProcessScanner, ProcessLifecycle, ProcessInfo, ProcessConfig 和 ProcessMonitor 接口
 type Manager struct {
   Processes map[string]*models.ManagedProcess
-  // 新增：监控协程启动标记，避免重复启动
+  // 监控协程启动标记，避免重复启动
   monitoringStarted map[string]bool
+  // 进程存储
+  store *ProcessStore
+}
+
+// SetStore 设置进程存储
+func (m *Manager) SetStore(store *ProcessStore) {
+  m.store = store
+}
+
+// SaveManagedProcesses 保存所有已管理的进程
+func (m *Manager) SaveManagedProcesses(filePath string) error {
+  // 如果使用 SQLite 存储，忽略 filePath 参数
+  if m.store != nil {
+    return m.store.SaveManagedProcesses(m.Processes)
+  }
+  // 否则使用文件存储（向后兼容）
+  return saveProcessesToFile(m.Processes, filePath)
+}
+
+// saveProcessesToFile 保存进程到文件（向后兼容）
+func saveProcessesToFile(processes map[string]*models.ManagedProcess, filePath string) error {
+  processesList := make([]models.ManagedProcess, 0, len(processes))
+
+  // 过滤掉运行时的状态信息，只保存配置相关信息
+  for _, p := range processes {
+    processCopy := *p
+    // 重置运行时状态
+    processCopy.Status.Phase = models.PhaseFailed
+    processCopy.Status.PID = 0
+    processCopy.Status.StartTime = &time.Time{}
+    processCopy.Status.ResourceStats = nil
+
+    processesList = append(processesList, processCopy)
+  }
+
+  // 将进程信息转换为 YAML
+  data, err := common.ToYamlString(processesList)
+  if err != nil {
+    return fmt.Errorf("failed to marshal processes: %v", err)
+  }
+
+  // 确保目录存在
+  dir := "proc"
+  if err := os.MkdirAll(dir, 0755); err != nil {
+    return fmt.Errorf("failed to create directory: %v", err)
+  }
+
+  // 保存到文件
+  return os.WriteFile(filePath, []byte(data), 0644)
 }
 
 // GetProcesses 获取所有进程的映射

@@ -44,6 +44,11 @@ func LoadVMsSchema() (string, error) {
 	return LoadSchema("vms.sql")
 }
 
+// LoadProcsSchema 加载进程表 schema
+func LoadProcsSchema() (string, error) {
+	return LoadSchema("procs.sql")
+}
+
 // SplitStatements 将 SQL 内容分割成单独的语句
 func SplitStatements(sql string) []string {
 	// 按分号分割 SQL 语句

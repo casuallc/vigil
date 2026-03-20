@@ -68,10 +68,19 @@ func main() {
   // 创建进程管理器
   processManager := proc.NewManager()
 
-  // 加载已保存的进程信息
-  ProcessesFilePath := "proc/managed_processes.yaml"
-  if err := processManager.LoadManagedProcesses(ProcessesFilePath); err != nil {
-    log.Printf("Warning: failed to load managed processes: %v", err)
+  // 创建进程存储管理器（使用 SQLite）
+  dbPath := "data/vigil.db"
+  processStore, err := proc.NewProcessStore(dbPath)
+  if err != nil {
+    log.Printf("Warning: failed to create process store: %v", err)
+  } else {
+    // 设置管理器的存储
+    processManager.SetStore(processStore)
+
+    // 从数据库加载进程信息
+    if err := processStore.LoadManagedProcesses(processManager); err != nil {
+      log.Printf("Warning: failed to load managed processes: %v", err)
+    }
   }
 
   // Create and start the API server with the loaded proc manager
@@ -95,11 +104,16 @@ func main() {
     log.Printf("Received signal %s, shutting down...", sig)
 
     // 在关闭前保存进程信息
-    if err := processManager.SaveManagedProcesses(ProcessesFilePath); err != nil {
+    if err := processManager.SaveManagedProcesses(""); err != nil {
       log.Printf("Warning: failed to save managed processes during shutdown: %v", err)
     }
 
-    // 这里应该实现优雅关闭
-    time.Sleep(1 * time.Second) // 给保存操作一点时间
+    // 关闭存储
+    if processStore != nil {
+      processStore.Close()
+    }
+
+    // 优雅关闭
+    time.Sleep(1 * time.Second)
   }
 }

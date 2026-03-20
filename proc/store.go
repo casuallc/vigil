@@ -17,88 +17,154 @@ limitations under the License.
 package proc
 
 import (
-  "fmt"
-  "github.com/casuallc/vigil/common"
-  "github.com/casuallc/vigil/models"
-  "os"
-  "time"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"time"
 
-  "gopkg.in/yaml.v3"
+	"github.com/casuallc/vigil/models"
+	dbsql "github.com/casuallc/vigil/sql"
+	_ "modernc.org/sqlite"
 )
 
-// SaveManagedProcesses 保存所有已管理的进程到文件
-func (m *Manager) SaveManagedProcesses(filePath string) error {
-  processesList := make([]models.ManagedProcess, 0, len(m.Processes))
-
-  // 过滤掉运行时的状态信息，只保存配置相关信息
-  for _, p := range m.Processes {
-    processCopy := *p
-    // 重置运行时状态
-    processCopy.Status.Phase = models.PhaseFailed
-    processCopy.Status.PID = 0
-    processCopy.Status.StartTime = &time.Time{}
-    processCopy.Status.ResourceStats = nil
-
-    processesList = append(processesList, processCopy)
-  }
-
-  // 将进程信息转换为YAML
-  data, err := common.ToYamlString(processesList)
-  if err != nil {
-    return fmt.Errorf("failed to marshal processes: %v", err)
-  }
-
-  // 确保目录存在
-  dir := "proc"
-  if err := os.MkdirAll(dir, 0755); err != nil {
-    return fmt.Errorf("failed to create directory: %v", err)
-  }
-
-  // 保存到文件
-  return os.WriteFile(filePath, []byte(data), 0644)
+// ProcessStore 进程存储管理器
+type ProcessStore struct {
+	db *sql.DB
 }
 
-// LoadManagedProcesses 从文件加载已管理的进程
-func (m *Manager) LoadManagedProcesses(filePath string) error {
-  // 检查文件是否存在
-  if _, err := os.Stat(filePath); os.IsNotExist(err) {
-    return nil // 文件不存在，不执行加载
-  }
+// NewProcessStore 创建新的进程存储管理器
+func NewProcessStore(dbPath string) (*ProcessStore, error) {
+	// 确保目录存在
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
+	}
 
-  // 读取文件内容
-  data, err := os.ReadFile(filePath)
-  if err != nil {
-    return fmt.Errorf("failed to read processes file: %v", err)
-  }
+	// 打开数据库
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
 
-  // 解析YAML
-  var processesList []models.ManagedProcess
-  if err := yaml.Unmarshal(data, &processesList); err != nil {
-    return fmt.Errorf("failed to unmarshal processes: %v", err)
-  }
+	store := &ProcessStore{db: db}
 
-  // 将进程添加到管理器
-  for _, process := range processesList {
-    processCopy := process
-    // 使用 namespace/name 作为键
-    key := fmt.Sprintf("%s/%s", process.Metadata.Namespace, process.Metadata.Name)
-    m.Processes[key] = &processCopy
+	// 初始化 schema
+	if err := store.initDB(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
 
-    // 启动监控协程（避免重复）
-    m.StartMonitoring(process.Metadata.Namespace, process.Metadata.Name)
+	return store, nil
+}
 
-    // 自动启动标记为需要重启的进程
-    if process.Spec.RestartPolicy == models.RestartPolicyAlways ||
-      (process.Spec.RestartPolicy == models.RestartPolicyOnFailure && process.Status.LastTerminationInfo.ExitCode != 0) {
-      go func(namespace, name string) {
-        // 延迟启动，避免启动时资源竞争
-        time.Sleep(1 * time.Second)
-        if err := m.StartProcess(namespace, name); err != nil {
-          fmt.Printf("Failed to start proc %s/%s on startup: %v\n", namespace, name, err)
-        }
-      }(process.Metadata.Namespace, process.Metadata.Name)
-    }
-  }
+// initDB 初始化数据库 schema
+func (s *ProcessStore) initDB() error {
+	schema, err := dbsql.LoadProcsSchema()
+	if err != nil {
+		return err
+	}
 
-  return nil
+	_, err = s.db.Exec(schema)
+	return err
+}
+
+// Close 关闭数据库连接
+func (s *ProcessStore) Close() error {
+	if s.db != nil {
+		return s.db.Close()
+	}
+	return nil
+}
+
+// SaveManagedProcesses 保存所有已管理的进程到数据库
+func (s *ProcessStore) SaveManagedProcesses(processes map[string]*models.ManagedProcess) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO procs
+		(namespace, name, config, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now()
+	for key, p := range processes {
+		// 过滤掉运行时的状态信息，只保存配置相关信息
+		processCopy := *p
+		processCopy.Status.Phase = models.PhaseFailed
+		processCopy.Status.PID = 0
+		processCopy.Status.StartTime = &time.Time{}
+		processCopy.Status.ResourceStats = nil
+
+		configJSON, err := json.Marshal(processCopy)
+		if err != nil {
+			return fmt.Errorf("failed to marshal process %s: %w", key, err)
+		}
+
+		_, err = stmt.Exec(
+			p.Metadata.Namespace,
+			p.Metadata.Name,
+			configJSON,
+			p.Metadata.CreationTimestamp,
+			now,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to save process %s: %w", key, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// LoadManagedProcesses 从数据库加载已管理的进程
+func (s *ProcessStore) LoadManagedProcesses(m *Manager) error {
+	rows, err := s.db.Query(`SELECT namespace, name, config FROM procs`)
+	if err != nil {
+		return fmt.Errorf("failed to query processes: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var namespace, name string
+		var configJSON []byte
+
+		err := rows.Scan(&namespace, &name, &configJSON)
+		if err != nil {
+			return fmt.Errorf("failed to scan process row: %w", err)
+		}
+
+		var process models.ManagedProcess
+		if err := json.Unmarshal(configJSON, &process); err != nil {
+			return fmt.Errorf("failed to unmarshal process config: %w", err)
+		}
+
+		// 使用 namespace/name 作为键
+		key := fmt.Sprintf("%s/%s", namespace, name)
+		m.Processes[key] = &process
+
+		// 启动监控协程（避免重复）
+		m.StartMonitoring(namespace, name)
+
+		// 自动启动标记为需要重启的进程
+		if process.Spec.RestartPolicy == models.RestartPolicyAlways ||
+			(process.Spec.RestartPolicy == models.RestartPolicyOnFailure && process.Status.LastTerminationInfo.ExitCode != 0) {
+			go func(namespace, name string) {
+				// 延迟启动，避免启动时资源竞争
+				time.Sleep(1 * time.Second)
+				if err := m.StartProcess(namespace, name); err != nil {
+					log.Printf("Failed to start proc %s/%s on startup: %v\n", namespace, name, err)
+				}
+			}(namespace, name)
+		}
+	}
+
+	return rows.Err()
 }
