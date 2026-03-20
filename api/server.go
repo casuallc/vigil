@@ -70,40 +70,32 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
   // Initialize resource monitor with cache TTL of 5 seconds and collection interval of 3 seconds
   resourceMonitor := proc.NewResourceMonitor(manager, 5*time.Second, 3*time.Second, true, true)
 
-  // Determine VM database path
-  vmDBPath := "data/vms.db"
-  vmManager := vm.NewManagerWithConfig(vmDBPath, config.Security.EncryptionKey)
-  log.Printf("VM database initialized at %s", vmDBPath)
-
-  // Create SQLite user database
-  var userDatabase *models.SQLiteUserDatabase
-  var err error
-
-  // Determine database path from config or use default
+  // Use single SQLite database file for both VMs and users
   dbPath := config.Database.Path
   if dbPath == "" {
-    dbPath = "data/users.db"
+    dbPath = "data/vigil.db"
   }
 
-  // Use SQLite if driver is sqlite or not specified (default to sqlite)
-  if config.Database.Driver == "" || config.Database.Driver == "sqlite" {
-    userDatabase, err = models.NewSQLiteUserDatabase(dbPath)
-    if err != nil {
-      log.Printf("Warning: failed to initialize SQLite user database: %v", err)
-    } else {
-      log.Printf("SQLite user database initialized at %s", dbPath)
+  // Initialize VM manager with the same database
+  vmManager := vm.NewManagerWithConfig(dbPath, config.Security.EncryptionKey)
+  log.Printf("VM database initialized at %s", dbPath)
 
-      // Migrate from JSON file if it exists
-      jsonPath := "conf/users.json"
-      if _, err := os.Stat(jsonPath); err == nil {
-        log.Printf("Found existing JSON user file, migrating to SQLite...")
-        if err := models.MigrateJSONToSQLite(jsonPath, dbPath); err != nil {
-          log.Printf("Warning: failed to migrate users from JSON: %v", err)
-        } else {
-          log.Printf("Users migrated successfully from JSON to SQLite")
-          // Optionally remove the old JSON file after successful migration
-          os.Remove(jsonPath)
-        }
+  // Create SQLite user database with the same file
+  userDatabase, err := models.NewSQLiteUserDatabase(dbPath)
+  if err != nil {
+    log.Printf("Warning: failed to initialize SQLite user database: %v", err)
+  } else {
+    log.Printf("SQLite user database initialized at %s", dbPath)
+
+    // Migrate from JSON file if it exists
+    jsonPath := "data/users.json"
+    if _, err := os.Stat(jsonPath); err == nil {
+      log.Printf("Found existing JSON user file, migrating to SQLite...")
+      if err := models.MigrateJSONToSQLite(jsonPath, dbPath); err != nil {
+        log.Printf("Warning: failed to migrate users from JSON: %v", err)
+      } else {
+        log.Printf("Users migrated successfully from JSON to SQLite")
+        os.Remove(jsonPath)
       }
     }
   }

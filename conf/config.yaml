@@ -19,7 +19,7 @@ security:
 
 database:
   driver: sqlite
-  path: ./data/users.db
+  path: ./data/vigil.db
 
 https:
   enabled: false
