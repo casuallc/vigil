@@ -1668,11 +1668,13 @@ func (s *Server) handleRegisterUser(w http.ResponseWriter, r *http.Request) {
     return
   }
 
+  log.Printf("get user start")
   // Check if user already exists
   if _, exists := s.userDatabase.GetUser(user.Username); exists {
     writeError(w, http.StatusConflict, "User already exists")
     return
   }
+  log.Printf("get user done")
 
   // Set role to "user" by default if not specified
   if user.Role == "" {
@@ -1682,6 +1684,7 @@ func (s *Server) handleRegisterUser(w http.ResponseWriter, r *http.Request) {
   // Generate a unique ID for the user
   user.ID = fmt.Sprintf("usr_%d", time.Now().Unix())
 
+  log.Printf("create user start")
   // Create the user
   if err := s.userDatabase.CreateUser(&user); err != nil {
     writeError(w, http.StatusInternalServerError, "Failed to create user: "+err.Error())
@@ -1796,7 +1799,7 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
     }
   } else {
     // When auth is disabled, allow access to user info (may need to adjust this logic based on requirements)
-    requestingUsername = "anonymous"  // Or some default value when auth is disabled
+    requestingUsername = "anonymous" // Or some default value when auth is disabled
   }
 
   // Get the user
@@ -1885,7 +1888,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
     }
   } else {
     // When auth is disabled, allow updates (may need to adjust this logic based on requirements)
-    requestingUsername = "anonymous"  // Or some default value when auth is disabled
+    requestingUsername = "anonymous" // Or some default value when auth is disabled
   }
 
   // Prepare updated user data
@@ -1961,7 +1964,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
     }
   } else {
     // When auth is disabled, allow deletion (may need to adjust this logic based on requirements)
-    requestingUsername = "anonymous"  // Or some default value when auth is disabled
+    requestingUsername = "anonymous" // Or some default value when auth is disabled
   }
 
   // Delete the user
