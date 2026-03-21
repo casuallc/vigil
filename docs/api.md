@@ -1385,6 +1385,8 @@ database:
 
 如果之前使用 JSON 文件存储用户数据（`conf/users.json`），系统会在启动时自动迁移到 SQLite 数据库。
 
+**自动列迁移**：当数据库表结构更新时（如新增 avatar、nickname、region、configs 字段），系统会在启动时自动检测并执行 ALTER TABLE 语句添加新列，无需手动迁移。现有数据不会受到影响。
+
 ## 4. 错误处理
 
 API 使用标准 HTTP 状态码来表示错误：

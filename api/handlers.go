@@ -1816,6 +1816,10 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
       "username":   user.Username,
       "email":      user.Email,
       "role":       user.Role,
+      "avatar":     user.Avatar,
+      "nickname":   user.Nickname,
+      "region":     user.Region,
+      "configs":    user.Configs,
       "created_at": user.CreatedAt,
       "updated_at": user.UpdatedAt,
     },
@@ -1867,6 +1871,10 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
       "username":   user.Username,
       "email":      user.Email,
       "role":       user.Role,
+      "avatar":     user.Avatar,
+      "nickname":   user.Nickname,
+      "region":     user.Region,
+      "configs":    user.Configs,
       "created_at": user.CreatedAt,
       "updated_at": user.UpdatedAt,
     }
@@ -1937,6 +1945,10 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
     "username":   user.Username,
     "email":      user.Email,
     "role":       user.Role,
+    "avatar":     user.Avatar,
+    "nickname":   user.Nickname,
+    "region":     user.Region,
+    "configs":    user.Configs,
     "created_at": user.CreatedAt,
     "updated_at": user.UpdatedAt,
   }
@@ -1966,6 +1978,10 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
     Email    string `json:"email"`
     Role     string `json:"role"`
     Password string `json:"password"`
+    Avatar   string `json:"avatar"`
+    Nickname string `json:"nickname"`
+    Region   string `json:"region"`
+    Configs  string `json:"configs"`
   }
 
   if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
@@ -2019,6 +2035,10 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
     Email:    updateData.Email,
     Role:     updateData.Role,
     Password: updateData.Password, // Will be hashed in UpdateUser if not empty
+    Avatar:   updateData.Avatar,
+    Nickname: updateData.Nickname,
+    Region:   updateData.Region,
+    Configs:  updateData.Configs,
   }
 
   // Update the user
