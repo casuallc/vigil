@@ -52,8 +52,7 @@ type CommandLog struct {
 
 // 命令限制列表
 var restrictedCommands = map[string]bool{
-  "rm": true, "rmdir": true, "mkdir": true, "chmod": true, "chown": true,
-  "kill": true, "reboot": true, "shutdown": true, "init": true, "poweroff": true,
+  "reboot": true, "shutdown": true, "init": true, "poweroff": true,
 }
 
 // NewSSHClient 创建一个新的SSH客户端
