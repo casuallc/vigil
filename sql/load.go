@@ -64,6 +64,16 @@ func LoadCommandHistorySchema() (string, error) {
 	return LoadSchema("command_history.sql")
 }
 
+// LoadSchedulesSchema 加载定时任务表 schema
+func LoadSchedulesSchema() (string, error) {
+	return LoadSchema("schedules.sql")
+}
+
+// LoadScheduleExecutionsSchema 加载定时任务执行历史表 schema
+func LoadScheduleExecutionsSchema() (string, error) {
+	return LoadSchema("schedule_executions.sql")
+}
+
 // SplitStatements 将 SQL 内容分割成单独的语句
 func SplitStatements(sql string) []string {
 	// 按分号分割 SQL 语句

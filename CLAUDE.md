@@ -67,7 +67,7 @@ Vigil is a Go-based process management and message queue client tool.
 ## Common Patterns
 
 - All MQ clients implement message counting (produced/consumed totals printed on exit)
-- CLI handlers in `cli/handlers.go` - main command logic
+- CLI handlers in `cli/handlers_*.go` - main command logic
 - CLI clients in `cli/client_*.go` - protocol-specific implementations
 - Process registration uses `proc.ManagedProcess` struct with Metadata/Spec/Status
 - Cosmic inspection uses script-based checks with expression evaluation for thresholds

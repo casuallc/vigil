@@ -109,6 +109,21 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/commands/history", s.handleRecordCommandHistory).Methods("POST")
   r.HandleFunc("/api/commands/history/{id}", s.handleDeleteCommandHistory).Methods("DELETE")
 
+  // Schedule endpoints
+  r.HandleFunc("/api/schedules", s.handleListSchedules).Methods("GET")
+  r.HandleFunc("/api/schedules", s.handleCreateSchedule).Methods("POST")
+  r.HandleFunc("/api/schedules/{id}", s.handleGetSchedule).Methods("GET")
+  r.HandleFunc("/api/schedules/{id}", s.handleUpdateSchedule).Methods("PUT")
+  r.HandleFunc("/api/schedules/{id}", s.handleDeleteSchedule).Methods("DELETE")
+  r.HandleFunc("/api/schedules/{id}/toggle", s.handleToggleSchedule).Methods("POST")
+  r.HandleFunc("/api/schedules/{id}/run", s.handleRunSchedule).Methods("POST")
+  r.HandleFunc("/api/schedules/{id}/history", s.handleGetScheduleHistory).Methods("GET")
+
+  // AI Assistant endpoints
+  r.HandleFunc("/api/ai/generate-command", s.handleAIGenerateCommand).Methods("POST")
+  r.HandleFunc("/api/ai/explain-command", s.handleAIExplainCommand).Methods("POST")
+  r.HandleFunc("/api/ai/fix-command", s.handleAIFixCommand).Methods("POST")
+
   // File Management endpoints
   r.HandleFunc("/api/files/upload", s.handleFileUpload).Methods("POST")
   r.HandleFunc("/api/files/download", s.handleFileDownload).Methods("POST")

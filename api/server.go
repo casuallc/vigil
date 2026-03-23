@@ -44,20 +44,23 @@ import (
 
 // Server represents the HTTP API server
 type Server struct {
-  config           *config.Config
-  manager          *proc.Manager
-  monitor          *proc.Monitor
-  resourceMonitor  *proc.ResourceMonitor
-  vmManager        *vm.Manager
-  userDatabase     *models.SQLiteUserDatabase
-  loginLogDatabase *models.LoginLogDatabase
-  auditLogger      *audit.Logger
+  config            *config.Config
+  manager           *proc.Manager
+  monitor           *proc.Monitor
+  resourceMonitor   *proc.ResourceMonitor
+  vmManager         *vm.Manager
+  userDatabase      *models.SQLiteUserDatabase
+  loginLogDatabase  *models.LoginLogDatabase
+  auditLogger       *audit.Logger
   // SSH connection tracking
-  sshConnections   map[string]*SSHConnectionInfo
-  sshConnectionsMu sync.RWMutex
+  sshConnections    map[string]*SSHConnectionInfo
+  sshConnectionsMu  sync.RWMutex
   // Command template and history databases
-  commandTemplateDB *sql.DB
-  commandHistoryDB  *sql.DB
+  commandTemplateDB   *sql.DB
+  commandHistoryDB    *sql.DB
+  // Schedule databases
+  scheduleDB          *sql.DB
+  scheduleExecutionDB *sql.DB
 }
 
 // SSHConnectionInfo represents an active SSH connection
@@ -128,6 +131,21 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     log.Printf("Command history database initialized")
   }
 
+  // Initialize schedule databases
+  scheduleDB, err := initScheduleDB(dbPath)
+  if err != nil {
+    log.Printf("Warning: failed to initialize schedule database: %v", err)
+  } else {
+    log.Printf("Schedule database initialized")
+  }
+
+  scheduleExecutionDB, err := initScheduleExecutionDB(dbPath)
+  if err != nil {
+    log.Printf("Warning: failed to initialize schedule execution database: %v", err)
+  } else {
+    log.Printf("Schedule execution database initialized")
+  }
+
   server := &Server{
     config:           config,
     manager:          manager,
@@ -142,6 +160,9 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     // Initialize command databases
     commandTemplateDB: commandTemplateDB,
     commandHistoryDB:  commandHistoryDB,
+    // Initialize schedule databases
+    scheduleDB:          scheduleDB,
+    scheduleExecutionDB: scheduleExecutionDB,
   }
 
   // Start the resource monitor
@@ -540,6 +561,14 @@ func (s *Server) Stop() {
   if s.commandHistoryDB != nil {
     s.commandHistoryDB.Close()
   }
+
+  // Close schedule database connections
+  if s.scheduleDB != nil {
+    s.scheduleDB.Close()
+  }
+  if s.scheduleExecutionDB != nil {
+    s.scheduleExecutionDB.Close()
+  }
 }
 
 // initCommandTemplateDB 初始化命令模板数据库
@@ -572,6 +601,50 @@ func initCommandHistoryDB(dbPath string) (*sql.DB, error) {
   }
 
   schema, err := dbsql.LoadCommandHistorySchema()
+  if err != nil {
+    db.Close()
+    return nil, err
+  }
+
+  _, err = db.Exec(schema)
+  if err != nil {
+    db.Close()
+    return nil, err
+  }
+
+  return db, nil
+}
+
+// initScheduleDB 初始化定时任务数据库
+func initScheduleDB(dbPath string) (*sql.DB, error) {
+  db, err := sql.Open("sqlite", dbPath)
+  if err != nil {
+    return nil, err
+  }
+
+  schema, err := dbsql.LoadSchedulesSchema()
+  if err != nil {
+    db.Close()
+    return nil, err
+  }
+
+  _, err = db.Exec(schema)
+  if err != nil {
+    db.Close()
+    return nil, err
+  }
+
+  return db, nil
+}
+
+// initScheduleExecutionDB 初始化定时任务执行历史数据库
+func initScheduleExecutionDB(dbPath string) (*sql.DB, error) {
+  db, err := sql.Open("sqlite", dbPath)
+  if err != nil {
+    return nil, err
+  }
+
+  schema, err := dbsql.LoadScheduleExecutionsSchema()
   if err != nil {
     db.Close()
     return nil, err
