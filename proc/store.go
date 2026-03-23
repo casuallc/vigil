@@ -60,15 +60,13 @@ func NewProcessStore(dbPath string) (*ProcessStore, error) {
 	return store, nil
 }
 
-// initDB 初始化数据库 schema
+// initDB 初始化数据库 schema（使用 migrations）
 func (s *ProcessStore) initDB() error {
-	schema, err := dbsql.LoadProcsSchema()
-	if err != nil {
-		return err
+	// Run database migrations (procs table is created by migrations)
+	if err := dbsql.InitAndMigrate(s.db); err != nil {
+		return fmt.Errorf("failed to run database migrations: %w", err)
 	}
-
-	_, err = s.db.Exec(schema)
-	return err
+	return nil
 }
 
 // Close 关闭数据库连接

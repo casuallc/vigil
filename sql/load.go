@@ -54,6 +54,16 @@ func LoadLoginLogsSchema() (string, error) {
 	return LoadSchema("login_logs.sql")
 }
 
+// LoadCommandTemplatesSchema 加载命令模板表 schema
+func LoadCommandTemplatesSchema() (string, error) {
+	return LoadSchema("command_templates.sql")
+}
+
+// LoadCommandHistorySchema 加载命令历史表 schema
+func LoadCommandHistorySchema() (string, error) {
+	return LoadSchema("command_history.sql")
+}
+
 // SplitStatements 将 SQL 内容分割成单独的语句
 func SplitStatements(sql string) []string {
 	// 按分号分割 SQL 语句

@@ -239,6 +239,11 @@ func (c *SSHClient) UploadFile(src io.Reader, dstPath string) error {
   return nil
 }
 
+// UploadFileContent 上传字节内容到远程服务器
+func (c *SSHClient) UploadFileContent(content []byte, dstPath string) error {
+  return c.UploadFile(bytes.NewReader(content), dstPath)
+}
+
 func mkdirAllSFTP(c *sftp.Client, dir string) error {
   if dir == "." || dir == "/" {
     return nil

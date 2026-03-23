@@ -91,6 +91,24 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/vms/servers/{name}/exec", s.handleVMExec).Methods("POST")
   r.HandleFunc("/api/vms/servers/{name}/ping", s.handleVMPing).Methods("GET")
 
+  // VM Batch Operations endpoints
+  r.HandleFunc("/api/vms/batch/exec", s.handleBatchExec).Methods("POST")
+  r.HandleFunc("/api/vms/servers/{name}/resources", s.handleGetVMResources).Methods("GET")
+  r.HandleFunc("/api/vms/resources/batch", s.handleBatchGetVMResources).Methods("POST")
+  r.HandleFunc("/api/vms/files/transfer", s.handleVMFileTransfer).Methods("POST")
+
+  // Command Template endpoints
+  r.HandleFunc("/api/commands/templates", s.handleListCommandTemplates).Methods("GET")
+  r.HandleFunc("/api/commands/templates", s.handleCreateCommandTemplate).Methods("POST")
+  r.HandleFunc("/api/commands/templates/{id}", s.handleGetCommandTemplate).Methods("GET")
+  r.HandleFunc("/api/commands/templates/{id}", s.handleUpdateCommandTemplate).Methods("PUT")
+  r.HandleFunc("/api/commands/templates/{id}", s.handleDeleteCommandTemplate).Methods("DELETE")
+
+  // Command History endpoints
+  r.HandleFunc("/api/commands/history", s.handleListCommandHistory).Methods("GET")
+  r.HandleFunc("/api/commands/history", s.handleRecordCommandHistory).Methods("POST")
+  r.HandleFunc("/api/commands/history/{id}", s.handleDeleteCommandHistory).Methods("DELETE")
+
   // File Management endpoints
   r.HandleFunc("/api/files/upload", s.handleFileUpload).Methods("POST")
   r.HandleFunc("/api/files/download", s.handleFileDownload).Methods("POST")

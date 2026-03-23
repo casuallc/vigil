@@ -79,19 +79,6 @@ func NewManagerWithConfig(dbPath string, encryptionKey string) *Manager {
     // 继续运行，使用空的 VM 列表
   }
 
-  // 检查是否需要从 JSON 文件迁移
-  jsonPath := "conf/vms.json"
-  if _, err := os.Stat(jsonPath); err == nil {
-    log.Printf("Found existing JSON VM file, migrating to SQLite...")
-    if err := manager.migrateFromJSON(jsonPath); err != nil {
-      log.Printf("Warning: failed to migrate VMs from JSON: %v", err)
-    } else {
-      log.Printf("VMs migrated successfully from JSON to SQLite")
-      // 迁移成功后删除旧 JSON 文件
-      os.Remove(jsonPath)
-    }
-  }
-
   return manager
 }
 
@@ -111,109 +98,6 @@ func (m *Manager) Close() {
   if m.db != nil {
     m.db.Close()
   }
-}
-
-// migrateFromJSON 从 JSON 文件迁移数据到 SQLite
-func (m *Manager) migrateFromJSON(jsonPath string) error {
-  // 读取 JSON 文件
-  data, err := os.ReadFile(jsonPath)
-  if err != nil {
-    return err
-  }
-
-  // 解析 JSON 数据
-  var vmData struct {
-    VMs    []*VM    `json:"vms"`
-    Groups []*Group `json:"groups"`
-  }
-
-  if err := json.Unmarshal(data, &vmData); err != nil {
-    // 尝试旧格式
-    var vms []*VM
-    if err := json.Unmarshal(data, &vms); err != nil {
-      return err
-    }
-    vmData.VMs = vms
-  }
-
-  // 开启事务
-  tx, err := m.db.Begin()
-  if err != nil {
-    return err
-  }
-  defer tx.Rollback()
-
-  // 导入 VMs
-  vmStmt, err := tx.Prepare(`INSERT OR REPLACE INTO vms
-		(id, name, ip, port, username, password, key_path, status, description, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-  if err != nil {
-    return err
-  }
-  defer vmStmt.Close()
-
-  for _, vm := range vmData.VMs {
-    // 加密敏感数据
-    encryptedPassword := vm.Password
-    encryptedKeyPath := vm.KeyPath
-
-    if vm.Password != "" && m.encryptionKey != "" {
-      encryptedPassword, err = crypto.Encrypt(vm.Password, m.encryptionKey)
-      if err != nil {
-        return err
-      }
-    }
-
-    if vm.KeyPath != "" && m.encryptionKey != "" {
-      encryptedKeyPath, err = crypto.Encrypt(vm.KeyPath, m.encryptionKey)
-      if err != nil {
-        return err
-      }
-    }
-
-    _, err := vmStmt.Exec(
-      generateID(),
-      vm.Name,
-      vm.IP,
-      vm.Port,
-      vm.Username,
-      encryptedPassword,
-      encryptedKeyPath,
-      vm.Status,
-      vm.Description,
-      vm.CreatedAt,
-      vm.UpdatedAt,
-    )
-    if err != nil {
-      return err
-    }
-  }
-
-  // 导入 Groups
-  groupStmt, err := tx.Prepare(`INSERT OR REPLACE INTO groups
-		(id, name, description, vms, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)`)
-  if err != nil {
-    return err
-  }
-  defer groupStmt.Close()
-
-  for _, group := range vmData.Groups {
-    vmsJSON, _ := json.Marshal(group.VMs)
-    _, err := groupStmt.Exec(
-      generateID(),
-      group.Name,
-      group.Description,
-      string(vmsJSON),
-      group.CreatedAt,
-      group.UpdatedAt,
-    )
-    if err != nil {
-      return err
-    }
-  }
-
-  return tx.Commit()
 }
 
 // generateID 生成唯一 ID
@@ -384,7 +268,7 @@ func (m *Manager) GetPermissionManager() *PermissionManager {
 }
 
 // AddGroup 添加一个新的 VM 组
-func (m *Manager) AddGroup(name, description string, vms []string) error {
+func (m *Manager) AddGroup(name, description, owner string, vms []string, isShared bool, sharedWith []string) error {
   m.mu.Lock()
   defer m.mu.Unlock()
 
@@ -402,8 +286,11 @@ func (m *Manager) AddGroup(name, description string, vms []string) error {
 
   // 创建新组
   group := NewGroup(name, description, vms)
+  group.Owner = owner
+  group.IsShared = isShared
+  group.SharedWith = sharedWith
   m.groups[name] = group
-  log.Printf("Added group: %s with %d VMs", name, len(vms))
+  log.Printf("Added group: %s with %d VMs, owner: %s, shared: %v", name, len(vms), owner, isShared)
 
   // 保存到数据库
   if err := m.saveGroupToDB(group); err != nil {
@@ -463,7 +350,7 @@ func (m *Manager) ListGroups() []*Group {
 }
 
 // UpdateGroup 更新一个 VM 组
-func (m *Manager) UpdateGroup(name, description string, vms []string) error {
+func (m *Manager) UpdateGroup(name, description string, vms []string, isShared bool, sharedWith []string) error {
   m.mu.Lock()
   defer m.mu.Unlock()
 
@@ -483,8 +370,10 @@ func (m *Manager) UpdateGroup(name, description string, vms []string) error {
   // 更新组信息
   group.Description = description
   group.VMs = vms
+  group.IsShared = isShared
+  group.SharedWith = sharedWith
   group.UpdatedAt = time.Now()
-  log.Printf("Updated group: %s with %d VMs", name, len(vms))
+  log.Printf("Updated group: %s with %d VMs, shared: %v", name, len(vms), isShared)
 
   // 保存到数据库
   if err := m.saveGroupToDB(group); err != nil {
@@ -501,18 +390,34 @@ func (m *Manager) saveGroupToDB(group *Group) error {
     return err
   }
 
-  query := `INSERT OR REPLACE INTO groups (id, name, description, vms, created_at, updated_at)
-			  VALUES (?, ?, ?, ?, ?, ?)`
+  sharedWithJSON, err := json.Marshal(group.SharedWith)
+  if err != nil {
+    return err
+  }
+
+  query := `INSERT OR REPLACE INTO groups (id, name, description, vms, owner, is_shared, shared_with, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   _, err = m.db.Exec(query,
     generateID(),
     group.Name,
     group.Description,
     string(vmsJSON),
+    group.Owner,
+    boolToInt(group.IsShared),
+    string(sharedWithJSON),
     group.CreatedAt,
     group.UpdatedAt,
   )
 
   return err
+}
+
+// boolToInt 将布尔值转换为整数
+func boolToInt(b bool) int {
+  if b {
+    return 1
+  }
+  return 0
 }
 
 // LoadVMs 从数据库加载 VM 和组信息
@@ -575,17 +480,18 @@ func (m *Manager) LoadVMs() error {
   }
 
   // 加载 Groups
-  rows, err = m.db.Query(`SELECT id, name, description, vms, created_at, updated_at FROM groups`)
+  rows, err = m.db.Query(`SELECT id, name, description, vms, owner, is_shared, shared_with, created_at, updated_at FROM groups`)
   if err != nil {
     return fmt.Errorf("failed to query groups: %v", err)
   }
   defer rows.Close()
 
   for rows.Next() {
-    var id, name, description, vmsJSON string
+    var id, name, description, vmsJSON, owner, sharedWithJSON string
+    var isShared int
     var createdAt, updatedAt time.Time
 
-    err := rows.Scan(&id, &name, &description, &vmsJSON, &createdAt, &updatedAt)
+    err := rows.Scan(&id, &name, &description, &vmsJSON, &owner, &isShared, &sharedWithJSON, &createdAt, &updatedAt)
     if err != nil {
       return fmt.Errorf("failed to scan group row: %v", err)
     }
@@ -595,10 +501,18 @@ func (m *Manager) LoadVMs() error {
       vms = []string{}
     }
 
+    var sharedWith []string
+    if err := json.Unmarshal([]byte(sharedWithJSON), &sharedWith); err != nil {
+      sharedWith = []string{}
+    }
+
     group := &Group{
       Name:        name,
       Description: description,
       VMs:         vms,
+      Owner:       owner,
+      IsShared:    isShared == 1,
+      SharedWith:  sharedWith,
       CreatedAt:   createdAt,
       UpdatedAt:   updatedAt,
     }

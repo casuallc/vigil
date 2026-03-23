@@ -4,7 +4,6 @@ import (
   "database/sql"
   "encoding/json"
   "fmt"
-  "log"
   "os"
   "path/filepath"
   "strings"
@@ -50,98 +49,13 @@ func NewSQLiteUserDatabase(path string) (*SQLiteUserDatabase, error) {
   return sqliteDB, nil
 }
 
-// initDB initializes the database schema
+// initDB initializes the database schema using migrations
 func (ud *SQLiteUserDatabase) initDB() error {
-  schema, err := dbsql.LoadUsersSchema()
-  if err != nil {
-    return err
+  // Run database migrations
+  if err := dbsql.InitAndMigrate(ud.db); err != nil {
+    return fmt.Errorf("failed to run database migrations: %w", err)
   }
-
-  // Create tables if not exists
-  _, err = ud.db.Exec(schema)
-  if err != nil {
-    return err
-  }
-
-  // Run migrations to add new columns if they don't exist
-  return ud.migrateDB()
-}
-
-// migrateDB adds new columns to existing tables if they don't exist
-func (ud *SQLiteUserDatabase) migrateDB() error {
-  // Expected columns in users table
-  expectedColumns := map[string]string{
-    "id":            "TEXT",
-    "username":      "TEXT",
-    "password":      "TEXT",
-    "email":         "TEXT",
-    "role":          "TEXT",
-    "created_at":    "DATETIME",
-    "updated_at":    "DATETIME",
-    "last_login_at": "DATETIME",
-    "last_login_ip": "TEXT",
-    "login_count":   "INTEGER",
-    "avatar":        "TEXT",
-    "nickname":      "TEXT",
-    "region":        "TEXT",
-    "configs":       "TEXT",
-  }
-
-  // Get current columns from database
-  currentColumns, err := ud.getTableColumns("users")
-  if err != nil {
-    // If table doesn't exist yet, skip migration (table will be created by schema)
-    if strings.Contains(err.Error(), "no such table") {
-      return nil
-    }
-    return err
-  }
-
-  // Find columns to add
-  for col, dtype := range expectedColumns {
-    if _, exists := currentColumns[col]; !exists {
-      alterSQL := fmt.Sprintf("ALTER TABLE users ADD COLUMN %s %s DEFAULT ''", col, dtype)
-      if col == "login_count" {
-        alterSQL = fmt.Sprintf("ALTER TABLE users ADD COLUMN %s %s DEFAULT 0", col, dtype)
-      }
-      _, err := ud.db.Exec(alterSQL)
-      if err != nil {
-        return fmt.Errorf("failed to add column %s: %w", col, err)
-      }
-      log.Printf("Database migration: added column '%s' to table 'users'", col)
-    }
-  }
-
-  // Note: SQLite doesn't support DROP COLUMN in older versions
-  // If a column needs to be removed, we log it but don't delete
-  for col := range currentColumns {
-    if _, expected := expectedColumns[col]; !expected {
-      log.Printf("Database warning: unexpected column '%s' found in 'users' table (not removing)", col)
-    }
-  }
-
   return nil
-}
-
-// getTableColumns returns all column names and their types for a given table
-func (ud *SQLiteUserDatabase) getTableColumns(tableName string) (map[string]string, error) {
-  query := fmt.Sprintf("SELECT name, type FROM pragma_table_info('%s')", tableName)
-  rows, err := ud.db.Query(query)
-  if err != nil {
-    return nil, err
-  }
-  defer rows.Close()
-
-  columns := make(map[string]string)
-  for rows.Next() {
-    var name, dtype string
-    if err := rows.Scan(&name, &dtype); err != nil {
-      return nil, err
-    }
-    columns[name] = dtype
-  }
-
-  return columns, rows.Err()
 }
 
 // Close closes the database connection

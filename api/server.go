@@ -20,6 +20,7 @@ import (
   "bufio"
   "bytes"
   "crypto/tls"
+  "database/sql"
   "encoding/json"
   "fmt"
   "io"
@@ -36,23 +37,27 @@ import (
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/models"
   "github.com/casuallc/vigil/proc"
+  dbsql "github.com/casuallc/vigil/sql"
   "github.com/casuallc/vigil/vm"
   _ "modernc.org/sqlite"
 )
 
 // Server represents the HTTP API server
 type Server struct {
-  config          *config.Config
-  manager         *proc.Manager
-  monitor         *proc.Monitor
-  resourceMonitor *proc.ResourceMonitor
-  vmManager       *vm.Manager
-  userDatabase    *models.SQLiteUserDatabase
+  config           *config.Config
+  manager          *proc.Manager
+  monitor          *proc.Monitor
+  resourceMonitor  *proc.ResourceMonitor
+  vmManager        *vm.Manager
+  userDatabase     *models.SQLiteUserDatabase
   loginLogDatabase *models.LoginLogDatabase
-  auditLogger     *audit.Logger
+  auditLogger      *audit.Logger
   // SSH connection tracking
   sshConnections   map[string]*SSHConnectionInfo
   sshConnectionsMu sync.RWMutex
+  // Command template and history databases
+  commandTemplateDB *sql.DB
+  commandHistoryDB  *sql.DB
 }
 
 // SSHConnectionInfo represents an active SSH connection
@@ -87,18 +92,6 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     log.Printf("Warning: failed to initialize SQLite user database: %v", err)
   } else {
     log.Printf("SQLite user database initialized at %s", dbPath)
-
-    // Migrate from JSON file if it exists
-    jsonPath := "data/users.json"
-    if _, err := os.Stat(jsonPath); err == nil {
-      log.Printf("Found existing JSON user file, migrating to SQLite...")
-      if err := models.MigrateJSONToSQLite(jsonPath, dbPath); err != nil {
-        log.Printf("Warning: failed to migrate users from JSON: %v", err)
-      } else {
-        log.Printf("Users migrated successfully from JSON to SQLite")
-        os.Remove(jsonPath)
-      }
-    }
   }
 
   // Create audit log directory
@@ -120,6 +113,21 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     log.Printf("Login log database initialized at %s", loginLogPath)
   }
 
+  // Initialize command template and history databases
+  commandTemplateDB, err := initCommandTemplateDB(dbPath)
+  if err != nil {
+    log.Printf("Warning: failed to initialize command template database: %v", err)
+  } else {
+    log.Printf("Command template database initialized")
+  }
+
+  commandHistoryDB, err := initCommandHistoryDB(dbPath)
+  if err != nil {
+    log.Printf("Warning: failed to initialize command history database: %v", err)
+  } else {
+    log.Printf("Command history database initialized")
+  }
+
   server := &Server{
     config:           config,
     manager:          manager,
@@ -131,6 +139,9 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     auditLogger:      auditLogger,
     // Initialize SSH connection tracking
     sshConnections: make(map[string]*SSHConnectionInfo),
+    // Initialize command databases
+    commandTemplateDB: commandTemplateDB,
+    commandHistoryDB:  commandHistoryDB,
   }
 
   // Start the resource monitor
@@ -519,4 +530,58 @@ func (s *Server) Stop() {
   if s.loginLogDatabase != nil {
     s.loginLogDatabase.Close()
   }
+
+  // Close command template database connection
+  if s.commandTemplateDB != nil {
+    s.commandTemplateDB.Close()
+  }
+
+  // Close command history database connection
+  if s.commandHistoryDB != nil {
+    s.commandHistoryDB.Close()
+  }
+}
+
+// initCommandTemplateDB 初始化命令模板数据库
+func initCommandTemplateDB(dbPath string) (*sql.DB, error) {
+  db, err := sql.Open("sqlite", dbPath)
+  if err != nil {
+    return nil, err
+  }
+
+  schema, err := dbsql.LoadCommandTemplatesSchema()
+  if err != nil {
+    db.Close()
+    return nil, err
+  }
+
+  _, err = db.Exec(schema)
+  if err != nil {
+    db.Close()
+    return nil, err
+  }
+
+  return db, nil
+}
+
+// initCommandHistoryDB 初始化命令历史数据库
+func initCommandHistoryDB(dbPath string) (*sql.DB, error) {
+  db, err := sql.Open("sqlite", dbPath)
+  if err != nil {
+    return nil, err
+  }
+
+  schema, err := dbsql.LoadCommandHistorySchema()
+  if err != nil {
+    db.Close()
+    return nil, err
+  }
+
+  _, err = db.Exec(schema)
+  if err != nil {
+    db.Close()
+    return nil, err
+  }
+
+  return db, nil
 }

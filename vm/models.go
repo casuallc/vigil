@@ -61,6 +61,9 @@ type Group struct {
   Name        string    `json:"name"`
   Description string    `json:"description"`
   VMs         []string  `json:"vms"` // VM名称列表
+  Owner       string    `json:"owner"`       // 创建者用户名
+  IsShared    bool      `json:"is_shared"`   // 是否共享给团队
+  SharedWith  []string  `json:"shared_with"` // 共享给指定用户，空数组表示全员可见
   CreatedAt   time.Time `json:"created_at"`
   UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -72,6 +75,9 @@ func NewGroup(name, description string, vms []string) *Group {
     Name:        name,
     Description: description,
     VMs:         vms,
+    Owner:       "",
+    IsShared:    false,
+    SharedWith:  []string{},
     CreatedAt:   now,
     UpdatedAt:   now,
   }
