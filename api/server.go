@@ -61,6 +61,8 @@ type Server struct {
   // Schedule databases
   scheduleDB          *sql.DB
   scheduleExecutionDB *sql.DB
+  // Scheduler for automatic task execution
+  scheduler           *Scheduler
 }
 
 // SSHConnectionInfo represents an active SSH connection
@@ -163,10 +165,15 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     // Initialize schedule databases
     scheduleDB:          scheduleDB,
     scheduleExecutionDB: scheduleExecutionDB,
+    // Initialize scheduler
+    scheduler:          NewScheduler(scheduleDB, scheduleExecutionDB, vmManager),
   }
 
   // Start the resource monitor
   resourceMonitor.Start()
+
+  // Start the scheduler
+  server.scheduler.Start()
 
   return server
 }
@@ -489,6 +496,11 @@ func (s *Server) CloseAllSSHConnections() int {
 // Start starts the HTTP server
 func (s *Server) Start() error {
   addr := s.config.Addr
+  // Use default address if not configured
+  if addr == "" {
+    addr = ":8181"
+    log.Printf("Warning: no address configured, using default %s", addr)
+  }
   // 获取路由
   r := s.Router()
 
@@ -568,6 +580,11 @@ func (s *Server) Stop() {
   }
   if s.scheduleExecutionDB != nil {
     s.scheduleExecutionDB.Close()
+  }
+
+  // Stop the scheduler
+  if s.scheduler != nil {
+    s.scheduler.Stop()
   }
 }
 

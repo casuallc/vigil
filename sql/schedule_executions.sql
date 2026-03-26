@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS schedule_executions (
     completed_at DATETIME,
     status TEXT DEFAULT 'running',
     results TEXT DEFAULT '{}',
+    trigger_type TEXT DEFAULT 'auto',
     FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
 );
 

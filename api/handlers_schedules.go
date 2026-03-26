@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/casuallc/vigil/vm"
@@ -522,10 +523,114 @@ func (s *Server) handleGetScheduleHistory(w http.ResponseWriter, r *http.Request
 }
 
 // calculateNextRun calculates the next run time based on cron expression
-// This is a simple implementation - in production, use a proper cron library
 func calculateNextRun(cronExpr string, lastRun *time.Time) *time.Time {
-	// For now, return a placeholder - in production, parse the cron expression
-	// and calculate the actual next run time
-	next := time.Now().Add(time.Hour)
-	return &next
+	if cronExpr == "" {
+		return nil
+	}
+
+	now := time.Now()
+	// Start from the next minute
+	t := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute()+1, 0, 0, now.Location())
+
+	// Parse cron expression (supports standard 5-field cron: minute hour day month weekday)
+	fields := strings.Fields(cronExpr)
+	if len(fields) != 5 {
+		return nil
+	}
+
+	// Try up to 366 days (leap year) worth of minutes
+	for i := 0; i < 366*24*60; i++ {
+		if matchesCron(t, fields) {
+			return &t
+		}
+		t = t.Add(time.Minute)
+	}
+
+	return nil
+}
+
+// matchesCron checks if a given time matches the cron expression
+func matchesCron(t time.Time, fields []string) bool {
+	minute, hour, day, month, weekday := fields[0], fields[1], fields[2], fields[3], fields[4]
+
+	// Check each field
+	if !matchesField(minute, t.Minute(), 0, 59) {
+		return false
+	}
+	if !matchesField(hour, t.Hour(), 0, 23) {
+		return false
+	}
+	if !matchesField(day, t.Day(), 1, 31) {
+		return false
+	}
+	if !matchesField(month, int(t.Month()), 1, 12) {
+		return false
+	}
+	if !matchesField(weekday, int(t.Weekday()), 0, 6) {
+		return false
+	}
+
+	return true
+}
+
+// matchesField checks if a value matches a cron field pattern
+func matchesField(field string, value int, min, max int) bool {
+	// Handle wildcard
+	if field == "*" {
+		return true
+	}
+
+	// Handle list (comma-separated)
+	if strings.Contains(field, ",") {
+		parts := strings.Split(field, ",")
+		for _, part := range parts {
+			if matchesField(part, value, min, max) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Handle range (dash)
+	if strings.Contains(field, "-") {
+		parts := strings.Split(field, "-")
+		if len(parts) == 2 {
+			start := parseIntOrWildcard(parts[0], min)
+			end := parseIntOrWildcard(parts[1], max)
+			return value >= start && value <= end
+		}
+	}
+
+	// Handle step (slash)
+	if strings.Contains(field, "/") {
+		parts := strings.Split(field, "/")
+		if len(parts) == 2 {
+			step := parseIntOrWildcard(parts[1], 1)
+			if step == 0 {
+				return false
+			}
+			// Handle */N (every N) or X/N (starting from X)
+			if parts[0] == "*" {
+				return value%step == 0
+			}
+			start := parseIntOrWildcard(parts[0], min)
+			return value >= start && (value-start)%step == 0
+		}
+	}
+
+	// Handle specific value or wildcard start
+	val := parseIntOrWildcard(field, min)
+	return value == val
+}
+
+// parseIntOrWildcard parses a number, treating * as the min value
+func parseIntOrWildcard(s string, defaultVal int) int {
+	if s == "*" {
+		return defaultVal
+	}
+	val, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultVal
+	}
+	return val
 }
