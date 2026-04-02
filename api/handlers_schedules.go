@@ -528,9 +528,16 @@ func calculateNextRun(cronExpr string, lastRun *time.Time) *time.Time {
 		return nil
 	}
 
-	now := time.Now()
-	// Start from the next minute
-	t := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute()+1, 0, 0, now.Location())
+	// Determine the start time for calculation
+	var startTime time.Time
+	if lastRun != nil {
+		startTime = *lastRun
+	} else {
+		startTime = time.Now()
+	}
+
+	// Start from the next minute after startTime
+	t := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), startTime.Hour(), startTime.Minute()+1, 0, 0, startTime.Location())
 
 	// Parse cron expression (supports standard 5-field cron: minute hour day month weekday)
 	fields := strings.Fields(cronExpr)

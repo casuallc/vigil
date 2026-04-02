@@ -36,6 +36,9 @@ type Scheduler struct {
 	interval            time.Duration
 	mu                  sync.RWMutex
 	running             bool
+	// Track executing tasks to prevent concurrent execution of the same task
+	executingTasks    map[string]bool
+	executingTasksMu  sync.Mutex
 }
 
 // NewScheduler creates a new scheduler
@@ -45,6 +48,7 @@ func NewScheduler(scheduleDB, scheduleExecutionDB *sql.DB, vmManager *vm.Manager
 		scheduleExecutionDB: scheduleExecutionDB,
 		vmManager:           vmManager,
 		interval:            time.Minute, // Check every minute
+		executingTasks:      make(map[string]bool),
 	}
 }
 
@@ -112,8 +116,36 @@ func (s *Scheduler) checkAndExecuteTasks() {
 		return
 	}
 
+	if len(tasks) > 0 {
+		log.Printf("Scheduler: found %d task(s) due for execution", len(tasks))
+	}
+
 	for _, task := range tasks {
+		// Skip if task is already executing
+		if s.isTaskExecuting(task.ID) {
+			log.Printf("Scheduler: task %s (%s) is already executing, skipping", task.Name, task.ID)
+			continue
+		}
+		log.Printf("Scheduler: triggering execution of task %s (%s)", task.Name, task.ID)
 		go s.executeScheduledTask(task)
+	}
+}
+
+// isTaskExecuting checks if a task is currently executing
+func (s *Scheduler) isTaskExecuting(taskID string) bool {
+	s.executingTasksMu.Lock()
+	defer s.executingTasksMu.Unlock()
+	return s.executingTasks[taskID]
+}
+
+// markTaskExecuting marks a task as executing or not executing
+func (s *Scheduler) markTaskExecuting(taskID string, executing bool) {
+	s.executingTasksMu.Lock()
+	defer s.executingTasksMu.Unlock()
+	if executing {
+		s.executingTasks[taskID] = true
+	} else {
+		delete(s.executingTasks, taskID)
 	}
 }
 
@@ -162,8 +194,12 @@ func (s *Scheduler) getDueTasks() ([]ScheduleTask, error) {
 		}
 
 		// Check if task is due
-		if s.isTaskDue(task.Cron, lastRunAt, now) {
+		isDue := s.isTaskDue(task.Cron, lastRunAt, now)
+		if isDue {
+			log.Printf("Scheduler: task %s (%s) is due for execution (cron=%s, lastRun=%v)", task.Name, task.ID, task.Cron, lastRunAt.Time)
 			tasks = append(tasks, task)
+		} else {
+			log.Printf("Scheduler: task %s (%s) is NOT due (cron=%s, lastRun=%v)", task.Name, task.ID, task.Cron, lastRunAt.Time)
 		}
 	}
 
@@ -176,26 +212,39 @@ func (s *Scheduler) getDueTasks() ([]ScheduleTask, error) {
 
 // isTaskDue checks if a task should run based on its cron expression and last run time
 func (s *Scheduler) isTaskDue(cronExpr string, lastRun sql.NullTime, now time.Time) bool {
-	// Calculate when the task should have run
-	nextRun := calculateNextRun(cronExpr, nil)
+	var nextRun *time.Time
+	var startDesc string
+
+	// If there's a last run time, calculate next run from lastRun
+	if lastRun.Valid {
+		nextRun = calculateNextRun(cronExpr, &lastRun.Time)
+		startDesc = "lastRun"
+	} else {
+		// Task never ran, calculate from now (to find the next scheduled time)
+		nextRun = calculateNextRun(cronExpr, &now)
+		startDesc = "now"
+	}
+
 	if nextRun == nil {
+		log.Printf("Scheduler isTaskDue: failed to calculate next run for cron '%s'", cronExpr)
 		return false
 	}
 
-	// If there's a last run time, use it to calculate next run
-	if lastRun.Valid {
-		nextRun = calculateNextRun(cronExpr, &lastRun.Time)
-		if nextRun == nil {
-			return false
-		}
-	}
+	// Truncate now to minute precision for comparison (nextRun is at minute boundary)
+	nowTruncated := now.Truncate(time.Minute)
+	isDue := nowTruncated.After(*nextRun) || nowTruncated.Equal(*nextRun)
+	log.Printf("Scheduler isTaskDue: cron='%s' start=%s nextRun=%v now=%v isDue=%v",
+		cronExpr, startDesc, nextRun.Format("15:04:05"), nowTruncated.Format("15:04:05"), isDue)
 
-	// Task is due if the next run time has passed
-	return now.After(*nextRun) || now.Equal(*nextRun)
+	return isDue
 }
 
 // executeScheduledTask executes a single scheduled task
 func (s *Scheduler) executeScheduledTask(task ScheduleTask) {
+	// Mark task as executing
+	s.markTaskExecuting(task.ID, true)
+	defer s.markTaskExecuting(task.ID, false)
+
 	log.Printf("Scheduler: executing task %s (%s)", task.Name, task.ID)
 
 	// Create execution record
