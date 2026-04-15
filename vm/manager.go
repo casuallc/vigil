@@ -531,3 +531,116 @@ func (m *Manager) SaveVMs() error {
   log.Printf("SaveVMs called - SQLite auto-saves, no action needed")
   return nil
 }
+
+// EnsureLocalhostVM checks for a localhost VM and creates one with passwordless SSH if missing.
+func (m *Manager) EnsureLocalhostVM() error {
+  username, port, err := getLocalSSHInfo()
+  if err != nil {
+    return fmt.Errorf("failed to get local SSH info: %w", err)
+  }
+
+  keysDir := filepath.Join(filepath.Dir(m.dbPath), "keys")
+  keyPath := filepath.Join(keysDir, "vigil_localhost")
+
+  // Generate SSH key pair if it doesn't exist
+  pubKeyPath, err := generateSSHKeyPair(keyPath)
+  if err != nil {
+    return fmt.Errorf("failed to generate SSH key pair: %w", err)
+  }
+
+  // Ensure the public key is in authorized_keys
+  if err := ensureAuthorizedKeys(pubKeyPath); err != nil {
+    return fmt.Errorf("failed to ensure authorized_keys: %w", err)
+  }
+
+  m.mu.Lock()
+  defer m.mu.Unlock()
+
+  // If localhost VM already exists, optionally update KeyPath if empty
+  if existing, exists := m.vms["localhost"]; exists {
+    if existing.KeyPath == "" {
+      existing.KeyPath = keyPath
+      existing.UpdatedAt = time.Now()
+      encryptedKeyPath := keyPath
+      if m.encryptionKey != "" {
+        var err error
+        encryptedKeyPath, err = crypto.Encrypt(keyPath, m.encryptionKey)
+        if err != nil {
+          return fmt.Errorf("failed to encrypt key path: %w", err)
+        }
+      }
+      _, err := m.db.Exec("UPDATE vms SET key_path = ?, updated_at = ? WHERE name = ?", encryptedKeyPath, existing.UpdatedAt, "localhost")
+      if err != nil {
+        return fmt.Errorf("failed to update localhost VM key_path: %w", err)
+      }
+    }
+    return nil
+  }
+
+  // Create the localhost VM
+  localhostVM := NewVM("localhost", "127.0.0.1", port, username, "", keyPath)
+  localhostVM.Status = "active"
+  localhostVM.Description = "Auto-managed local server"
+
+  // Insert into database (same logic as AddVM but without the lock since we already hold it)
+  encryptedPassword := ""
+  encryptedKeyPath := keyPath
+  if keyPath != "" && m.encryptionKey != "" {
+    var err error
+    encryptedKeyPath, err = crypto.Encrypt(keyPath, m.encryptionKey)
+    if err != nil {
+      return fmt.Errorf("failed to encrypt key path: %w", err)
+    }
+  }
+
+  query := `INSERT INTO vms (id, name, ip, port, username, password, key_path, status, description, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  _, err = m.db.Exec(query,
+    generateID(),
+    localhostVM.Name,
+    localhostVM.IP,
+    localhostVM.Port,
+    localhostVM.Username,
+    encryptedPassword,
+    encryptedKeyPath,
+    localhostVM.Status,
+    localhostVM.Description,
+    localhostVM.CreatedAt,
+    localhostVM.UpdatedAt,
+  )
+  if err != nil {
+    return fmt.Errorf("failed to save localhost VM to database: %w", err)
+  }
+
+  m.vms["localhost"] = localhostVM
+  log.Printf("Added new VM: %s", localhostVM.Name)
+
+  // Ensure VM is added to the default group
+  defaultGroup, exists := m.groups["default"]
+  if !exists {
+    defaultGroup = NewGroup("default", "Default VM group", []string{localhostVM.Name})
+    m.groups["default"] = defaultGroup
+    log.Printf("Created default group and added VM %s to it", localhostVM.Name)
+    if err := m.saveGroupToDB(defaultGroup); err != nil {
+      log.Printf("Failed to save default group: %v", err)
+    }
+  } else {
+    vmExistsInGroup := false
+    for _, existingVM := range defaultGroup.VMs {
+      if existingVM == localhostVM.Name {
+        vmExistsInGroup = true
+        break
+      }
+    }
+    if !vmExistsInGroup {
+      defaultGroup.VMs = append(defaultGroup.VMs, localhostVM.Name)
+      defaultGroup.UpdatedAt = time.Now()
+      log.Printf("Added VM %s to default group", localhostVM.Name)
+      if err := m.saveGroupToDB(defaultGroup); err != nil {
+        log.Printf("Failed to update default group: %v", err)
+      }
+    }
+  }
+
+  return nil
+}

@@ -4,6 +4,7 @@ systemctl daemon-reload
 echo "=================================================="
 echo "BBX (Vigil) has been installed to /opt/bbx"
 echo ""
+echo "Auto start:     systemctl enable bbx-server"
 echo "Start server:   systemctl start bbx-server"
 echo "Stop server:    systemctl stop bbx-server"
 echo "View status:    systemctl status bbx-server"

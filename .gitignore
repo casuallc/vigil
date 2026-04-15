@@ -148,3 +148,4 @@ release/
 pkg/
 /bbx-cli
 /bbx-server
+/data/

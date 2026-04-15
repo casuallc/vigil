@@ -5,10 +5,16 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/bbx
-ExecStart=/opt/bbx/bbx-server -config /opt/bbx/conf/config.yaml
+
+ExecStart=/bin/sh -c '/opt/bbx/bbx-server -config /opt/bbx/conf/config.yaml >> /opt/bbx/logs/app.log 2>&1'
+
 Restart=always
-StandardOutput=append:/opt/bbx/logs/app.log
-StandardError=append:/opt/bbx/logs/app.log
+RestartSec=5
+
+LimitNOFILE=65535
+LimitNPROC=65535
+
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

@@ -91,6 +91,11 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
   vmManager := vm.NewManagerWithConfig(dbPath, config.Security.EncryptionKey)
   log.Printf("VM database initialized at %s", dbPath)
 
+  // Auto-add localhost VM with passwordless SSH if not present
+  if err := vmManager.EnsureLocalhostVM(); err != nil {
+    log.Printf("Warning: failed to auto-add localhost VM: %v", err)
+  }
+
   // Create SQLite user database with the same file
   userDatabase, err := models.NewSQLiteUserDatabase(dbPath)
   if err != nil {
