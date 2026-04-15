@@ -1,4 +1,4 @@
-addr: :8181
+addr: :57575
 
 auth:
   enabled: false

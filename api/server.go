@@ -44,25 +44,25 @@ import (
 
 // Server represents the HTTP API server
 type Server struct {
-  config            *config.Config
-  manager           *proc.Manager
-  monitor           *proc.Monitor
-  resourceMonitor   *proc.ResourceMonitor
-  vmManager         *vm.Manager
-  userDatabase      *models.SQLiteUserDatabase
-  loginLogDatabase  *models.LoginLogDatabase
-  auditLogger       *audit.Logger
+  config           *config.Config
+  manager          *proc.Manager
+  monitor          *proc.Monitor
+  resourceMonitor  *proc.ResourceMonitor
+  vmManager        *vm.Manager
+  userDatabase     *models.SQLiteUserDatabase
+  loginLogDatabase *models.LoginLogDatabase
+  auditLogger      *audit.Logger
   // SSH connection tracking
-  sshConnections    map[string]*SSHConnectionInfo
-  sshConnectionsMu  sync.RWMutex
+  sshConnections   map[string]*SSHConnectionInfo
+  sshConnectionsMu sync.RWMutex
   // Command template and history databases
-  commandTemplateDB   *sql.DB
-  commandHistoryDB    *sql.DB
+  commandTemplateDB *sql.DB
+  commandHistoryDB  *sql.DB
   // Schedule databases
   scheduleDB          *sql.DB
   scheduleExecutionDB *sql.DB
   // Scheduler for automatic task execution
-  scheduler           *Scheduler
+  scheduler *Scheduler
 }
 
 // SSHConnectionInfo represents an active SSH connection
@@ -166,7 +166,7 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
     scheduleDB:          scheduleDB,
     scheduleExecutionDB: scheduleExecutionDB,
     // Initialize scheduler
-    scheduler:          NewScheduler(scheduleDB, scheduleExecutionDB, vmManager),
+    scheduler: NewScheduler(scheduleDB, scheduleExecutionDB, vmManager),
   }
 
   // Start the resource monitor
@@ -498,7 +498,7 @@ func (s *Server) Start() error {
   addr := s.config.Addr
   // Use default address if not configured
   if addr == "" {
-    addr = ":8181"
+    addr = ":57575"
     log.Printf("Warning: no address configured, using default %s", addr)
   }
   // 获取路由

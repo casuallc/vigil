@@ -1,13 +1,13 @@
 nodes:
   - name: node1
     ip: 172.18.100.216
-    port: 8181
+    port: 57575
   - name: node2
     ip: 172.18.100.217
-    port: 8181
+    port: 57575
   - name: node3
     ip: 172.18.100.218
-    port: 8181
+    port: 57575
 
 jobs:
   - name: server

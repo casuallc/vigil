@@ -1,0 +1,42 @@
+name: bbx
+arch: {{ARCH}}
+platform: linux
+version: {{VERSION}}
+section: default
+priority: extra
+maintainer: Vigil Team
+description: Vigil BBX - Process management and monitoring tool
+vendor: Vigil
+homepage: https://github.com/casuallc/vigil
+license: Apache-2.0
+contents:
+  - src: ./release/bbx/bbx-server
+    dst: /opt/bbx/bbx-server
+    file_info:
+      mode: 0755
+  - src: ./release/bbx/bbx-cli
+    dst: /opt/bbx/bbx-cli
+    file_info:
+      mode: 0755
+  - src: ./release/bbx/bin/appctl.sh
+    dst: /opt/bbx/bin/appctl.sh
+    file_info:
+      mode: 0755
+  - src: ./release/bbx/conf
+    dst: /opt/bbx/conf
+    type: tree
+  - src: ./release/bbx/upgrade.sh
+    dst: /opt/bbx/upgrade.sh
+  - src: ./release/bbx/LICENSE
+    dst: /opt/bbx/LICENSE
+  - src: /opt/bbx/bbx-server
+    dst: /usr/bin/bbx-server
+    type: symlink
+  - src: /opt/bbx/bbx-cli
+    dst: /usr/bin/bbx-cli
+    type: symlink
+  - src: ./packaging/bbx-server.service
+    dst: /etc/systemd/system/bbx-server.service
+    type: config|noreplace
+scripts:
+  postinstall: ./packaging/postinstall.sh

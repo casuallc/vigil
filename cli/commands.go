@@ -80,7 +80,7 @@ OS/Arch:   %s/%s
   rootCmd.AddCommand(userCmd)
 
   // Global flags
-  rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:8181", "API server host address")
+  rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:57575", "API server host address")
   rootCmd.PersistentFlags().BoolVar(&insecureSkipVerify, "insecure", false, "Skip TLS certificate verification")
 
   // Override PreRun to create client with the provided host

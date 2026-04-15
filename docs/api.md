@@ -1425,7 +1425,7 @@ Authorization: Basic base64(username:password)
 **登录示例**：
 
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' http://localhost:8181/api/users/login
+curl -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' http://localhost:57575/api/users/login
 ```
 
 **响应示例**：

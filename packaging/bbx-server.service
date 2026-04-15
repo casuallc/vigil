@@ -1,0 +1,14 @@
+[Unit]
+Description=Vigil BBX Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/bbx
+ExecStart=/opt/bbx/bbx-server -config /opt/bbx/conf/config.yaml
+Restart=always
+StandardOutput=append:/opt/bbx/logs/app.log
+StandardError=append:/opt/bbx/logs/app.log
+
+[Install]
+WantedBy=multi-user.target

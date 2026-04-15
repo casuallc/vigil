@@ -79,5 +79,5 @@ https:
 客户端可以使用 HTTPS URL 连接到服务器：
 
 ```bash
-./bbx-cli proc scan -q "MQ" -H https://127.0.0.1:8181
+./bbx-cli proc scan -q "MQ" -H https://127.0.0.1:57575
 ```

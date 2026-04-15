@@ -71,7 +71,7 @@ func TestCosmicHealthCommand(t *testing.T) {
   testConfig := `
 node:
   - ip: 127.0.0.1
-    port: 8181
+    port: 57575
 
 admq:
   - name: test-admq
@@ -114,10 +114,10 @@ func TestCosmicInspectCommand(t *testing.T) {
 nodes:
   - name: test-node-1
     ip: 127.0.0.1
-    port: 8181
+    port: 57575
   - name: test-node-2
     ip: 127.0.0.2
-    port: 8181
+    port: 57575
 
 jobs:
   - name: test-admq
@@ -126,7 +126,7 @@ jobs:
       - test-node-2
     envs:
       - name: port
-        value: "8181"
+        value: "57575"
     rules:
       - name: health_check
         path: ./conf/cosmic/rules/test-admq.yaml
