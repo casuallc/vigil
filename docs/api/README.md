@@ -7,6 +7,7 @@
 | 模块 | 文件 | 基础路径 |
 |------|------|----------|
 | 健康检查 | [health.md](health.md) | `/health` |
+| 授权特征码 | [license.md](license.md) | `/api/license` |
 | 进程管理 | [processes.md](processes.md) | `/api/processes/*`, `/api/namespaces/*` |
 | 资源监控 | [resources.md](resources.md) | `/api/resources/*` |
 | 配置管理 | [config.md](config.md) | `/api/config` |
@@ -23,6 +24,7 @@
 
 ### 系统接口
 - [健康检查](health.md) - 系统健康状态检查
+- [授权特征码](license.md) - 获取服务器物理网卡的授权特征码
 - [配置管理](config.md) - 系统配置读写
 - [资源监控](resources.md) - 系统和进程资源监控
 
