@@ -238,3 +238,10 @@ type AIFixCommandResponse struct {
   FixedCommand string `json:"fixed_command"`
   Explanation  string `json:"explanation"`
 }
+
+// LicenseInfo represents a license/feature code for a network interface
+type LicenseInfo struct {
+  Code      string `json:"code"`
+  Interface string `json:"interface"`
+  IP        string `json:"ip"`
+}
