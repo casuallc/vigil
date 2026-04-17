@@ -79,6 +79,10 @@ OS/Arch:   %s/%s
   userCmd := c.setupUserCommands()
   rootCmd.AddCommand(userCmd)
 
+  // Add License command
+  licenseCmd := c.setupLicenseCommand()
+  rootCmd.AddCommand(licenseCmd)
+
   // Global flags
   rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:57575", "API server host address")
   rootCmd.PersistentFlags().BoolVar(&insecureSkipVerify, "insecure", false, "Skip TLS certificate verification")
@@ -94,7 +98,8 @@ OS/Arch:   %s/%s
         currentCmd == configCmd ||
         currentCmd == execCmd ||
         currentCmd == vmCmd ||
-        currentCmd == fileCmd {
+        currentCmd == fileCmd ||
+        currentCmd == licenseCmd {
         c.client = api.NewClient(apiHost, insecureSkipVerify)
         break
       }
