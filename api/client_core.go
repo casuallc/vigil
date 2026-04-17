@@ -233,6 +233,21 @@ type User struct {
 	Configs  string `json:"configs,omitempty"`  // User configuration (JSON string)
 }
 
+func (c *Client) GetLicense() ([]LicenseInfo, error) {
+	var licenses []LicenseInfo
+	resp, err := c.doRequest("GET", "/api/license", nil)
+	if err != nil {
+		return licenses, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return licenses, c.errorFromResponse(resp)
+	}
+	if err := c.getJSONResponse(resp, &licenses); err != nil {
+		return licenses, err
+	}
+	return licenses, nil
+}
+
 // internalWebSocketDialer returns a WebSocket dialer with TLS config
 func (c *Client) internalWebSocketDialer() *websocket.Dialer {
 	dialer := &websocket.Dialer{}
