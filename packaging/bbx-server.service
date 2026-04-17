@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 WorkingDirectory=/opt/bbx
 
-ExecStart=/bin/sh -c '/opt/bbx/bbx-server -config /opt/bbx/conf/config.yaml >> /opt/bbx/logs/app.log 2>&1'
+ExecStart=/bin/sh -c 'mkdir -p /opt/bbx/logs && /opt/bbx/bbx-server -config /opt/bbx/conf/config.yaml >> /opt/bbx/logs/app.log 2>&1'
 
 Restart=always
 RestartSec=5
