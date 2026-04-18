@@ -27,12 +27,6 @@ import (
 	"time"
 )
 
-// LogLine represents a single log line in SSE events
-type LogLine struct {
-	LineNumber int    `json:"line_number"`
-	Content    string `json:"content"`
-}
-
 func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if path == "" {
