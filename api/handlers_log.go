@@ -66,7 +66,7 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	startLine, err := seekToLine(file, fromLine)
+	startLine, err := seekToLine(file, fromLine, fromLineStr == "")
 	if err != nil {
 		sseWriteError(w, fmt.Sprintf("failed to seek to line: %v", err))
 		flusher.Flush()
@@ -120,9 +120,15 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // seekToLine positions the file to the correct starting line based on fromLine.
+// isDefault is true when fromLine comes from the default value (no from_line param).
 // Returns the starting line number.
-func seekToLine(file *os.File, fromLine int) (int, error) {
+func seekToLine(file *os.File, fromLine int, isDefault bool) (int, error) {
 	if fromLine < 0 {
+		if isDefault {
+			// Default tail -f behavior: start from EOF, don't emit existing lines
+			_, err := file.Seek(0, io.SeekEnd)
+			return 1, err
+		}
 		return seekFromEnd(file, -fromLine)
 	}
 	if fromLine == 0 {
@@ -182,11 +188,28 @@ func seekFromEnd(file *os.File, n int) (int, error) {
 		return 1, nil
 	}
 
+	// Skip trailing newlines so we count actual lines
+	pos := size
+	for pos > 0 {
+		_, err := file.Seek(pos-1, io.SeekStart)
+		if err != nil {
+			return 0, err
+		}
+		b := make([]byte, 1)
+		_, err = io.ReadFull(file, b)
+		if err != nil {
+			return 0, err
+		}
+		if b[0] != '\n' {
+			break
+		}
+		pos--
+	}
+
 	// Read the file backwards to count newlines
 	const bufSize = 8192
 	buf := make([]byte, bufSize)
 	newlines := 0
-	pos := size
 
 	for pos > 0 && newlines < n {
 		readSize := int64(bufSize)
@@ -210,12 +233,18 @@ func seekFromEnd(file *os.File, n int) (int, error) {
 			if buf[i] == '\n' {
 				newlines++
 				if newlines == n {
-					// Position after this newline
-					_, err := file.Seek(pos+int64(i)+1, io.SeekStart)
+					seekPos := pos + int64(i) + 1
+					lineNum, err := countLines(file, seekPos)
 					if err != nil {
 						return 0, err
 					}
-					return countLines(file, pos+int64(i)+1)
+					// countLines uses bufio.Reader which may advance the file position;
+					// seek back to the correct offset before returning.
+					_, err = file.Seek(seekPos, io.SeekStart)
+					if err != nil {
+						return 0, err
+					}
+					return lineNum, nil
 				}
 			}
 		}
