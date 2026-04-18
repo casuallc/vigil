@@ -99,3 +99,4 @@ Vigil is a Go-based process management and message queue client tool (module: `g
 - Cosmic inspection uses script-based checks with expression evaluation for thresholds (`inspection.ExecuteCheck`)
 - Version info is injected at build time via ldflags into the `version` package (see `build_all.sh`)
 - API routes are registered centrally in `api/routes.go`
+- **File upload strategy**: Files ≤100MB use multipart `/api/files/upload` (or `/api/vms/files/{name}/upload` for VMs). Files >100MB use raw-body stream endpoints `/api/files/stream` (or `/api/vms/files/{name}/stream`). Client auto-switches based on file size. Server stream handlers use `io.Copy(r.Body, dstFile)` directly — do NOT call `ParseMultipartForm` for stream endpoints.
