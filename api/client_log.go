@@ -18,6 +18,7 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -35,7 +36,7 @@ type LogLine struct {
 // For each "event: line" received, the JSON data is unmarshaled into a LogLine
 // and passed to the handler. The method returns when the connection closes
 // or an error occurs.
-func (c *Client) StreamLogs(path string, fromLine int, handler func(line LogLine)) error {
+func (c *Client) StreamLogs(ctx context.Context, path string, fromLine int, handler func(line LogLine)) error {
 	q := url.Values{}
 	q.Set("path", path)
 	if fromLine != 0 {
@@ -43,7 +44,7 @@ func (c *Client) StreamLogs(path string, fromLine int, handler func(line LogLine
 	}
 
 	reqURL := fmt.Sprintf("%s/api/files/logs/stream?%s", c.host, q.Encode())
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return err
 	}
