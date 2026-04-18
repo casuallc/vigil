@@ -141,6 +141,9 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/files/copy", s.handleFileCopy).Methods("POST")
   r.HandleFunc("/api/files/move", s.handleFileMove).Methods("POST")
 
+  // File log streaming endpoint
+  r.HandleFunc("/api/files/logs/stream", s.handleLogStream).Methods("GET")
+
   // User management endpoints
   r.HandleFunc("/api/users/register", s.handleRegisterUser).Methods("POST")
   r.HandleFunc("/api/users/login", s.handleUserLogin).Methods("POST")
