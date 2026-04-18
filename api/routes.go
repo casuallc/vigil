@@ -49,6 +49,9 @@ func (s *Server) Router() *mux.Router {
   // License endpoint
   r.HandleFunc("/api/license", s.handleGetLicense).Methods("GET")
 
+  // File stream upload endpoint (for large files)
+  r.HandleFunc("/api/files/stream", s.handleFileStreamUpload).Methods("POST")
+
   // Execute command endpoint
   r.HandleFunc("/api/exec", s.handleExecuteCommand).Methods("POST")
 
@@ -83,6 +86,9 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/vms/files/{name}/mkdir", s.handleVmFileMkdir).Methods("POST")
   r.HandleFunc("/api/vms/files/{name}/touch", s.handleVmFileTouch).Methods("POST")
   r.HandleFunc("/api/vms/files/{name}/rmdir", s.handleVmFileRmdir).Methods("POST")
+
+  // VM File Stream Upload endpoint (for large files)
+  r.HandleFunc("/api/vms/files/{name}/stream", s.handleVmFileStreamUpload).Methods("POST")
 
   // VM Permission endpoints
   r.HandleFunc("/api/vms/permissions/{name}", s.handleAddPermission).Methods("POST")

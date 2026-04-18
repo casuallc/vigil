@@ -28,8 +28,67 @@ import (
 	"github.com/casuallc/vigil/file"
 )
 
-// FileUpload uploads a file to the server
+const (
+	streamUploadThreshold = 100 << 20 // 100MB
+)
+
+// FileUpload uploads a file to the server, automatically choosing multipart or stream based on file size
 func (c *Client) FileUpload(sourcePath, targetPath string) error {
+	// Get file info to determine upload strategy
+	fileInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to stat source file: %v", err)
+	}
+
+	// For large files, use stream upload
+	if fileInfo.Size() > streamUploadThreshold {
+		return c.fileStreamUpload(sourcePath, targetPath, "/api/files/stream")
+	}
+
+	// For small files, use multipart upload
+	return c.fileMultipartUpload(sourcePath, targetPath, "/api/files/upload")
+}
+
+// fileStreamUpload uploads a file via raw body stream
+func (c *Client) fileStreamUpload(sourcePath, targetPath, endpoint string) error {
+	// Open local file
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %v", err)
+	}
+	defer sourceFile.Close()
+
+	// Create request with file as body (streaming)
+	req, err := http.NewRequest("POST", c.host+endpoint, sourceFile)
+	if err != nil {
+		return err
+	}
+
+	// Set request headers
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("X-Target-Path", targetPath)
+
+	// If Basic Auth is configured, attach to request
+	if c.basicUser != "" && c.basicPass != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.errorFromResponse(resp)
+	}
+
+	return nil
+}
+
+// fileMultipartUpload uploads a file via multipart/form-data
+func (c *Client) fileMultipartUpload(sourcePath, targetPath, endpoint string) error {
 	// Open local file
 	sourceFile, err := os.Open(sourcePath)
 	if err != nil {
@@ -62,7 +121,7 @@ func (c *Client) FileUpload(sourcePath, targetPath string) error {
 	writer.Close()
 
 	// Create request
-	req, err := http.NewRequest("POST", c.host+"/api/files/upload", body)
+	req, err := http.NewRequest("POST", c.host+endpoint, body)
 	if err != nil {
 		return err
 	}
@@ -89,65 +148,21 @@ func (c *Client) FileUpload(sourcePath, targetPath string) error {
 	return nil
 }
 
-// VMFileUpload uploads a file to a VM (through server)
+// VMFileUpload uploads a file to a VM (through server), automatically choosing multipart or stream based on file size
 func (c *Client) VMFileUpload(vmName, sourcePath, targetPath string) error {
-	// Open local file
-	sourceFile, err := os.Open(sourcePath)
+	// Get file info to determine upload strategy
+	fileInfo, err := os.Stat(sourcePath)
 	if err != nil {
-		return fmt.Errorf("failed to open source file: %v", err)
-	}
-	defer sourceFile.Close()
-
-	// Create multipart/form-data request
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-
-	// Add file field
-	fileField, err := writer.CreateFormFile("file", filepath.Base(sourcePath))
-	if err != nil {
-		return err
+		return fmt.Errorf("failed to stat source file: %v", err)
 	}
 
-	// Copy file content to multipart writer
-	if _, err := io.Copy(fileField, sourceFile); err != nil {
-		return err
+	// For large files, use stream upload
+	if fileInfo.Size() > streamUploadThreshold {
+		return c.fileStreamUpload(sourcePath, targetPath, fmt.Sprintf("/api/vms/files/%s/stream", vmName))
 	}
 
-	// Add target path field
-	if err := writer.WriteField("target_path", targetPath); err != nil {
-		return err
-	}
-
-	// Finish multipart writer
-	contentType := writer.FormDataContentType()
-	writer.Close()
-
-	// Create request with new route format
-	req, err := http.NewRequest("POST", c.host+fmt.Sprintf("/api/vms/files/%s/upload", vmName), body)
-	if err != nil {
-		return err
-	}
-
-	// Set request headers
-	req.Header.Set("Content-Type", contentType)
-
-	// If Basic Auth is configured, attach to request
-	if c.basicUser != "" && c.basicPass != "" {
-		req.SetBasicAuth(c.basicUser, c.basicPass)
-	}
-
-	// Send request
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return c.errorFromResponse(resp)
-	}
-
-	return nil
+	// For small files, use multipart upload
+	return c.fileMultipartUpload(sourcePath, targetPath, fmt.Sprintf("/api/vms/files/%s/upload", vmName))
 }
 
 // FileDownload downloads a file from the server
