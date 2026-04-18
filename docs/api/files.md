@@ -6,6 +6,7 @@
 |---------|----------|----------|
 | /api/files/upload | POST | 上传文件（≤100MB） |
 | /api/files/stream | POST | 流式上传文件（>100MB） |
+| /api/files/logs/stream | GET | 实时流式查看日志（tail -f） |
 | /api/files/download | POST | 下载文件 |
 | /api/files/list | POST | 列出文件 |
 | /api/files/delete | POST | 删除文件 |
@@ -173,3 +174,48 @@
 **响应格式**：
 - 成功：200 OK
 - 失败：400 Bad Request 或 500 Internal Server Error
+
+---
+
+## GET /api/files/logs/stream
+
+**功能描述**：实时流式查看日志文件（类似 `tail -f`），通过 SSE（Server-Sent Events）逐行推送。
+
+**请求参数**（Query String）：
+- `path`（必填）：日志文件路径
+- `from_line`（可选）：起始行号策略
+  - 省略：从文件末尾开始（默认 `tail -f` 行为）
+  - `0`：从文件开头开始
+  - 正数：从指定行号开始
+  - 负数：从末尾向前偏移（如 `-100` 表示最后 100 行）
+
+**请求示例**：
+```
+GET /api/files/logs/stream?path=/var/log/app.log&from_line=-100
+```
+
+**响应格式**：SSE（`Content-Type: text/event-stream`）
+
+- 普通日志行事件：
+  ```
+  event: line
+  data: {"line_number": 101, "content": "2025-04-18 log message..."}
+  ```
+
+- 错误事件（文件不存在、读取失败等）：
+  ```
+  event: error
+  data: {"message": "failed to open file"}
+  ```
+
+**响应头**：
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+```
+
+**说明**：
+- 服务端读取到文件末尾后，每 500ms 轮询检查是否有新内容写入
+- 客户端断开连接时，服务端自动清理资源
+- 支持跨平台换行符（`\n` 和 `\r\n`）
