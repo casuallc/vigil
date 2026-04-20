@@ -19,17 +19,52 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
+	"runtime"
 	"time"
 
 	"github.com/casuallc/vigil/common"
 	"github.com/casuallc/vigil/config"
 	"github.com/casuallc/vigil/models"
+	"github.com/casuallc/vigil/version"
 )
 
 // handleHealthCheck handles health check requests
 func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleGetInfo handles GET /api/info endpoint
+func (s *Server) handleGetInfo(w http.ResponseWriter, r *http.Request) {
+	hostname, _ := os.Hostname()
+
+	var ifaces []NetworkInterface
+	netIfaces, _ := net.Interfaces()
+	for _, iface := range netIfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok {
+				ifaces = append(ifaces, NetworkInterface{
+					MAC:     iface.HardwareAddr.String(),
+					Network: addr.String(),
+					IP:      ipnet.IP.String(),
+				})
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"hostname":    hostname,
+		"interfaces":  ifaces,
+		"version":     version.GetVersionInfo(),
+		"arch":        runtime.GOARCH,
+		"os":          runtime.GOOS,
+	})
 }
 
 // handleGetConfig handles GET /api/config endpoint

@@ -2,6 +2,13 @@ package api
 
 import "time"
 
+// NetworkInterface represents a network interface with its MAC, network, and IP
+type NetworkInterface struct {
+	MAC     string `json:"mac"`
+	Network string `json:"network"`
+	IP      string `json:"ip"`
+}
+
 type WSMessage struct {
   Type string `json:"type"` // "input" | "resize"
   Data []byte `json:"data,omitempty"`

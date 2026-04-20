@@ -46,6 +46,9 @@ func (s *Server) Router() *mux.Router {
   // Health check
   r.HandleFunc("/health", s.handleHealthCheck).Methods("GET")
 
+  // Server info
+  r.HandleFunc("/api/info", s.handleGetInfo).Methods("GET")
+
   // License endpoint
   r.HandleFunc("/api/license", s.handleGetLicense).Methods("GET")
 
