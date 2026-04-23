@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/casuallc/vigil/common"
@@ -120,6 +121,79 @@ func (s *Server) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(output))
+}
+
+// handleUpdateHosts handles POST /api/hosts to update /etc/hosts entries
+func (s *Server) handleUpdateHosts(w http.ResponseWriter, r *http.Request) {
+	var entries []HostEntry
+	if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if len(entries) == 0 {
+		writeError(w, http.StatusBadRequest, "no entries provided")
+		return
+	}
+
+	for i, entry := range entries {
+		if entry.IP == "" {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("entry %d: ip is required", i))
+			return
+		}
+		if entry.Hostname == "" {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("entry %d: hostname is required", i))
+			return
+		}
+		if net.ParseIP(entry.IP) == nil {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("entry %d: invalid ip address", i))
+			return
+		}
+	}
+
+	hostsPath := "/etc/hosts"
+	if runtime.GOOS == "windows" {
+		hostsPath = `C:\Windows\System32\drivers\etc\hosts`
+	}
+
+	data, err := os.ReadFile(hostsPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to read hosts file: %v", err))
+		return
+	}
+
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+
+	ipMap := make(map[string]int)
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) >= 2 {
+			ipMap[fields[0]] = i
+		}
+	}
+
+	for _, entry := range entries {
+		newLine := fmt.Sprintf("%s %s", entry.IP, entry.Hostname)
+		if idx, exists := ipMap[entry.IP]; exists {
+			lines[idx] = newLine
+		} else {
+			lines = append(lines, newLine)
+			ipMap[entry.IP] = len(lines) - 1
+		}
+	}
+
+	output := strings.Join(lines, "\n")
+	if err := os.WriteFile(hostsPath, []byte(output), 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to write hosts file: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Hosts file updated successfully"})
 }
 
 // getCurrentUser gets the current request's username

@@ -8,6 +8,7 @@
 |------|------|----------|
 | 健康检查 | [health.md](health.md) | `/health` |
 | 服务器信息 | [info.md](info.md) | `/api/info` |
+| Hosts 管理 | [hosts.md](hosts.md) | `/api/hosts` |
 | 授权特征码 | [license.md](license.md) | `/api/license` |
 | 进程管理 | [processes.md](processes.md) | `/api/processes/*`, `/api/namespaces/*` |
 | 资源监控 | [resources.md](resources.md) | `/api/resources/*` |
@@ -26,6 +27,7 @@
 ### 系统接口
 - [健康检查](health.md) - 系统健康状态检查
 - [服务器信息](info.md) - 获取服务器主机名、网卡信息、版本等基本信息
+- [Hosts 管理](hosts.md) - 更新系统 hosts 文件
 - [授权特征码](license.md) - 获取服务器物理网卡的授权特征码
 - [配置管理](config.md) - 系统配置读写
 - [资源监控](resources.md) - 系统和进程资源监控

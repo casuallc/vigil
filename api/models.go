@@ -252,3 +252,9 @@ type LicenseInfo struct {
   Interface string `json:"interface"`
   IP        string `json:"ip"`
 }
+
+// HostEntry represents a single hosts file entry
+type HostEntry struct {
+	IP       string `json:"ip"`
+	Hostname string `json:"hostname"`
+}

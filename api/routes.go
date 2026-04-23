@@ -49,6 +49,9 @@ func (s *Server) Router() *mux.Router {
   // Server info
   r.HandleFunc("/api/info", s.handleGetInfo).Methods("GET")
 
+  // Hosts management endpoint
+  r.HandleFunc("/api/hosts", s.handleUpdateHosts).Methods("POST")
+
   // License endpoint
   r.HandleFunc("/api/license", s.handleGetLicense).Methods("GET")
 
