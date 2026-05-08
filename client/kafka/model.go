@@ -36,6 +36,7 @@ type ServerConfig struct {
 type ProducerConfig struct {
   Topic         string
   Message       string
+  MessageFile   string // 消息文件路径（文件或文件夹）
   Key           string
   Repeat        int
   Interval      int

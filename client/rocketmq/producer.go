@@ -21,6 +21,7 @@ import (
   "fmt"
   "github.com/apache/rocketmq-client-go/v2"
   "log"
+  "os"
   "strings"
   "sync"
   "time"
@@ -99,6 +100,13 @@ func (c *Client) SendMessage(config *ProducerConfig) error {
 
     // 准备消息内容
     messageBody := config.Message
+    if config.MessageFile != "" {
+      body, err := os.ReadFile(config.MessageFile)
+      if err != nil {
+        return fmt.Errorf("failed to read message file %s: %w", config.MessageFile, err)
+      }
+      messageBody = string(body)
+    }
     // 如果指定了消息长度，并且当前消息长度不足，则补全
     if config.MessageLength > 0 && len(messageBody) < config.MessageLength {
       messageBody = messageBody + strings.Repeat(" ", config.MessageLength-len(messageBody))
@@ -184,6 +192,13 @@ func (c *Client) sendBatchMessages(config *ProducerConfig) error {
   for i := 0; i < config.Repeat; i++ {
     // 准备消息内容
     messageBody := config.Message
+    if config.MessageFile != "" {
+      body, err := os.ReadFile(config.MessageFile)
+      if err != nil {
+        return fmt.Errorf("failed to read message file %s: %w", config.MessageFile, err)
+      }
+      messageBody = string(body)
+    }
     // 如果指定了消息长度，并且当前消息长度不足，则补全
     if config.MessageLength > 0 && len(messageBody) < config.MessageLength {
       messageBody = messageBody + strings.Repeat(" ", config.MessageLength-len(messageBody))

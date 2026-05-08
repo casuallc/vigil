@@ -19,6 +19,9 @@ package cli
 import (
   "context"
   "fmt"
+  "os"
+  "path/filepath"
+
   "github.com/casuallc/vigil/client/pulsar"
   "github.com/spf13/cobra"
   "time"
@@ -54,6 +57,8 @@ func (c *CLI) setupPulsarCommands() *cobra.Command {
 func (c *CLI) setupPulsarSendCommand() *cobra.Command {
   var topic string
   var message string
+  var filePath string
+  var recursive bool
   var key string
   var sendTimeout int
   var enableBatching bool
@@ -84,12 +89,14 @@ func (c *CLI) setupPulsarSendCommand() *cobra.Command {
         deliverTime = &t
       }
 
-      return c.handlePulsarSend(config, topic, message, key, sendTimeout, enableBatching, batchingMaxDelay, batchingMaxMessages, messageLength, repeat, interval, printLog, delayTime, deliverTime, enableCompression, properties)
+      return c.handlePulsarSend(config, topic, message, filePath, recursive, key, sendTimeout, enableBatching, batchingMaxDelay, batchingMaxMessages, messageLength, repeat, interval, printLog, delayTime, deliverTime, enableCompression, properties)
     },
   }
 
   cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().StringVarP(&filePath, "file", "f", "", "File or directory path to read message content from")
+  cmd.Flags().BoolVarP(&recursive, "recursive", "R", false, "Recursively send files in directory")
   cmd.Flags().StringVarP(&key, "key", "k", "", "Message key")
   cmd.Flags().IntVar(&sendTimeout, "send-timeout", 30000, "Send timeout in milliseconds")
   cmd.Flags().BoolVar(&enableBatching, "enable-batching", false, "Enable message batching")
@@ -105,13 +112,13 @@ func (c *CLI) setupPulsarSendCommand() *cobra.Command {
   cmd.Flags().StringVar(&properties, "properties", "", "Message properties in format key=val,key=val")
 
   cmd.MarkFlagRequired("topic")
-  cmd.MarkFlagRequired("message")
+  cmd.MarkFlagsOneRequired("message", "file")
 
   return cmd
 }
 
 // handlePulsarSend 处理发送消息
-func (c *CLI) handlePulsarSend(config *pulsar.ServerConfig, topic string, message string, key string, sendTimeout int, enableBatching bool, batchingMaxDelay int, batchingMaxMessages int, messageLength int, repeat int, interval int, printLog bool, delayTime int, deliverTime *time.Time, enableCompression bool, properties string) error {
+func (c *CLI) handlePulsarSend(config *pulsar.ServerConfig, topic string, message string, filePath string, recursive bool, key string, sendTimeout int, enableBatching bool, batchingMaxDelay int, batchingMaxMessages int, messageLength int, repeat int, interval int, printLog bool, delayTime int, deliverTime *time.Time, enableCompression bool, properties string) error {
   client := pulsar.NewClient(config)
   defer client.Close()
 
@@ -120,10 +127,30 @@ func (c *CLI) handlePulsarSend(config *pulsar.ServerConfig, topic string, messag
     return nil
   }
 
+  // 文件夹模式：遍历文件夹，每个文件作为一条消息发送
+  if filePath != "" {
+    info, err := os.Stat(filePath)
+    if err != nil {
+      fmt.Println("ERROR failed to stat file:", err.Error())
+      return nil
+    }
+
+    if info.IsDir() {
+      sentCount, err := c.sendPulsarFilesInDir(client, filePath, recursive, topic, key, sendTimeout, enableBatching, batchingMaxDelay, batchingMaxMessages, messageLength, interval, printLog, delayTime, deliverTime, enableCompression, properties)
+      if err != nil {
+        fmt.Println("ERROR failed to walk directory:", err.Error())
+        return nil
+      }
+      fmt.Printf("Sent %d messages from directory '%s'\n", sentCount, filePath)
+      return nil
+    }
+  }
+
   // 创建生产者配置
   producerConfig := pulsar.ProducerConfig{
     Topic:                   topic,
     Message:                 message,
+    MessageFile:             filePath,
     Key:                     key,
     SendTimeout:             sendTimeout,
     EnableBatching:          enableBatching,
@@ -145,8 +172,57 @@ func (c *CLI) handlePulsarSend(config *pulsar.ServerConfig, topic string, messag
     return nil
   }
 
-  fmt.Printf("Successfully sent %d messages to topic %s\n", repeat, topic)
+  if filePath != "" {
+    fmt.Printf("Successfully sent %d messages from file '%s' to topic %s\n", repeat, filePath, topic)
+  } else {
+    fmt.Printf("Successfully sent %d messages to topic %s\n", repeat, topic)
+  }
   return nil
+}
+
+// sendPulsarFilesInDir 遍历目录发送文件，每个文件作为一条消息
+func (c *CLI) sendPulsarFilesInDir(client *pulsar.Client, dir string, recursive bool, topic string, key string, sendTimeout int, enableBatching bool, batchingMaxDelay int, batchingMaxMessages int, messageLength int, interval int, printLog bool, delayTime int, deliverTime *time.Time, enableCompression bool, properties string) (int, error) {
+  var sentCount int
+  err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+    if err != nil {
+      return err
+    }
+    if d.IsDir() {
+      if path == dir {
+        return nil
+      }
+      if !recursive {
+        return filepath.SkipDir
+      }
+      return nil
+    }
+
+    producerConfig := pulsar.ProducerConfig{
+      Topic:                   topic,
+      MessageFile:             path,
+      Key:                     key,
+      SendTimeout:             sendTimeout,
+      EnableBatching:          enableBatching,
+      BatchingMaxPublishDelay: batchingMaxDelay,
+      BatchingMaxMessages:     batchingMaxMessages,
+      MessageLength:           messageLength,
+      Repeat:                  1,
+      Interval:                interval,
+      PrintLog:                printLog,
+      DelayTime:               delayTime,
+      DeliverTime:             deliverTime,
+      EnableCompression:       enableCompression,
+      Properties:              properties,
+    }
+
+    if err := client.SendMessage(producerConfig); err != nil {
+      fmt.Printf("ERROR failed to send file %s: %v\n", path, err)
+    } else {
+      sentCount++
+    }
+    return nil
+  })
+  return sentCount, err
 }
 
 // setupPulsarReceiveCommand 设置接收消息命令

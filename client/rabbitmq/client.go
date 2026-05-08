@@ -19,6 +19,7 @@ package rabbitmq
 import (
   "fmt"
   "log"
+  "os"
   "sync"
   "time"
 
@@ -195,6 +196,17 @@ func (r *RabbitClient) PublishMessage(publish *PublishConfig) error {
     publish.Repeat = 1
   }
 
+  var body []byte
+  var err error
+  if publish.MessageFile != "" {
+    body, err = os.ReadFile(publish.MessageFile)
+    if err != nil {
+      return fmt.Errorf("failed to read message file %s: %w", publish.MessageFile, err)
+    }
+  } else {
+    body = []byte(publish.Message)
+  }
+
   ticker := time.NewTicker(time.Duration(publish.Interval) * time.Millisecond)
   defer ticker.Stop()
 
@@ -211,7 +223,7 @@ func (r *RabbitClient) PublishMessage(publish *PublishConfig) error {
       amqp.Publishing{
         Headers:      publish.Headers,
         ContentType:  "text/plain",
-        Body:         []byte(publish.Message),
+        Body:         body,
         DeliveryMode: amqp.Persistent,
       })
 
@@ -220,7 +232,11 @@ func (r *RabbitClient) PublishMessage(publish *PublishConfig) error {
     }
 
     if publish.PrintLog {
-      log.Printf("Publish message: %s", publish.Message)
+      if publish.MessageFile != "" {
+        log.Printf("Publish message from file: %s", publish.MessageFile)
+      } else {
+        log.Printf("Publish message: %s", publish.Message)
+      }
     }
   }
 

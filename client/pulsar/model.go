@@ -42,6 +42,7 @@ type AuthConfig struct {
 type ProducerConfig struct {
   Topic                   string     // 主题名称
   Message                 string     // 消息内容
+  MessageFile             string     // 消息文件路径（文件或文件夹）
   Key                     string     // 消息键
   SendTimeout             int        // 发送超时时间（毫秒）
   EnableBatching          bool       // 是否启用确认

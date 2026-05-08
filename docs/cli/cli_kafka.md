@@ -24,7 +24,7 @@ bbx-cli kafka [command] [flags]
 
 ### send - 发送消息
 
-向Kafka主题发送消息。
+向Kafka主题发送消息。支持直接发送文本、从文件读取内容发送（支持超大文件），或遍历文件夹将每个文件作为一条消息发送。
 
 **用法：**
 ```
@@ -36,7 +36,9 @@ bbx-cli kafka send [flags]
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
 | `--topic` | `-t` | 主题名称（必填） | - |
-| `--message` | `-m` | 消息内容（必填） | - |
+| `--message` | `-m` | 消息内容（与 `--file` 至少填一个） | - |
+| `--file` | `-f` | 文件或文件夹路径，读取内容作为消息发送 | - |
+| `--recursive` | `-R` | 递归发送子目录中的文件（配合 `--file` 目录时使用） | false |
 | `--key` | `-k` | 消息键 | - |
 | `--repeat` | `-r` | 重复发送次数 | 10 |
 | `--interval` | `-i` | 发送消息间隔（毫秒） | 1000 |
@@ -75,6 +77,15 @@ bbx-cli kafka send -t topic1 -m "hello kafka" -s 127.0.0.1 -p 9092
 
 # 发送消息并指定消息键
 bbx-cli kafka send -t topic1 -m "hello kafka" -k mykey -r 5 -i 500 -s 127.0.0.1
+
+# 发送文件内容（支持超大文件）
+bbx-cli kafka send -t topic1 -f /path/to/large_file.log -s 127.0.0.1
+
+# 发送文件夹下所有文件，每个文件作为一条消息
+bbx-cli kafka send -t topic1 -f /path/to/dir -s 127.0.0.1
+
+# 递归发送文件夹及子目录中的所有文件
+bbx-cli kafka send -t topic1 -f /path/to/dir -R -s 127.0.0.1
 
 # 接收消息
 bbx-cli kafka receive -t topic1 -g my_group -s 127.0.0.1 -p 9092

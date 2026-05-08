@@ -52,14 +52,15 @@ type BindConfig struct {
 }
 
 type PublishConfig struct {
-  PrintLog   bool
-  Exchange   string
-  RoutingKey string
-  Interval   int        // 时间间隔；毫秒
-  Message    string     // 消息内容
-  Repeat     int        // 重复次数
-  RateLimit  int        // 发送速率
-  Headers    amqp.Table // 消息头
+  PrintLog    bool
+  Exchange    string
+  RoutingKey  string
+  Interval    int        // 时间间隔；毫秒
+  Message     string     // 消息内容
+  MessageFile string     // 消息文件路径（文件或文件夹）
+  Repeat      int        // 重复次数
+  RateLimit   int        // 发送速率
+  Headers     amqp.Table // 消息头
 }
 
 type ConsumeConfig struct {

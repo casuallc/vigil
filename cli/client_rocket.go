@@ -19,6 +19,9 @@ package cli
 import (
   "context"
   "fmt"
+  "os"
+  "path/filepath"
+
   "github.com/apache/rocketmq-client-go/v2/primitive"
   "github.com/casuallc/vigil/client/rocketmq"
   "github.com/spf13/cobra"
@@ -62,6 +65,8 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
   var tags string
   var keys string
   var message string
+  var filePath string
+  var recursive bool
   var repeat int
   var interval int
   var sendType string
@@ -75,7 +80,7 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
     Short: "Send message to RocketMQ",
     RunE: func(cmd *cobra.Command, args []string) error {
       config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
-      return c.handleRocketSend(config, groupName, topic, tags, keys, message, repeat, interval, sendType, delayLevel, printLog, useMessageTrace, messageLength)
+      return c.handleRocketSend(config, groupName, topic, tags, keys, message, filePath, recursive, repeat, interval, sendType, delayLevel, printLog, useMessageTrace, messageLength)
     },
   }
 
@@ -84,6 +89,8 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
   cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
   cmd.Flags().StringVarP(&keys, "keys", "k", "", "Message keys")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().StringVarP(&filePath, "file", "f", "", "File or directory path to read message content from")
+  cmd.Flags().BoolVarP(&recursive, "recursive", "R", false, "Recursively send files in directory")
   cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat sending")
   cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between messages in milliseconds")
   cmd.Flags().StringVar(&sendType, "send-type", "sync", "Send type: sync or async")
@@ -93,19 +100,38 @@ func (c *CLI) setupRocketSendCommand() *cobra.Command {
   cmd.Flags().IntVar(&messageLength, "message-length", 0, "Message length, will pad with spaces if necessary")
 
   cmd.MarkFlagRequired("topic")
-  cmd.MarkFlagRequired("message")
+  cmd.MarkFlagsOneRequired("message", "file")
 
   return cmd
 }
 
 // handleRocketSend 处理发送消息
-func (c *CLI) handleRocketSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, sendType string, delayLevel int, printLog bool, useMessageTrace bool, messageLength int) error {
+func (c *CLI) handleRocketSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, filePath string, recursive bool, repeat int, interval int, sendType string, delayLevel int, printLog bool, useMessageTrace bool, messageLength int) error {
   client := rocketmq.NewClient(config)
   defer client.Close()
 
   if err := client.Connect(); err != nil {
     fmt.Println("ERROR failed to connect to RocketMQ server:", err.Error())
     return nil
+  }
+
+  // 文件夹模式：遍历文件夹，每个文件作为一条消息发送
+  if filePath != "" {
+    info, err := os.Stat(filePath)
+    if err != nil {
+      fmt.Println("ERROR failed to stat file:", err.Error())
+      return nil
+    }
+
+    if info.IsDir() {
+      sentCount, err := c.sendRocketFilesInDir(client, filePath, recursive, groupName, topic, tags, keys, interval, sendType, delayLevel, printLog, useMessageTrace, messageLength)
+      if err != nil {
+        fmt.Println("ERROR failed to walk directory:", err.Error())
+        return nil
+      }
+      fmt.Printf("Sent %d messages from directory '%s'\n", sentCount, filePath)
+      return nil
+    }
   }
 
   // 确定发送类型
@@ -121,6 +147,7 @@ func (c *CLI) handleRocketSend(config *rocketmq.ServerConfig, groupName string, 
     Tags:            tags,
     Keys:            keys,
     Message:         message,
+    MessageFile:     filePath,
     Repeat:          repeat,
     Interval:        interval,
     SendType:        sendTypeEnum,
@@ -136,8 +163,58 @@ func (c *CLI) handleRocketSend(config *rocketmq.ServerConfig, groupName string, 
     return nil
   }
 
-  fmt.Printf("Successfully sent %d messages to topic %s\n", repeat, topic)
+  if filePath != "" {
+    fmt.Printf("Successfully sent %d messages from file '%s' to topic %s\n", repeat, filePath, topic)
+  } else {
+    fmt.Printf("Successfully sent %d messages to topic %s\n", repeat, topic)
+  }
   return nil
+}
+
+// sendRocketFilesInDir 遍历目录发送文件，每个文件作为一条消息
+func (c *CLI) sendRocketFilesInDir(client *rocketmq.Client, dir string, recursive bool, groupName string, topic string, tags string, keys string, interval int, sendType string, delayLevel int, printLog bool, useMessageTrace bool, messageLength int) (int, error) {
+  var sentCount int
+  sendTypeEnum := rocketmq.SyncSend
+  if sendType == "async" {
+    sendTypeEnum = rocketmq.AsyncSend
+  }
+  err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+    if err != nil {
+      return err
+    }
+    if d.IsDir() {
+      if path == dir {
+        return nil
+      }
+      if !recursive {
+        return filepath.SkipDir
+      }
+      return nil
+    }
+
+    producerConfig := &rocketmq.ProducerConfig{
+      GroupName:       groupName,
+      Topic:           topic,
+      Tags:            tags,
+      Keys:            keys,
+      MessageFile:     path,
+      Repeat:          1,
+      Interval:        interval,
+      SendType:        sendTypeEnum,
+      DelayLevel:      delayLevel,
+      PrintLog:        printLog,
+      UseMessageTrace: useMessageTrace,
+      MessageLength:   messageLength,
+    }
+
+    if err := client.SendMessage(producerConfig); err != nil {
+      fmt.Printf("ERROR failed to send file %s: %v\n", path, err)
+    } else {
+      sentCount++
+    }
+    return nil
+  })
+  return sentCount, err
 }
 
 // setupRocketReceiveCommand 设置接收消息命令
@@ -234,6 +311,7 @@ func (c *CLI) setupRocketBatchSendCommand() *cobra.Command {
   var tags string
   var keys string
   var message string
+  var filePath string
   var repeat int
   var interval int
   var batchSize int
@@ -245,7 +323,7 @@ func (c *CLI) setupRocketBatchSendCommand() *cobra.Command {
     Short: "Batch send messages to RocketMQ",
     RunE: func(cmd *cobra.Command, args []string) error {
       config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
-      return c.handleRocketBatchSend(config, groupName, topic, tags, keys, message, repeat, interval, batchSize, printLog, useMessageTrace)
+      return c.handleRocketBatchSend(config, groupName, topic, tags, keys, message, filePath, repeat, interval, batchSize, printLog, useMessageTrace)
     },
   }
 
@@ -254,6 +332,7 @@ func (c *CLI) setupRocketBatchSendCommand() *cobra.Command {
   cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
   cmd.Flags().StringVarP(&keys, "keys", "k", "", "Message keys")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().StringVarP(&filePath, "file", "f", "", "File path to read message content from")
   cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat sending")
   cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between batches in milliseconds")
   cmd.Flags().IntVar(&batchSize, "batch-size", 10, "Batch size")
@@ -261,13 +340,13 @@ func (c *CLI) setupRocketBatchSendCommand() *cobra.Command {
   cmd.Flags().BoolVar(&useMessageTrace, "trace", false, "Use message trace")
 
   cmd.MarkFlagRequired("topic")
-  cmd.MarkFlagRequired("message")
+  cmd.MarkFlagsOneRequired("message", "file")
 
   return cmd
 }
 
 // handleRocketBatchSend 处理批量发送消息
-func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, batchSize int, printLog bool, useMessageTrace bool) error {
+func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, filePath string, repeat int, interval int, batchSize int, printLog bool, useMessageTrace bool) error {
   client := rocketmq.NewClient(config)
   defer client.Close()
 
@@ -283,6 +362,7 @@ func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName str
     Tags:            tags,
     Keys:            keys,
     Message:         message,
+    MessageFile:     filePath,
     Repeat:          repeat,
     Interval:        interval,
     BatchSize:       batchSize,
@@ -296,7 +376,11 @@ func (c *CLI) handleRocketBatchSend(config *rocketmq.ServerConfig, groupName str
     return nil
   }
 
-  fmt.Printf("Successfully sent %d batch messages to topic %s\n", repeat, topic)
+  if filePath != "" {
+    fmt.Printf("Successfully sent %d batch messages from file '%s' to topic %s\n", repeat, filePath, topic)
+  } else {
+    fmt.Printf("Successfully sent %d batch messages to topic %s\n", repeat, topic)
+  }
   return nil
 }
 
@@ -307,6 +391,7 @@ func (c *CLI) setupRocketTransactionSendCommand() *cobra.Command {
   var tags string
   var keys string
   var message string
+  var filePath string
   var repeat int
   var interval int
   var printLog bool
@@ -317,7 +402,7 @@ func (c *CLI) setupRocketTransactionSendCommand() *cobra.Command {
     Short: "Send transaction messages to RocketMQ",
     RunE: func(cmd *cobra.Command, args []string) error {
       config := cmd.Context().Value("rocketConfig").(*rocketmq.ServerConfig)
-      return c.handleRocketTransactionSend(config, groupName, topic, tags, keys, message, repeat, interval, printLog, checkTimes)
+      return c.handleRocketTransactionSend(config, groupName, topic, tags, keys, message, filePath, repeat, interval, printLog, checkTimes)
     },
   }
 
@@ -326,19 +411,20 @@ func (c *CLI) setupRocketTransactionSendCommand() *cobra.Command {
   cmd.Flags().StringVar(&tags, "tags", "", "Message tags")
   cmd.Flags().StringVarP(&keys, "keys", "k", "", "Message keys")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().StringVarP(&filePath, "file", "f", "", "File path to read message content from")
   cmd.Flags().IntVarP(&repeat, "repeat", "r", 1, "Number of times to repeat sending")
   cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between messages in milliseconds")
   cmd.Flags().BoolVar(&printLog, "print-log", true, "Print detailed logs")
   cmd.Flags().IntVar(&checkTimes, "check-times", 3, "Transaction check times")
 
   cmd.MarkFlagRequired("topic")
-  cmd.MarkFlagRequired("message")
+  cmd.MarkFlagsOneRequired("message", "file")
 
   return cmd
 }
 
 // handleRocketTransactionSend 处理事务消息发送
-func (c *CLI) handleRocketTransactionSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, repeat int, interval int, printLog bool, checkTimes int) error {
+func (c *CLI) handleRocketTransactionSend(config *rocketmq.ServerConfig, groupName string, topic string, tags string, keys string, message string, filePath string, repeat int, interval int, printLog bool, checkTimes int) error {
   client := rocketmq.NewClient(config)
   defer client.Close()
 
@@ -349,15 +435,16 @@ func (c *CLI) handleRocketTransactionSend(config *rocketmq.ServerConfig, groupNa
 
   listener := &simpleTransactionListener{printLog: printLog}
   producerConfig := &rocketmq.ProducerConfig{
-    GroupName:  groupName,
-    Topic:      topic,
-    Tags:       tags,
-    Keys:       keys,
-    Message:    message,
-    Repeat:     repeat,
-    Interval:   interval,
-    PrintLog:   printLog,
-    CheckTimes: checkTimes,
+    GroupName:   groupName,
+    Topic:       topic,
+    Tags:        tags,
+    Keys:        keys,
+    Message:     message,
+    MessageFile: filePath,
+    Repeat:      repeat,
+    Interval:    interval,
+    PrintLog:    printLog,
+    CheckTimes:  checkTimes,
   }
 
   if err := client.SendTransactionMessage(producerConfig, listener); err != nil {
@@ -365,7 +452,11 @@ func (c *CLI) handleRocketTransactionSend(config *rocketmq.ServerConfig, groupNa
     return nil
   }
 
-  fmt.Printf("Successfully sent %d transaction messages to topic %s\n", repeat, topic)
+  if filePath != "" {
+    fmt.Printf("Successfully sent %d transaction messages from file '%s' to topic %s\n", repeat, filePath, topic)
+  } else {
+    fmt.Printf("Successfully sent %d transaction messages to topic %s\n", repeat, topic)
+  }
   return nil
 }
 

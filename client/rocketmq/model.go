@@ -46,6 +46,7 @@ type ProducerConfig struct {
   Tags            string
   Keys            string
   Message         string
+  MessageFile     string   // 消息文件路径（文件或文件夹）
   MessageLength   int      // 消息长度（不够则自动补全）
   Repeat          int      // 重复次数
   Interval        int      // 时间间隔（毫秒）

@@ -19,6 +19,9 @@ package cli
 import (
   "context"
   "fmt"
+  "os"
+  "path/filepath"
+
   "github.com/casuallc/vigil/client/kafka"
   "github.com/spf13/cobra"
 )
@@ -57,6 +60,8 @@ func (c *CLI) setupKafkaCommands() *cobra.Command {
 func (c *CLI) setupKafkaSendCommand() *cobra.Command {
   var topic string
   var message string
+  var filePath string
+  var recursive bool
   var key string
   var repeat int
   var interval int
@@ -71,12 +76,14 @@ func (c *CLI) setupKafkaSendCommand() *cobra.Command {
     Short: "Send message to Kafka",
     RunE: func(cmd *cobra.Command, args []string) error {
       config := cmd.Context().Value("kafkaConfig").(*kafka.ServerConfig)
-      return c.handleKafkaSend(config, topic, message, key, repeat, interval, printLog, acks, messageLength, compression, headers)
+      return c.handleKafkaSend(config, topic, message, filePath, recursive, key, repeat, interval, printLog, acks, messageLength, compression, headers)
     },
   }
 
   cmd.Flags().StringVarP(&topic, "topic", "t", "", "Message topic")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().StringVarP(&filePath, "file", "f", "", "File or directory path to read message content from")
+  cmd.Flags().BoolVarP(&recursive, "recursive", "R", false, "Recursively send files in directory")
   cmd.Flags().StringVarP(&key, "key", "k", "", "Message key")
   cmd.Flags().IntVarP(&repeat, "repeat", "r", 10, "Number of times to repeat sending")
   cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Interval between messages in milliseconds")
@@ -87,13 +94,13 @@ func (c *CLI) setupKafkaSendCommand() *cobra.Command {
   cmd.Flags().StringVar(&headers, "headers", "", "Message headers in format name=value,name2=value2")
 
   cmd.MarkFlagRequired("topic")
-  cmd.MarkFlagRequired("message")
+  cmd.MarkFlagsOneRequired("message", "file")
 
   return cmd
 }
 
 // handleKafkaSend 处理发送消息
-func (c *CLI) handleKafkaSend(config *kafka.ServerConfig, topic, message, key string, repeat, interval int, printLog bool, acks string, messageLength int, compression, headers string) error {
+func (c *CLI) handleKafkaSend(config *kafka.ServerConfig, topic, message, filePath string, recursive bool, key string, repeat, interval int, printLog bool, acks string, messageLength int, compression, headers string) error {
   client := kafka.NewClient(config)
 
   if err := client.Connect(); err != nil {
@@ -102,10 +109,30 @@ func (c *CLI) handleKafkaSend(config *kafka.ServerConfig, topic, message, key st
   }
   defer client.Close()
 
-  // 设置生产者配置
+  // 文件夹模式：遍历文件夹，每个文件作为一条消息发送
+  if filePath != "" {
+    info, err := os.Stat(filePath)
+    if err != nil {
+      fmt.Println("ERROR failed to stat file:", err.Error())
+      return nil
+    }
+
+    if info.IsDir() {
+      sentCount, err := c.sendKafkaFilesInDir(client, filePath, recursive, topic, key, interval, printLog, acks, messageLength, compression, headers)
+      if err != nil {
+        fmt.Println("ERROR failed to walk directory:", err.Error())
+        return nil
+      }
+      fmt.Printf("Sent %d messages from directory '%s'\n", sentCount, filePath)
+      return nil
+    }
+  }
+
+  // 单条消息模式（文本或单个文件）
   producerConfig := &kafka.ProducerConfig{
     Topic:         topic,
     Message:       message,
+    MessageFile:   filePath,
     Key:           key,
     Repeat:        repeat,
     Interval:      interval,
@@ -116,14 +143,57 @@ func (c *CLI) handleKafkaSend(config *kafka.ServerConfig, topic, message, key st
     Headers:       headers,
   }
 
-  // 发送消息
   if err := client.SendMessage(producerConfig); err != nil {
     fmt.Println("ERROR failed to send message:", err.Error())
     return nil
   }
 
-  fmt.Printf("Successfully sent %d messages to Kafka topic '%s'\n", repeat, topic)
+  if filePath != "" {
+    fmt.Printf("Successfully sent %d messages from file '%s' to Kafka topic '%s'\n", repeat, filePath, topic)
+  } else {
+    fmt.Printf("Successfully sent %d messages to Kafka topic '%s'\n", repeat, topic)
+  }
   return nil
+}
+
+// sendKafkaFilesInDir 遍历目录发送文件，每个文件作为一条消息
+func (c *CLI) sendKafkaFilesInDir(client *kafka.Client, dir string, recursive bool, topic, key string, interval int, printLog bool, acks string, messageLength int, compression, headers string) (int, error) {
+  var sentCount int
+  err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+    if err != nil {
+      return err
+    }
+    if d.IsDir() {
+      if path == dir {
+        return nil
+      }
+      if !recursive {
+        return filepath.SkipDir
+      }
+      return nil
+    }
+
+    producerConfig := &kafka.ProducerConfig{
+      Topic:         topic,
+      MessageFile:   path,
+      Key:           key,
+      Repeat:        1,
+      Interval:      interval,
+      PrintLog:      printLog,
+      Acks:          acks,
+      MessageLength: messageLength,
+      Compression:   compression,
+      Headers:       headers,
+    }
+
+    if err := client.SendMessage(producerConfig); err != nil {
+      fmt.Printf("ERROR failed to send file %s: %v\n", path, err)
+    } else {
+      sentCount++
+    }
+    return nil
+  })
+  return sentCount, err
 }
 
 // setupKafkaReceiveCommand 设置接收消息命令

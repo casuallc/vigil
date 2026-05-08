@@ -21,6 +21,7 @@ import (
   "fmt"
   "github.com/casuallc/vigil/common"
   "log"
+  "os"
   "strconv"
   "strings"
   "sync"
@@ -227,7 +228,16 @@ func (c *Client) SendMessage(config ProducerConfig) error {
     }
 
     // 准备消息内容，根据长度要求补全
-    messageBody := config.Message
+    var messageBody string
+    if config.MessageFile != "" {
+      body, err := os.ReadFile(config.MessageFile)
+      if err != nil {
+        return fmt.Errorf("failed to read message file %s: %v", config.MessageFile, err)
+      }
+      messageBody = string(body)
+    } else {
+      messageBody = config.Message
+    }
     if config.MessageLength > 0 && len(messageBody) < config.MessageLength {
       messageBody = messageBody + strings.Repeat(" ", config.MessageLength-len(messageBody))
     }

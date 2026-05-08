@@ -124,7 +124,7 @@ bbx-cli rabbitmq queue-unbind [flags]
 
 ### publish - 发布消息
 
-向RabbitMQ交换机发布消息。
+向RabbitMQ交换机发布消息。支持直接发送文本、从文件读取内容发送（支持超大文件），或遍历文件夹将每个文件作为一条消息发送。
 
 **用法：**
 ```
@@ -135,7 +135,9 @@ bbx-cli rabbitmq publish [flags]
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--message` | `-m` | 消息内容（必填） | - |
+| `--message` | `-m` | 消息内容（与 `--file` 至少填一个） | - |
+| `--file` | `-f` | 文件或文件夹路径，读取内容作为消息发送 | - |
+| `--recursive` | `-R` | 递归发送子目录中的文件（配合 `--file` 目录时使用） | false |
 | `--exchange` | `-e` | 交换机名称 | - |
 | `--routing-key` | `-r` | 路由键 | - |
 | `--interval` | `-i` | 发送消息间隔（毫秒） | 1000 |
@@ -173,8 +175,17 @@ bbx-cli rabbitmq declare-queue -n my-queue -s 127.0.0.1 -p 5672
 # 绑定队列到交换机
 bbx-cli rabbitmq queue-bind -q my-queue -e my-exchange -r my-key
 
-# 发布消息
+# 发布文本消息
 bbx-cli rabbitmq publish -m "hello world" -e my-exchange -r my-key -s 127.0.0.1 -p 5672
+
+# 发布文件内容（支持超大文件）
+bbx-cli rabbitmq publish -f /path/to/large_file.log -e my-exchange -r my-key
+
+# 发布文件夹下所有文件，每个文件作为一条消息
+bbx-cli rabbitmq publish -f /path/to/dir -e my-exchange -r my-key
+
+# 递归发送文件夹及子目录中的所有文件
+bbx-cli rabbitmq publish -f /path/to/dir -R -e my-exchange -r my-key
 
 # 消费消息
 bbx-cli rabbitmq consume -q my-queue -a true -t 10 -s 127.0.0.1 -p 5672

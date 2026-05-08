@@ -19,6 +19,9 @@ package cli
 import (
   "context"
   "fmt"
+  "os"
+  "path/filepath"
+
   "github.com/casuallc/vigil/client/rabbitmq"
   "github.com/spf13/cobra"
   "strings"
@@ -345,16 +348,16 @@ func (c *CLI) handleRabbitQueueUnbind(queue, exchange, routingKey string, args m
 // setupRabbitPublishCommand 设置发布消息命令
 func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
   var printLog bool
-  var exchangeName, routingKey, message string
+  var exchangeName, routingKey, message, filePath string
   var interval, repeat, rateLimit int
+  var recursive bool
 
   cmd := &cobra.Command{
     Use:   "publish",
     Short: "Publish a message to an exchange",
     RunE: func(cmd *cobra.Command, args []string) error {
-
       config := cmd.Context().Value("rabbitConfig").(*rabbitmq.ServerConfig)
-      return c.handleRabbitPublish(printLog, exchangeName, routingKey, message, interval, repeat, rateLimit, config)
+      return c.handleRabbitPublish(printLog, exchangeName, routingKey, message, filePath, recursive, interval, repeat, rateLimit, config)
     },
   }
 
@@ -362,16 +365,18 @@ func (c *CLI) setupRabbitPublishCommand() *cobra.Command {
   cmd.Flags().StringVarP(&exchangeName, "exchange", "e", "", "Exchange name")
   cmd.Flags().StringVarP(&routingKey, "routing-key", "r", "", "Routing key")
   cmd.Flags().StringVarP(&message, "message", "m", "", "Message content")
+  cmd.Flags().StringVarP(&filePath, "file", "f", "", "File or directory path to read message content from")
+  cmd.Flags().BoolVarP(&recursive, "recursive", "R", false, "Recursively send files in directory")
   cmd.Flags().IntVarP(&interval, "interval", "i", 1000, "Time interval in milliseconds between messages")
   cmd.Flags().IntVarP(&repeat, "repeat", "t", 10, "Number of times to repeat sending the message")
   cmd.Flags().IntVarP(&rateLimit, "rate-limit", "l", 0, "Send rate limit")
-  cmd.MarkFlagRequired("message")
+  cmd.MarkFlagsOneRequired("message", "file")
 
   return cmd
 }
 
 // handleRabbitPublish 处理发布消息命令
-func (c *CLI) handleRabbitPublish(printLog bool, exchangeName, routingKey, message string, interval, repeat, rateLimit int, config *rabbitmq.ServerConfig) error {
+func (c *CLI) handleRabbitPublish(printLog bool, exchangeName, routingKey, message, filePath string, recursive bool, interval, repeat, rateLimit int, config *rabbitmq.ServerConfig) error {
   client := &rabbitmq.RabbitClient{Config: config}
 
   if err := client.Connect(); err != nil {
@@ -380,22 +385,84 @@ func (c *CLI) handleRabbitPublish(printLog bool, exchangeName, routingKey, messa
   }
   defer client.Close()
 
+  // 文件夹模式：遍历文件夹，每个文件作为一条消息发送
+  if filePath != "" {
+    info, err := os.Stat(filePath)
+    if err != nil {
+      fmt.Println("ERROR failed to stat file:", err.Error())
+      return nil
+    }
+
+    if info.IsDir() {
+      sentCount, err := c.sendFilesInDir(client, filePath, recursive, printLog, exchangeName, routingKey, interval, rateLimit)
+      if err != nil {
+        fmt.Println("ERROR failed to walk directory:", err.Error())
+        return nil
+      }
+      fmt.Printf("Sent %d messages from directory '%s'\n", sentCount, filePath)
+      return nil
+    }
+  }
+
+  // 单条消息模式（文本或单个文件）
   publish := &rabbitmq.PublishConfig{
-    PrintLog:   printLog,
-    Exchange:   exchangeName,
-    RoutingKey: routingKey,
-    Message:    message,
-    Interval:   interval,
-    Repeat:     repeat,
-    RateLimit:  rateLimit,
+    PrintLog:    printLog,
+    Exchange:    exchangeName,
+    RoutingKey:  routingKey,
+    Message:     message,
+    MessageFile: filePath,
+    Interval:    interval,
+    Repeat:      repeat,
+    RateLimit:   rateLimit,
   }
   if err := client.PublishMessage(publish); err != nil {
     fmt.Println("ERROR failed to publish message:", err.Error())
     return nil
   }
 
-  fmt.Printf("Message published to exchange '%s' with routing key '%s'\n", exchangeName, routingKey)
+  if filePath != "" {
+    fmt.Printf("Message published from file '%s' to exchange '%s' with routing key '%s'\n", filePath, exchangeName, routingKey)
+  } else {
+    fmt.Printf("Message published to exchange '%s' with routing key '%s'\n", exchangeName, routingKey)
+  }
   return nil
+}
+
+// sendFilesInDir 遍历目录发送文件，每个文件作为一条消息
+func (c *CLI) sendFilesInDir(client *rabbitmq.RabbitClient, dir string, recursive, printLog bool, exchangeName, routingKey string, interval, rateLimit int) (int, error) {
+  var sentCount int
+  err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+    if err != nil {
+      return err
+    }
+    if d.IsDir() {
+      if path == dir {
+        return nil
+      }
+      if !recursive {
+        return filepath.SkipDir
+      }
+      return nil
+    }
+
+    publish := &rabbitmq.PublishConfig{
+      PrintLog:    printLog,
+      Exchange:    exchangeName,
+      RoutingKey:  routingKey,
+      MessageFile: path,
+      Interval:    interval,
+      Repeat:      1,
+      RateLimit:   rateLimit,
+    }
+
+    if err := client.PublishMessage(publish); err != nil {
+      fmt.Printf("ERROR failed to publish file %s: %v\n", path, err)
+    } else {
+      sentCount++
+    }
+    return nil
+  })
+  return sentCount, err
 }
 
 // setupRabbitConsumeCommand 设置消费消息命令

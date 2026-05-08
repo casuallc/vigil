@@ -22,6 +22,7 @@ import (
   "fmt"
   "github.com/casuallc/vigil/common"
   "log"
+  "os"
   "strings"
   "sync"
   "time"
@@ -181,6 +182,15 @@ func (c *Client) SendMessage(config *ProducerConfig) error {
     }
   }
 
+  var body []byte
+  var err error
+  if config.MessageFile != "" {
+    body, err = os.ReadFile(config.MessageFile)
+    if err != nil {
+      return fmt.Errorf("failed to read message file %s: %w", config.MessageFile, err)
+    }
+  }
+
   ticker := time.NewTicker(time.Duration(config.Interval) * time.Millisecond)
   defer ticker.Stop()
 
@@ -196,7 +206,12 @@ func (c *Client) SendMessage(config *ProducerConfig) error {
       defer wg.Done()
 
       // 如果指定了消息长度，并且当前消息长度不足，则补全
-      messageContent := config.Message
+      var messageContent string
+      if config.MessageFile != "" {
+        messageContent = string(body)
+      } else {
+        messageContent = config.Message
+      }
       if config.MessageLength > 0 && len(messageContent) < config.MessageLength {
         messageContent = messageContent + strings.Repeat(" ", config.MessageLength-len(messageContent))
       }
