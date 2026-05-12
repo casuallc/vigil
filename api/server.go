@@ -45,6 +45,7 @@ import (
 // Server represents the HTTP API server
 type Server struct {
   config           *config.Config
+  configPath       string
   manager          *proc.Manager
   monitor          *proc.Monitor
   resourceMonitor  *proc.ResourceMonitor
@@ -76,7 +77,7 @@ type SSHConnectionInfo struct {
 }
 
 // NewServerWithManager creates a new API server with an existing proc manager
-func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server {
+func NewServerWithManager(config *config.Config, manager *proc.Manager, configPath string) *Server {
   monitor := proc.NewMonitor(manager)
   // Initialize resource monitor with cache TTL of 5 seconds and collection interval of 3 seconds
   resourceMonitor := proc.NewResourceMonitor(manager, 5*time.Second, 3*time.Second, true, true)
@@ -155,6 +156,7 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager) *Server 
 
   server := &Server{
     config:           config,
+    configPath:       configPath,
     manager:          manager,
     monitor:          monitor,
     resourceMonitor:  resourceMonitor,

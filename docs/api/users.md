@@ -4,6 +4,7 @@
 
 | 接口路径 | 请求方法 | 功能描述 |
 |---------|----------|----------|
+| /api/auth/change-password | POST | 修改超级管理员密码 |
 | /api/users/register | POST | 注册用户 |
 | /api/users/login | POST | 用户登录 |
 | /api/users | GET | 列出用户 |
@@ -12,6 +13,44 @@
 | /api/users/{username} | DELETE | 删除用户 |
 | /api/users/{username}/configs | GET | 获取用户配置 |
 | /api/users/{username}/configs | PUT | 更新用户配置 |
+
+---
+
+## POST /api/auth/change-password
+
+**功能描述**：修改超级管理员密码（仅超级管理员可用）
+
+**请求参数**：
+- 请求体：
+  - `current_password`：当前密码（必填）
+  - `new_password`：新密码（必填）
+
+**请求体示例**：
+```json
+{
+  "current_password": "Flzx3qL@ysyhl9t",
+  "new_password": "NewP@ssw0rd123"
+}
+```
+
+**响应格式**：
+```json
+{
+  "message": "Password changed successfully"
+}
+```
+
+**错误响应**：
+```json
+{
+  "error": "Current password is incorrect"
+}
+```
+
+**注意事项**：
+- 仅 `conf/config.yaml` 中 `auth.username` 对应的超级管理员可以调用此接口
+- 修改成功后，`conf/config.yaml` 中的 `auth.password` 会同步更新
+- 必须通过 Basic Auth 认证，且用户名必须为超级管理员账号
 
 ---
 

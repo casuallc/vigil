@@ -82,7 +82,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save the new configuration
-	if err := config.SaveConfig("./conf/config.yaml", &newConfig); err != nil {
+	if err := config.SaveConfig(s.configPath, &newConfig); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -91,6 +91,55 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	s.config = &newConfig
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Config updated successfully"})
+}
+
+// handleChangePassword handles POST /api/auth/change-password endpoint
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	// Verify authentication is enabled
+	if !s.config.BasicAuth.Enabled {
+		writeError(w, http.StatusForbidden, "Basic auth is not enabled")
+		return
+	}
+
+	// Verify the caller is the super admin
+	username, _, ok := r.BasicAuth()
+	if !ok || username != s.config.BasicAuth.Username {
+		writeError(w, http.StatusForbidden, "Only super admin can change password")
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
+
+	// Validate required fields
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
+		return
+	}
+
+	// Verify current password
+	if req.CurrentPassword != s.config.BasicAuth.Password {
+		writeError(w, http.StatusForbidden, "Current password is incorrect")
+		return
+	}
+
+	// Update password in-memory
+	s.config.BasicAuth.Password = req.NewPassword
+
+	// Persist to config file
+	if err := config.SaveConfig(s.configPath, s.config); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save config: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Password changed successfully"})
 }
 
 // handleExecuteCommand handles the POST /api/exec endpoint

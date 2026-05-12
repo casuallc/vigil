@@ -84,7 +84,7 @@ func main() {
   }
 
   // Create and start the API server with the loaded proc manager
-  server := api.NewServerWithManager(cfg, processManager)
+  server := api.NewServerWithManager(cfg, processManager, configPath)
 
   // Setup signal handling
   sigChan := make(chan os.Signal, 1)
