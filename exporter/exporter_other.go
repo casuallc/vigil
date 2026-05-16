@@ -18,6 +18,10 @@ import "errors"
 // has no collectors (e.g. non-Linux).
 var ErrUnsupported = errors.New("exporter is only supported on Linux")
 
+// registerLinuxCollector is a no-op on non-Linux platforms so collector
+// files can unconditionally call it from init() without build tags.
+func registerLinuxCollector(name string, factory func() (Collector, error)) {}
+
 // NewNodeExporter on non-Linux platforms returns an empty exporter so the
 // API surface compiles. /metrics will be valid but contain only meta-metrics
 // and /api/resources/system handlers should detect the empty collector set

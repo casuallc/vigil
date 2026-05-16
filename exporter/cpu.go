@@ -20,6 +20,16 @@ import (
 
 var cpuModes = []string{"user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal", "guest", "guest_nice"}
 
+func init() {
+	registerLinuxCollector("cpu", func() (Collector, error) {
+		fs, err := procfs.NewDefaultFS()
+		if err != nil {
+			return nil, err
+		}
+		return newCpuCollector(fs)
+	})
+}
+
 // cpuCollector produces node_cpu_seconds_total matching node_exporter.
 type cpuCollector struct {
 	fs   procfs.FS

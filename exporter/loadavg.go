@@ -15,6 +15,16 @@ import (
 	"github.com/prometheus/procfs"
 )
 
+func init() {
+	registerLinuxCollector("loadavg", func() (Collector, error) {
+		fs, err := procfs.NewDefaultFS()
+		if err != nil {
+			return nil, err
+		}
+		return newLoadavgCollector(fs)
+	})
+}
+
 type loadavgCollector struct {
 	fs procfs.FS
 

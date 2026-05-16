@@ -75,6 +75,16 @@ var meminfoMetrics = []meminfoMetricDef{
 	{"DirectMap1G", func(m procfs.Meminfo) *uint64 { return m.DirectMap1GBytes }},
 }
 
+func init() {
+	registerLinuxCollector("meminfo", func() (Collector, error) {
+		fs, err := procfs.NewDefaultFS()
+		if err != nil {
+			return nil, err
+		}
+		return newMeminfoCollector(fs)
+	})
+}
+
 type meminfoCollector struct {
 	fs      procfs.FS
 	descMap map[string]*prometheus.Desc
