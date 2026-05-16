@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/casuallc/vigil/exporter"
 	"github.com/casuallc/vigil/models"
 	"github.com/casuallc/vigil/proc"
 	"github.com/gorilla/mux"
@@ -194,25 +195,23 @@ func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Process updated successfully"})
 }
 
-// handleGetSystemResources handles system resource monitoring
+// handleGetSystemResources handles system resource monitoring.
+// It returns collector-grouped JSON produced by the node_exporter-style
+// collector set. On non-Linux platforms this returns 501.
 func (s *Server) handleGetSystemResources(w http.ResponseWriter, r *http.Request) {
-	// Try to get from cache first
-	if resources, found := s.resourceMonitor.GetCachedSystemResources(); found {
-		writeJSON(w, http.StatusOK, resources)
-		return
-	}
-
-	// Fall back to real-time collection
-	resources, err := proc.GetSystemResourceUsage()
+	data, err := s.exporter.GatherJSON()
 	if err != nil {
+		if err == exporter.ErrUnsupported {
+			writeError(w, http.StatusNotImplemented, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	writeJSON(w, http.StatusOK, resources)
+	writeJSON(w, http.StatusOK, data)
 }
 
-// handleGetProcessResources handles process resource monitoring
+// handleGetProcessResources handles process resource monitoring.
 func (s *Server) handleGetProcessResources(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	pidStr := vars["pid"]
@@ -223,13 +222,6 @@ func (s *Server) handleGetProcessResources(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Try to get from cache first
-	if resources, found := s.resourceMonitor.GetCachedProcessResources(pid); found {
-		writeJSON(w, http.StatusOK, resources)
-		return
-	}
-
-	// Fall back to real-time collection
 	resources, err := proc.GetUnixProcessResourceUsage(pid)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

@@ -30,11 +30,20 @@ import (
 	"github.com/casuallc/vigil/config"
 	"github.com/casuallc/vigil/models"
 	"github.com/casuallc/vigil/version"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // handleHealthCheck handles health check requests
 func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleMetrics serves Prometheus text exposition format from the node_exporter
+// collector set at GET /metrics.
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	promhttp.HandlerFor(s.exporter.Registry(), promhttp.HandlerOpts{
+		ErrorHandling: promhttp.ContinueOnError,
+	}).ServeHTTP(w, r)
 }
 
 // handleGetInfo handles GET /api/info endpoint

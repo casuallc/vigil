@@ -35,6 +35,7 @@ import (
 
   "github.com/casuallc/vigil/audit"
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/exporter"
   "github.com/casuallc/vigil/models"
   "github.com/casuallc/vigil/proc"
   dbsql "github.com/casuallc/vigil/sql"
@@ -48,7 +49,7 @@ type Server struct {
   configPath       string
   manager          *proc.Manager
   monitor          *proc.Monitor
-  resourceMonitor  *proc.ResourceMonitor
+  exporter         *exporter.NodeExporter
   vmManager        *vm.Manager
   userDatabase     *models.SQLiteUserDatabase
   loginLogDatabase *models.LoginLogDatabase
@@ -79,8 +80,12 @@ type SSHConnectionInfo struct {
 // NewServerWithManager creates a new API server with an existing proc manager
 func NewServerWithManager(config *config.Config, manager *proc.Manager, configPath string) *Server {
   monitor := proc.NewMonitor(manager)
-  // Initialize resource monitor with cache TTL of 5 seconds and collection interval of 3 seconds
-  resourceMonitor := proc.NewResourceMonitor(manager, 5*time.Second, 3*time.Second, true, true)
+
+  // Initialize node_exporter-style metrics collector
+  exp, err := exporter.NewNodeExporter()
+  if err != nil {
+    log.Printf("Warning: failed to initialize node exporter: %v", err)
+  }
 
   // Use single SQLite database file for both VMs and users
   dbPath := config.Database.Path
@@ -159,7 +164,7 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
     configPath:       configPath,
     manager:          manager,
     monitor:          monitor,
-    resourceMonitor:  resourceMonitor,
+    exporter:         exp,
     vmManager:        vmManager,
     userDatabase:     userDatabase,
     loginLogDatabase: loginLogDatabase,
@@ -175,9 +180,6 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
     // Initialize scheduler
     scheduler: NewScheduler(scheduleDB, scheduleExecutionDB, vmManager),
   }
-
-  // Start the resource monitor
-  resourceMonitor.Start()
 
   // Start the scheduler
   server.scheduler.Start()
@@ -556,11 +558,6 @@ func (s *Server) Start() error {
 
 // Stop stops the HTTP server and cleans up resources
 func (s *Server) Stop() {
-  // Stop the resource monitor
-  if s.resourceMonitor != nil {
-    s.resourceMonitor.Stop()
-  }
-
   // Close VM database connection
   if s.vmManager != nil {
     s.vmManager.Close()

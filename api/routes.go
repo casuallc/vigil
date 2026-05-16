@@ -39,6 +39,9 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/resources/system", s.handleGetSystemResources).Methods("GET")
   r.HandleFunc("/api/resources/process/{pid}", s.handleGetProcessResources).Methods("GET")
 
+  // Prometheus metrics endpoint
+  r.HandleFunc("/metrics", s.handleMetrics).Methods("GET")
+
   // Configuration endpoints
   r.HandleFunc("/api/config", s.handleGetConfig).Methods("GET")
   r.HandleFunc("/api/config", s.handleUpdateConfig).Methods("PUT")
