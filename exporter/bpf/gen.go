@@ -4,7 +4,17 @@
 // run inside WSL or a Linux shell with clang + libbpf headers installed:
 //
 //     sudo apt-get install -y clang libbpf-dev
-//     go generate ./exporter/bpf/...
+//     go generate ./exporter/bpf/gen.go
+//
+// NOTE: target the file directly (`gen.go`), NOT the package wildcard
+// (`./exporter/bpf/...`). The `//go:build ignore` tag below causes
+// `go generate` to silently skip this file when matched via `...`.
+//
+// Architecture note: the cflags below include
+// `-I/usr/include/x86_64-linux-gnu` to locate `asm/types.h` on Ubuntu's
+// multi-arch layout. On arm64 Linux replace it with
+// `-I/usr/include/aarch64-linux-gnu`. Long-term we should switch to a
+// vendored `vmlinux.h` (CO-RE) to remove the kernel/asm header dependency.
 //
 // The generated _bpfel and _bpfeb files plus the compiled .o objects are
 // committed to the repository, so a plain `go build` does NOT require clang.
