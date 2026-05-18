@@ -75,7 +75,7 @@ func getLicenseCodes() ([]LicenseInfo, error) {
 			continue
 		}
 
-		var selectedIP string
+		var validIPs []string
 		for _, addr := range addrs {
 			ipNet, ok := addr.(*net.IPNet)
 			if !ok {
@@ -85,16 +85,10 @@ func getLicenseCodes() ([]LicenseInfo, error) {
 			if ip.IsLoopback() || ip.IsMulticast() || ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
 				continue
 			}
-			if ip.To4() != nil {
-				selectedIP = ip.String()
-				break
-			}
-			if selectedIP == "" {
-				selectedIP = ip.String()
-			}
+			validIPs = append(validIPs, ip.String())
 		}
 
-		if selectedIP == "" {
+		if len(validIPs) == 0 {
 			continue
 		}
 
@@ -104,11 +98,13 @@ func getLicenseCodes() ([]LicenseInfo, error) {
 			continue
 		}
 
-		results = append(results, LicenseInfo{
-			Code:      code,
-			Interface: iface.Name,
-			IP:        selectedIP,
-		})
+		for _, ip := range validIPs {
+			results = append(results, LicenseInfo{
+				Code:      code,
+				Interface: iface.Name,
+				IP:        ip,
+			})
+		}
 	}
 
 	return results, nil
