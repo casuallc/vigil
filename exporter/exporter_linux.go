@@ -12,7 +12,10 @@ You may obtain a copy of the License at
 
 package exporter
 
-import "errors"
+import (
+	"errors"
+	"log"
+)
 
 // ErrUnsupported is returned by GatherJSON on platforms where the exporter
 // has no collectors (e.g. non-Linux).
@@ -37,6 +40,7 @@ func defaultLinuxCollectors() map[string]Collector {
 			// A factory failure usually means the collector cannot read its
 			// data source on this kernel/build. We log and skip rather than
 			// fail the entire exporter so the rest still works.
+			log.Printf("exporter: skipping collector %s: %v", name, err)
 			continue
 		}
 		out[name] = c

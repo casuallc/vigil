@@ -187,3 +187,7 @@ func (c *ebpfTrafficCollector) snapshot() ([]flowSample, error) {
 	}
 	return samples, nil
 }
+
+func init() {
+	registerLinuxCollector(ebpfTrafficCollectorName, newEBPFTrafficCollector)
+}
