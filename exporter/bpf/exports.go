@@ -34,3 +34,14 @@ type FlowStats = trafficFlowStats
 func LoadObjects(o *Objects, opts *ebpf.CollectionOptions) error {
 	return loadTrafficObjects(o, opts)
 }
+
+// TcObjects exposes the bpf2go-generated objects for the TC-based
+// fallback programs (traffic_tc.bpf.c). The map layout is identical to
+// Objects so the same iteration code works for both.
+type TcObjects = trafficTcObjects
+
+// LoadTcObjects loads the TC eBPF programs and maps from the embedded
+// BPF ELF into the kernel.
+func LoadTcObjects(o *TcObjects, opts *ebpf.CollectionOptions) error {
+	return loadTrafficTcObjects(o, opts)
+}

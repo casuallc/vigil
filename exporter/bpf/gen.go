@@ -1,6 +1,6 @@
 // Package bpf — code generation driver.
 //
-// To regenerate the bindings and BPF object after modifying traffic.bpf.c,
+// To regenerate the bindings and BPF objects after modifying the .bpf.c files,
 // run inside WSL or a Linux shell with clang + libbpf headers installed:
 //
 //     sudo apt-get install -y clang libbpf-dev
@@ -24,3 +24,4 @@
 package bpf
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -Wall -I/usr/include/bpf -I/usr/include/x86_64-linux-gnu" -type flow_key -type flow_stats traffic traffic.bpf.c
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -Wall -I/usr/include/bpf -I/usr/include/x86_64-linux-gnu" -type flow_key -type flow_stats traffic_tc traffic_tc.bpf.c

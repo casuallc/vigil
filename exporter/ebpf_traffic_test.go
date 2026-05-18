@@ -12,7 +12,12 @@ You may obtain a copy of the License at
 
 package exporter
 
-import "testing"
+import (
+	"fmt"
+	"net"
+	"os"
+	"testing"
+)
 
 func TestIPToString(t *testing.T) {
 	cases := []struct {
@@ -82,4 +87,35 @@ func TestTopNByBytes(t *testing.T) {
 			t.Fatalf("truncated = %d, want 4", truncated)
 		}
 	})
+}
+
+func TestEligibleInterfaces(t *testing.T) {
+	ifaces, err := eligibleInterfaces()
+	if err != nil {
+		t.Fatalf("eligibleInterfaces() error: %v", err)
+	}
+	// Loopback should never appear.
+	for _, iface := range ifaces {
+		if iface.Name == "lo" {
+			t.Fatalf("eligibleInterfaces() included loopback")
+		}
+		if iface.Flags&net.FlagUp == 0 {
+			t.Fatalf("eligibleInterfaces() included down interface %s", iface.Name)
+		}
+	}
+}
+
+func TestIsEEXIST(t *testing.T) {
+	if isEEXIST(nil) {
+		t.Fatal("isEEXIST(nil) = true, want false")
+	}
+	if !isEEXIST(os.ErrExist) {
+		t.Fatal("isEEXIST(os.ErrExist) = false, want true")
+	}
+	if !isEEXIST(fmt.Errorf("wrapped: %w", os.ErrExist)) {
+		t.Fatal("isEEXIST(wrapped os.ErrExist) = false, want true")
+	}
+	if isEEXIST(os.ErrNotExist) {
+		t.Fatal("isEEXIST(os.ErrNotExist) = true, want false")
+	}
 }

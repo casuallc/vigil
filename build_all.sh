@@ -81,6 +81,14 @@ main() {
         fi
     done
 
+    # ========== Generate BPF bindings if needed ==========
+    if command -v clang >/dev/null 2>&1; then
+        log "Regenerating BPF objects..."
+        go generate ./exporter/bpf/gen.go || warn "BPF code generation failed (clang/libbpf-dev may be missing)"
+    else
+        warn "clang not found, skipping BPF code generation"
+    fi
+
     # ========== Clean & Prepare ==========
     rm -rf "$BUILD_DIR" "$RELEASE_DIR"
     mkdir -p "$BUILD_DIR" "$RELEASE_DIR"
