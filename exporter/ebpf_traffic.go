@@ -13,8 +13,17 @@ You may obtain a copy of the License at
 package exporter
 
 import (
+	"errors"
+	"fmt"
 	"net"
+	"os"
 	"sort"
+
+	"github.com/casuallc/vigil/exporter/bpf"
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
+	"github.com/cilium/ebpf/rlimit"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // flowSample is the per-(remote_ip, direction) snapshot the collector pulls
@@ -50,3 +59,133 @@ func topNByBytes(samples []flowSample, n int) (kept []flowSample, truncated int)
 	}
 	return samples[:n], len(samples) - n
 }
+
+const (
+	ebpfTrafficCollectorName = "ebpf_traffic"
+	ebpfTrafficDefaultCgroup = "/sys/fs/cgroup"
+	ebpfTrafficDefaultTopN   = 1000
+)
+
+// ebpfTrafficCollector observes per-remote-IPv4 byte and packet counts
+// using two cgroup_skb BPF programs attached to the root cgroup v2.
+// Construction loads and attaches the programs; the kernel auto-detaches
+// when the bbx-server process exits and closes the link fds.
+type ebpfTrafficCollector struct {
+	objs    bpf.Objects
+	ingress link.Link
+	egress  link.Link
+	topN    int
+}
+
+func newEBPFTrafficCollector() (Collector, error) {
+	// BPF maps need locked memory above the default rlimit on older kernels.
+	if err := rlimit.RemoveMemlock(); err != nil {
+		return nil, fmt.Errorf("ebpf_traffic: remove memlock rlimit: %w", err)
+	}
+
+	cgroupPath := ebpfTrafficDefaultCgroup
+	if _, err := os.Stat(cgroupPath + "/cgroup.controllers"); err != nil {
+		return nil, fmt.Errorf("ebpf_traffic: cgroup v2 not mounted at %s: %w", cgroupPath, err)
+	}
+
+	var objs bpf.Objects
+	if err := bpf.LoadObjects(&objs, nil); err != nil {
+		return nil, fmt.Errorf("ebpf_traffic: load BPF objects: %w", err)
+	}
+
+	egressLink, err := link.AttachCgroup(link.CgroupOptions{
+		Path:    cgroupPath,
+		Attach:  ebpf.AttachCGroupInetEgress,
+		Program: objs.CountEgress,
+	})
+	if err != nil {
+		_ = objs.Close()
+		return nil, fmt.Errorf("ebpf_traffic: attach egress cgroup_skb: %w", err)
+	}
+
+	ingressLink, err := link.AttachCgroup(link.CgroupOptions{
+		Path:    cgroupPath,
+		Attach:  ebpf.AttachCGroupInetIngress,
+		Program: objs.CountIngress,
+	})
+	if err != nil {
+		_ = egressLink.Close()
+		_ = objs.Close()
+		return nil, fmt.Errorf("ebpf_traffic: attach ingress cgroup_skb: %w", err)
+	}
+
+	return &ebpfTrafficCollector{
+		objs:    objs,
+		ingress: ingressLink,
+		egress:  egressLink,
+		topN:    ebpfTrafficDefaultTopN,
+	}, nil
+}
+
+func (c *ebpfTrafficCollector) Name() string { return ebpfTrafficCollectorName }
+
+func (c *ebpfTrafficCollector) Update(ch chan<- prometheus.Metric) error {
+	samples, err := c.snapshot()
+	if err != nil {
+		return err
+	}
+
+	kept, truncated := topNByBytes(samples, c.topN)
+
+	bytesDesc := prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "ebpf_traffic", "bytes_total"),
+		"Bytes seen per remote IPv4 address and direction by cgroup_skb hooks since program load.",
+		[]string{"remote_ip", "direction"}, nil,
+	)
+	packetsDesc := prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "ebpf_traffic", "packets_total"),
+		"Packets seen per remote IPv4 address and direction by cgroup_skb hooks since program load.",
+		[]string{"remote_ip", "direction"}, nil,
+	)
+	truncatedDesc := prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "ebpf_traffic", "truncated_flows"),
+		"Number of map entries that were dropped from the top-N at this scrape.",
+		nil, nil,
+	)
+
+	for _, s := range kept {
+		ch <- prometheus.MustNewConstMetric(bytesDesc, prometheus.CounterValue, s.bytes, s.remoteIP, s.direction)
+		ch <- prometheus.MustNewConstMetric(packetsDesc, prometheus.CounterValue, s.packets, s.remoteIP, s.direction)
+	}
+	ch <- prometheus.MustNewConstMetric(truncatedDesc, prometheus.GaugeValue, float64(truncated))
+	return nil
+}
+
+// snapshot iterates the BPF map once and converts every entry into a flowSample.
+// Iterating an LRU hash map under concurrent kernel writes is supported by
+// cilium/ebpf; entries the kernel evicts mid-iteration are simply skipped.
+func (c *ebpfTrafficCollector) snapshot() ([]flowSample, error) {
+	samples := make([]flowSample, 0, 256)
+	var (
+		key bpf.FlowKey
+		val bpf.FlowStats
+	)
+	iter := c.objs.Flows.Iterate()
+	for iter.Next(&key, &val) {
+		direction := "ingress"
+		if key.Direction == 1 {
+			direction = "egress"
+		}
+		samples = append(samples, flowSample{
+			remoteIP:  ipToString(key.RemoteIpv4),
+			direction: direction,
+			bytes:     float64(val.Bytes),
+			packets:   float64(val.Packets),
+		})
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("ebpf_traffic: iterate flows map: %w", err)
+	}
+	return samples, nil
+}
+
+// errEBPFNotAvailable is returned from the factory when the runtime
+// environment cannot support the collector. The exporter's factory wrapper
+// already logs-and-skips on factory errors, but exporting a sentinel makes
+// callers and tests able to distinguish "missing capability" from a real bug.
+var errEBPFNotAvailable = errors.New("ebpf_traffic: not available on this host")
