@@ -13,7 +13,6 @@ You may obtain a copy of the License at
 package exporter
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -64,6 +63,11 @@ const (
 	ebpfTrafficCollectorName = "ebpf_traffic"
 	ebpfTrafficDefaultCgroup = "/sys/fs/cgroup"
 	ebpfTrafficDefaultTopN   = 1000
+
+	// directionEgress matches DIRECTION_EGRESS in exporter/bpf/traffic.bpf.c.
+	// The BPF program stores 0 for ingress and 1 for egress in flow_key.direction;
+	// keep these two definitions in sync.
+	directionEgress uint8 = 1
 )
 
 // ebpfTrafficCollector observes per-remote-IPv4 byte and packet counts
@@ -168,7 +172,7 @@ func (c *ebpfTrafficCollector) snapshot() ([]flowSample, error) {
 	iter := c.objs.Flows.Iterate()
 	for iter.Next(&key, &val) {
 		direction := "ingress"
-		if key.Direction == 1 {
+		if key.Direction == directionEgress {
 			direction = "egress"
 		}
 		samples = append(samples, flowSample{
@@ -183,9 +187,3 @@ func (c *ebpfTrafficCollector) snapshot() ([]flowSample, error) {
 	}
 	return samples, nil
 }
-
-// errEBPFNotAvailable is returned from the factory when the runtime
-// environment cannot support the collector. The exporter's factory wrapper
-// already logs-and-skips on factory errors, but exporting a sentinel makes
-// callers and tests able to distinguish "missing capability" from a real bug.
-var errEBPFNotAvailable = errors.New("ebpf_traffic: not available on this host")
