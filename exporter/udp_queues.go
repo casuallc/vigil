@@ -61,6 +61,8 @@ func (c *udpQueuesCollector) update(ch chan<- prometheus.Metric, path string) er
 	if !scanner.Scan() {
 		return nil // skip header
 	}
+	var txTotal, rxTotal float64
+	var sockets int
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) < 8 {
@@ -71,25 +73,33 @@ func (c *udpQueuesCollector) update(ch chan<- prometheus.Metric, path string) er
 		if len(queues) != 2 {
 			continue
 		}
-		tx := parseQueueLen(queues[0])
-		rx := parseQueueLen(queues[1])
-
-		desc := prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "udp", "queue_length"),
-			"Number of elements in the UDP queue.",
-			[]string{"ip", "queue"}, nil,
-		)
-		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, tx, ipVer, "tx")
-		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, rx, ipVer, "rx")
+		txTotal += parseQueueLen(queues[0])
+		rxTotal += parseQueueLen(queues[1])
+		sockets++
 	}
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	if sockets == 0 {
+		// No sockets in this address family; skip emission to avoid a misleading
+		// zero series for an inactive family (e.g. IPv6 disabled).
+		return nil
+	}
+
+	desc := prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "udp", "queue_length"),
+		"Total bytes queued in all UDP sockets, by IP version and direction.",
+		[]string{"ip", "queue"}, nil,
+	)
+	ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, txTotal, ipVer, "tx")
+	ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, rxTotal, ipVer, "rx")
+	return nil
 }
 
 func parseQueueLen(s string) float64 {
-	// tx_queue:rx_queue is "00000000:00000001" (hex)
-	v, _ := fmt.Sscanf(s, "%x", new(uint32))
-	if v == 1 {
-		return float64(*new(uint32))
+	var v uint32
+	if _, err := fmt.Sscanf(s, "%x", &v); err != nil {
+		return 0
 	}
-	return 0
+	return float64(v)
 }
