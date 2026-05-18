@@ -62,16 +62,15 @@ func (c *pressureCollector) updateResource(ch chan<- prometheus.Metric, res stri
 }
 
 func (c *pressureCollector) emit(ch chan<- prometheus.Metric, res, typ string, line *procfs.PSILine) {
-	labels := []string{"avg10", "avg60", "avg300"}
-	values := []float64{line.Avg10, line.Avg60, line.Avg300}
-	for i, label := range labels {
-		desc := prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "pressure", fmt.Sprintf("%s_%s", res, typ)),
-			fmt.Sprintf("%s %s pressure in %% over %s.", res, typ, label),
-			[]string{}, nil,
-		)
-		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
-	}
+	avgDesc := prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "pressure", fmt.Sprintf("%s_%s", res, typ)),
+		fmt.Sprintf("%s %s pressure ratio averaged over the indicated window.", res, typ),
+		[]string{"window"}, nil,
+	)
+	ch <- prometheus.MustNewConstMetric(avgDesc, prometheus.GaugeValue, line.Avg10, "avg10")
+	ch <- prometheus.MustNewConstMetric(avgDesc, prometheus.GaugeValue, line.Avg60, "avg60")
+	ch <- prometheus.MustNewConstMetric(avgDesc, prometheus.GaugeValue, line.Avg300, "avg300")
+
 	totalDesc := prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "pressure", fmt.Sprintf("%s_%s_total", res, typ)),
 		fmt.Sprintf("%s %s pressure total stall time in seconds.", res, typ),
