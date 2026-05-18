@@ -25,6 +25,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+func init() {
+	registerLinuxCollector(ebpfTrafficCollectorName, newEBPFTrafficCollector)
+}
+
 // flowSample is the per-(remote_ip, direction) snapshot the collector pulls
 // from the BPF map at scrape time.
 type flowSample struct {
@@ -186,8 +190,4 @@ func (c *ebpfTrafficCollector) snapshot() ([]flowSample, error) {
 		return nil, fmt.Errorf("ebpf_traffic: iterate flows map: %w", err)
 	}
 	return samples, nil
-}
-
-func init() {
-	registerLinuxCollector(ebpfTrafficCollectorName, newEBPFTrafficCollector)
 }
