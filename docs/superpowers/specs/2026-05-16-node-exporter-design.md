@@ -351,3 +351,64 @@ None — all major decisions resolved in brainstorming.
 - node_exporter source: `https://github.com/prometheus/node_exporter` (specifically `collector/` package patterns)
 - Prometheus text exposition format: `https://prometheus.io/docs/instrumenting/exposition_formats/`
 - `prometheus/procfs`: `https://github.com/prometheus/procfs`
+
+## Additional collectors
+
+### `ebpf_traffic` (Linux 5.4+)
+
+Per-remote-IPv4 byte and packet counters collected by two `cgroup_skb` BPF
+programs (ingress + egress) attached to the root cgroup v2 hierarchy.
+
+Metrics:
+
+- `node_ebpf_traffic_bytes_total{remote_ip,direction}` — counter
+- `node_ebpf_traffic_packets_total{remote_ip,direction}` — counter
+- `node_ebpf_traffic_truncated_flows` — gauge, number of map entries dropped
+  from the top-N at the last scrape
+
+Defaults (hardcoded in MVP):
+
+- cgroup path: `/sys/fs/cgroup`
+- top-N: 1000 flows by byte count
+- loopback (127.0.0.0/8) excluded in the BPF program
+- IPv4 only — IPv6 packets are passed through unmodified
+- BPF map: `BPF_MAP_TYPE_LRU_HASH`, `max_entries=8192`
+
+Capability requirements: `CAP_BPF` + `CAP_NET_ADMIN` (or root). Without these
+the collector fails to load and is silently dropped from the registry; the
+log line `exporter: skipping collector ebpf_traffic: ...` records the reason.
+
+#### Regenerating the BPF bindings
+
+To rebuild the BPF object and Go bindings after modifying
+`exporter/bpf/traffic.bpf.c`, run inside WSL or a Linux shell with `clang`
+and `libbpf-dev` installed:
+
+    sudo apt-get install -y clang libbpf-dev
+    go generate ./exporter/bpf/gen.go
+
+Note: target the file directly (`gen.go`), NOT `./exporter/bpf/...` — the
+`//go:build ignore` tag on `gen.go` causes the package-wildcard form to
+silently skip the directive.
+
+On Ubuntu the `clang` package provides the unsuffixed binary; the `bpf2go`
+tool also expects `llvm-strip` in `PATH`. If only `llvm-strip-10` (or
+similar versioned binary) is installed, create a symlink:
+
+    sudo ln -s /usr/bin/llvm-strip-10 /usr/local/bin/llvm-strip
+
+The `-cflags` in `gen.go` include `-I/usr/include/x86_64-linux-gnu` to
+locate `asm/types.h` on Ubuntu's multi-arch layout. On arm64 Linux,
+replace with `-I/usr/include/aarch64-linux-gnu` before regenerating.
+
+The generated `_bpfel.go`/`_bpfeb.go` source files and the compiled `.o`
+objects are committed to the repository, so a plain `go build` does NOT
+require clang.
+
+#### Smoke testing
+
+The repository root contains `smoke_ebpf.sh` (Linux only) which builds a
+Linux binary, runs the server under sudo, generates a small amount of
+traffic, and scrapes both `/metrics` and `/api/resources/system` for
+`node_ebpf_traffic_*` entries. Use it to verify the collector after
+kernel upgrades or major refactors.
