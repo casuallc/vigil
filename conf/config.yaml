@@ -29,4 +29,4 @@ https:
 managed_apps: []
 
 vm:
-  localhost_fallback: false
+  localhost_fallback: true
