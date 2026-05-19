@@ -38,6 +38,7 @@ type Config struct {
   HTTPS       HTTPSConfig    `yaml:"https"`
   Database    DatabaseConfig `yaml:"database"`
   ManagedApps []AppConfig    `yaml:"managed_apps"`
+  VM          VMConfig       `yaml:"vm"`
 }
 
 type BasicAuth struct {
@@ -83,6 +84,10 @@ type AppConfig struct {
   WorkingDir string            `yaml:"working_dir,omitempty"`
   Restart    bool              `yaml:"restart"`
   User       string            `yaml:"user,omitempty"`
+}
+
+type VMConfig struct {
+  LocalhostFallback bool `yaml:"localhost_fallback"` // fallback to local shell when vm_name=="localhost" and SSH fails
 }
 
 // generateRandomKey generates a random key for encryption

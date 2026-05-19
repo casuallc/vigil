@@ -47,23 +47,36 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sshClient, err := vm.NewSSHClient(&vm.SSHConfig{
+	// Attempt SSH connection first; fallback to local shell if configured
+	sshClient, sshClientErr := vm.NewSSHClient(&vm.SSHConfig{
 		Host:     vmInfo.IP,
 		Port:     vmInfo.Port,
 		Username: vmInfo.Username,
 		Password: vmInfo.Password,
 		KeyPath:  vmInfo.KeyPath,
 	})
-	if err != nil {
-		http.Error(w, err.Error(), 500)
+
+	useLocalFallback := vmName == "localhost" && s.config != nil && s.config.VM.LocalhostFallback
+
+	var sshConnectErr error
+	if sshClientErr == nil {
+		sshConnectErr = sshClient.Connect(vmInfo.IP, vmInfo.Port)
+	}
+
+	useLocal := false
+	if useLocalFallback && (sshClientErr != nil || sshConnectErr != nil) {
+		useLocal = true
+	} else if sshClientErr != nil {
+		http.Error(w, sshClientErr.Error(), 500)
+		return
+	} else if sshConnectErr != nil {
+		http.Error(w, sshConnectErr.Error(), 500)
 		return
 	}
 
-	if err := sshClient.Connect(vmInfo.IP, vmInfo.Port); err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+	if !useLocal {
+		defer sshClient.Close()
 	}
-	defer sshClient.Close()
 
 	// Upgrade to WebSocket
 	var upgrader = websocket.Upgrader{
@@ -76,14 +89,43 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		if !useLocal {
+			sshClient.Close()
+		}
 		return
 	}
 	defer ws.Close()
 
-	session, err := sshClient.CreateSession()
-	if err != nil {
-		ws.WriteMessage(websocket.BinaryMessage, []byte(err.Error()))
-		return
+	// terminalSession abstracts *ssh.Session and *vm.LocalShellSession
+	type terminalSession interface {
+		StdinPipe() (io.WriteCloser, error)
+		StdoutPipe() (io.Reader, error)
+		StderrPipe() (io.Reader, error)
+		RequestPty(term string, h, w int, modes ssh.TerminalModes) error
+		WindowChange(rows, cols int) error
+		Shell() error
+		Close() error
+	}
+
+	var session terminalSession
+	var connType string
+
+	if useLocal {
+		localSession, err := vm.NewLocalShellSession()
+		if err != nil {
+			ws.WriteMessage(websocket.BinaryMessage, []byte(err.Error()))
+			return
+		}
+		session = localSession
+		connType = "local"
+	} else {
+		sshSession, err := sshClient.CreateSession()
+		if err != nil {
+			ws.WriteMessage(websocket.BinaryMessage, []byte(err.Error()))
+			return
+		}
+		session = sshSession
+		connType = "ssh"
 	}
 	defer session.Close()
 
@@ -128,7 +170,7 @@ func (s *Server) handleSSHWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Register connection
 	s.RegisterSSHConnection(connID, vmName, clientIP, username)
-	log.Printf("SSH connection registered: ID=%s, VM=%s, ClientIP=%s, User=%s", connID, vmName, clientIP, username)
+	log.Printf("SSH connection registered: ID=%s, VM=%s, ClientIP=%s, User=%s, Type=%s", connID, vmName, clientIP, username, connType)
 
 	// Ensure connection is unregistered when session ends
 	defer func() {

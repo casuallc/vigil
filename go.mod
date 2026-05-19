@@ -7,6 +7,7 @@ require (
 	github.com/apache/pulsar-client-go v0.17.0
 	github.com/apache/rocketmq-client-go/v2 v2.1.2
 	github.com/cilium/ebpf v0.16.0
+	github.com/creack/pty v1.1.24
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/expr-lang/expr v1.17.6
 	github.com/golang-migrate/migrate/v4 v4.19.1
