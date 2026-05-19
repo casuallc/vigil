@@ -28,7 +28,6 @@ import (
   "strings"
   "time"
 
-  "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/config"
   "github.com/gorilla/websocket"
 )
@@ -81,11 +80,11 @@ func NewClient(host string, insecureSkipVerify ...bool) *Client {
     }
   }
 
-  // 从 conf/app.conf 加载 Basic Auth 凭据
-  confPath := filepath.Join("conf", "app.conf")
-  if kv, err := common.LoadKeyValues(confPath); err == nil {
-    client.basicUser = kv["BASIC_AUTH_USER"]
-    client.basicPass = kv["BASIC_AUTH_PASS"]
+  // 从 conf/config.yaml 加载 Basic Auth 凭据
+  cfg, err := config.LoadConfig(filepath.Join("conf", "config.yaml"))
+  if err == nil && cfg != nil {
+    client.basicUser = cfg.BasicAuth.Username
+    client.basicPass = cfg.BasicAuth.Password
   }
 
   return client
