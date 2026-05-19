@@ -24,6 +24,7 @@ import (
   "io"
   "net/http"
   "net/url"
+  "os"
   "path/filepath"
   "strings"
   "time"
@@ -80,11 +81,12 @@ func NewClient(host string, insecureSkipVerify ...bool) *Client {
     }
   }
 
-  // 从 conf/config.yaml 加载 Basic Auth 凭据
-  cfg, err := config.LoadConfig(filepath.Join("conf", "config.yaml"))
-  if err == nil && cfg != nil {
-    client.basicUser = cfg.BasicAuth.Username
-    client.basicPass = cfg.BasicAuth.Password
+  // 从可执行文件所在目录的 conf/config.yaml 加载 Basic Auth 凭据
+  if exePath, err := os.Executable(); err == nil {
+    if cfg, err := config.LoadConfig(filepath.Join(filepath.Dir(exePath), "conf", "config.yaml")); err == nil && cfg != nil {
+      client.basicUser = cfg.BasicAuth.Username
+      client.basicPass = cfg.BasicAuth.Password
+    }
   }
 
   return client
