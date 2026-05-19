@@ -34,6 +34,9 @@ echo " Building Vigil in WSL"
 echo " Project root: __WSLROOT__"
 echo "=========================================="
 
+# Ensure Go binary path is present before we check
+export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
+
 # ------------------ Install Go if missing ------------------
 if ! command -v go >/dev/null 2>&1; then
     echo "[WSL] Go not found. Installing Go..."
@@ -54,9 +57,6 @@ if ! command -v go >/dev/null 2>&1; then
         sudo apt-get install -y golang-go
     fi
 fi
-
-# Ensure Go is on PATH for this session
-export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
 
 echo "[WSL] Go version: $(go version)"
 
