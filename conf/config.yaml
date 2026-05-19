@@ -1,9 +1,9 @@
 addr: :57575
 
 auth:
-  enabled: false
-  username: admin
-  password: admin
+  enabled: true
+  username: bbx
+  password: Flzx3qL@ysyhl9t
 
 log:
   level: info

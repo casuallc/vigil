@@ -19,7 +19,13 @@
       "Bash(git checkout:*)",
       "Bash(go fmt:*)",
       "Bash(go run:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(git worktree *)",
+      "Bash(go doc *)",
+      "Bash(git *)",
+      "Bash(wsl *)",
+      "PowerShell(go vet *)",
+      "PowerShell(go test *)"
     ]
   }
 }

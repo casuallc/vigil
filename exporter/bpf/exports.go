@@ -23,8 +23,9 @@ type Objects = trafficObjects
 
 // FlowKey and FlowStats are exported aliases for the bpf2go-generated
 // map key and value types. The C struct field names (remote_ipv4,
-// direction, _pad, bytes, packets) appear as RemoteIpv4, Direction, Pad,
-// Bytes, Packets on the Go side per bpf2go's naming convention.
+// ifindex, direction, _pad, bytes, packets) appear as RemoteIpv4,
+// Ifindex, Direction, Pad, Bytes, Packets on the Go side per bpf2go's
+// naming convention.
 type FlowKey = trafficFlowKey
 type FlowStats = trafficFlowStats
 
@@ -38,10 +39,10 @@ func LoadObjects(o *Objects, opts *ebpf.CollectionOptions) error {
 // TcObjects exposes the bpf2go-generated objects for the TC-based
 // fallback programs (traffic_tc.bpf.c). The map layout is identical to
 // Objects so the same iteration code works for both.
-type TcObjects = trafficTcObjects
+type TcObjects = traffic_tcObjects
 
 // LoadTcObjects loads the TC eBPF programs and maps from the embedded
 // BPF ELF into the kernel.
 func LoadTcObjects(o *TcObjects, opts *ebpf.CollectionOptions) error {
-	return loadTrafficTcObjects(o, opts)
+	return loadTraffic_tcObjects(o, opts)
 }

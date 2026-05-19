@@ -82,11 +82,13 @@ main() {
     done
 
     # ========== Generate BPF bindings if needed ==========
-    if command -v clang >/dev/null 2>&1; then
+    # bpf2go requires both clang and llvm-strip; skip if either is missing
+    # so the committed generated files are used instead.
+    if command -v clang >/dev/null 2>&1 && command -v llvm-strip >/dev/null 2>&1; then
         log "Regenerating BPF objects..."
-        go generate ./exporter/bpf/gen.go || warn "BPF code generation failed (clang/libbpf-dev may be missing)"
+        go generate ./exporter/bpf/gen.go || warn "BPF code generation failed"
     else
-        warn "clang not found, skipping BPF code generation"
+        warn "clang or llvm-strip not found, skipping BPF code generation"
     fi
 
     # ========== Clean & Prepare ==========

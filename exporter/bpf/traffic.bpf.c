@@ -22,9 +22,10 @@
 #define DIRECTION_EGRESS  1
 
 struct flow_key {
-    __u8 remote_ipv4[4]; /* network byte order, first-octet-first */
-    __u8 direction;
-    __u8 _pad[3];
+    __u8  remote_ipv4[4]; /* network byte order, first-octet-first */
+    __u32 ifindex;
+    __u8  direction;
+    __u8  _pad[3];
 };
 
 struct flow_stats {
@@ -56,6 +57,7 @@ static __always_inline int count(struct __sk_buff *skb, __u8 direction)
 
     struct flow_key key = {};
     __builtin_memcpy(&key.remote_ipv4, &remote_be, sizeof(remote_be));
+    key.ifindex   = skb->ifindex;
     key.direction = direction;
 
     /* Skip 127.0.0.0/8 — first octet equals 127. The remote_ipv4 array

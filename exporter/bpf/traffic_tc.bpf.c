@@ -28,9 +28,10 @@
 #define DIRECTION_EGRESS  1
 
 struct flow_key {
-	__u8 remote_ipv4[4];
-	__u8 direction;
-	__u8 _pad[3];
+	__u8  remote_ipv4[4];
+	__u32 ifindex;
+	__u8  direction;
+	__u8  _pad[3];
 };
 
 struct flow_stats {
@@ -65,6 +66,7 @@ static __always_inline int count_tc(struct __sk_buff *skb, __u8 direction)
 
 	struct flow_key key = {};
 	__builtin_memcpy(&key.remote_ipv4, &remote_be, sizeof(remote_be));
+	key.ifindex   = skb->ifindex;
 	key.direction = direction;
 
 	/* Skip 127.0.0.0/8 */

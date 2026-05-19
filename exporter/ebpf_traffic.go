@@ -35,10 +35,11 @@ func init() {
 	registerLinuxCollector(ebpfTrafficCollectorName, newEBPFTrafficCollector)
 }
 
-// flowSample is the per-(remote_ip, direction) snapshot the collector pulls
-// from the BPF map at scrape time.
+// flowSample is the per-(remote_ip, ifindex, direction) snapshot the collector
+// pulls from the BPF map at scrape time.
 type flowSample struct {
 	remoteIP  string
+	ifaceName string
 	direction string
 	bytes     float64
 	packets   float64
@@ -80,9 +81,10 @@ const (
 	directionEgress uint8 = 1
 )
 
-// flowKey mirrors the BPF struct flow_key layout (8 bytes).
+// flowKey mirrors the BPF struct flow_key layout (12 bytes).
 type flowKey struct {
 	RemoteIpv4 [4]uint8
+	Ifindex    uint32
 	Direction  uint8
 	Pad        [3]uint8
 }
@@ -114,13 +116,13 @@ func (c *ebpfTrafficCollector) Update(ch chan<- prometheus.Metric) error {
 
 	bytesDesc := prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "ebpf_traffic", "bytes_total"),
-		"Bytes seen per remote IPv4 address and direction since program load.",
-		[]string{"remote_ip", "direction"}, nil,
+		"Bytes seen per remote IPv4 address, interface and direction since program load.",
+		[]string{"remote_ip", "interface", "direction"}, nil,
 	)
 	packetsDesc := prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "ebpf_traffic", "packets_total"),
-		"Packets seen per remote IPv4 address and direction since program load.",
-		[]string{"remote_ip", "direction"}, nil,
+		"Packets seen per remote IPv4 address, interface and direction since program load.",
+		[]string{"remote_ip", "interface", "direction"}, nil,
 	)
 	truncatedDesc := prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "ebpf_traffic", "truncated_flows"),
@@ -129,8 +131,8 @@ func (c *ebpfTrafficCollector) Update(ch chan<- prometheus.Metric) error {
 	)
 
 	for _, s := range kept {
-		ch <- prometheus.MustNewConstMetric(bytesDesc, prometheus.CounterValue, s.bytes, s.remoteIP, s.direction)
-		ch <- prometheus.MustNewConstMetric(packetsDesc, prometheus.CounterValue, s.packets, s.remoteIP, s.direction)
+		ch <- prometheus.MustNewConstMetric(bytesDesc, prometheus.CounterValue, s.bytes, s.remoteIP, s.ifaceName, s.direction)
+		ch <- prometheus.MustNewConstMetric(packetsDesc, prometheus.CounterValue, s.packets, s.remoteIP, s.ifaceName, s.direction)
 	}
 	ch <- prometheus.MustNewConstMetric(truncatedDesc, prometheus.GaugeValue, float64(truncated))
 	return nil
@@ -148,8 +150,13 @@ func (c *ebpfTrafficCollector) snapshot() ([]flowSample, error) {
 		if key.Direction == directionEgress {
 			direction = "egress"
 		}
+		ifaceName := ""
+		if iface, err := net.InterfaceByIndex(int(key.Ifindex)); err == nil {
+			ifaceName = iface.Name
+		}
 		samples = append(samples, flowSample{
 			remoteIP:  ipToString(key.RemoteIpv4),
+			ifaceName: ifaceName,
 			direction: direction,
 			bytes:     float64(val.Bytes),
 			packets:   float64(val.Packets),

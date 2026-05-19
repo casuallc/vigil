@@ -14,6 +14,7 @@ import (
 
 type traffic_tcFlowKey struct {
 	RemoteIpv4 [4]uint8
+	Ifindex    uint32
 	Direction  uint8
 	Pad        [3]uint8
 }
