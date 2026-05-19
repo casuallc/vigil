@@ -83,6 +83,10 @@ OS/Arch:   %s/%s
   licenseCmd := c.setupLicenseCommand()
   rootCmd.AddCommand(licenseCmd)
 
+  // Add Register command
+  registerCmd := c.setupRegisterCommand()
+  rootCmd.AddCommand(registerCmd)
+
   // Add Log commands
   logCmd := c.setupLogCommands()
   rootCmd.AddCommand(logCmd)
