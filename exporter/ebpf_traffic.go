@@ -1,3 +1,5 @@
+//go:build linux
+
 /*
 Copyright 2025 Vigil Authors
 
@@ -8,17 +10,17 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 */
 
-//go:build linux
-
 package exporter
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -168,8 +170,53 @@ func (c *ebpfTrafficCollector) snapshot() ([]flowSample, error) {
 	return samples, nil
 }
 
+// kernelVersionAtLeast returns true if the running kernel is >= major.minor.patch.
+// It parses the release string from unix.Uname (e.g. "3.10.0-1160.119.1.el7.x86_64").
+func kernelVersionAtLeast(major, minor, patch int) bool {
+	var utsname unix.Utsname
+	if err := unix.Uname(&utsname); err != nil {
+		return false
+	}
+	release := byteSliceToString(utsname.Release[:])
+	parts := strings.Split(release, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	km, _ := strconv.Atoi(parts[0])
+	kmi, _ := strconv.Atoi(parts[1])
+
+	kpatch := 0
+	if len(parts) >= 3 {
+		patchPart := strings.Split(parts[2], "-")[0]
+		kpatch, _ = strconv.Atoi(patchPart)
+	}
+
+	if km != major {
+		return km > major
+	}
+	if kmi != minor {
+		return kmi > minor
+	}
+	return kpatch >= patch
+}
+
+func byteSliceToString(b []byte) string {
+	n := bytes.IndexByte(b, 0)
+	if n == -1 {
+		n = len(b)
+	}
+	return string(b[:n])
+}
+
 // newEBPFTrafficCollector tries cgroup v2 first, then falls back to TC eBPF.
 func newEBPFTrafficCollector() (Collector, error) {
+	// BPF_MAP_TYPE_LRU_HASH was introduced in kernel 4.10.  The pre-compiled
+	// objects also rely on BPF features that may not exist on older kernels.
+	// Skip gracefully rather than fail at load time.
+	if !kernelVersionAtLeast(4, 10, 0) {
+		return nil, fmt.Errorf("ebpf_traffic requires kernel >= 4.10 (BPF_MAP_TYPE_LRU_HASH)")
+	}
+
 	// BPF maps need locked memory above the default rlimit on older kernels.
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return nil, fmt.Errorf("ebpf_traffic: remove memlock rlimit: %w", err)

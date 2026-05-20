@@ -69,8 +69,12 @@ static __always_inline int count(struct __sk_buff *skb, __u8 direction)
 
     struct flow_stats *st = bpf_map_lookup_elem(&flows, &key);
     if (st) {
-        __sync_fetch_and_add(&st->bytes, skb->len);
-        __sync_fetch_and_add(&st->packets, 1);
+        /* NOTE: we use direct addition rather than __sync_fetch_and_add
+         * so the program loads on pre-5.12 kernels that lack BPF_ATOMIC.
+         * The resulting race on concurrent updates is acceptable for
+         * best-effort traffic counters. */
+        st->bytes += skb->len;
+        st->packets += 1;
     } else {
         struct flow_stats init = { .bytes = skb->len, .packets = 1 };
         bpf_map_update_elem(&flows, &key, &init, BPF_NOEXIST);
