@@ -8,6 +8,7 @@
 |------|------|----------|
 | 健康检查 | [health.md](health.md) | `/health` |
 | 服务器信息 | [info.md](info.md) | `/api/info` |
+| 系统管理 | [system.md](system.md) | `/api/system/*` |
 | Hosts 管理 | [hosts.md](hosts.md) | `/api/hosts` |
 | 授权特征码 | [license.md](license.md) | `/api/license` |
 | BBX 代理注册 | [register.md](register.md) | `/api/v1/bbx/register` |
@@ -28,6 +29,7 @@
 ### 系统接口
 - [健康检查](health.md) - 系统健康状态检查
 - [服务器信息](info.md) - 获取服务器主机名、网卡信息、版本等基本信息
+- [系统管理](system.md) - 平滑升级、运行状态查询
 - [Hosts 管理](hosts.md) - 更新系统 hosts 文件
 - [授权特征码](license.md) - 获取服务器物理网卡的授权特征码
 - [BBX 代理注册](register.md) - BBX 代理向管控台自动注册
