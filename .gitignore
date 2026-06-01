@@ -128,6 +128,9 @@ makefile.local
 # mage (Go 构建工具)
 mage_output_file.go
 
+# 本地 Go 缓存目录
+.gocache/
+
 # Wire (依赖注入) 生成文件
 wire_gen.go
 
