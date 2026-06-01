@@ -196,8 +196,6 @@ func (s *Server) handleEditProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetSystemResources handles system resource monitoring.
-// It returns collector-grouped JSON produced by the node_exporter-style
-// collector set. On non-Linux platforms this returns 501.
 func (s *Server) handleGetSystemResources(w http.ResponseWriter, r *http.Request) {
 	data, err := s.exporter.GatherJSON()
 	if err != nil {
@@ -208,7 +206,9 @@ func (s *Server) handleGetSystemResources(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, data)
+	stats := exporter.GatherToResourceStats(data)
+	stats.SetFormattedValues()
+	writeJSON(w, http.StatusOK, stats)
 }
 
 // handleGetProcessResources handles process resource monitoring.
