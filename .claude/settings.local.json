@@ -25,7 +25,8 @@
       "Bash(git *)",
       "Bash(wsl *)",
       "PowerShell(go vet *)",
-      "PowerShell(go test *)"
+      "PowerShell(go test *)",
+      "Bash(go vet *)"
     ]
   }
 }
