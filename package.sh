@@ -15,6 +15,7 @@ done
 # 清理旧输出
 rm -rf release/bbx-*.tar.gz
 rm -rf release/bbx-*.rpm
+rm -rf release/bbx-*.deb
 rm -rf release/bbx
 
 # 打包通用函数
@@ -49,7 +50,7 @@ package_arch() {
     (cd release && tar -zcvf "$output_name" bbx)
     echo "✅ $output_name 生成完成"
 
-    # 使用 nfpm 打包 RPM
+    # 使用 nfpm 打包 RPM 和 DEB
     if command -v nfpm >/dev/null 2>&1; then
         local rpm_arch
         if [ "$arch" = "amd64" ]; then
@@ -63,11 +64,17 @@ package_arch() {
             -e "s|{{VERSION}}|$VERSION|g" \
             nfpm.template.yaml > "/tmp/nfpm-$arch.yaml"
 
+        # RPM
         nfpm package -f "/tmp/nfpm-$arch.yaml" -p rpm -t "release/bbx-${VERSION}.${rpm_arch}.rpm"
-        rm -f "/tmp/nfpm-$arch.yaml"
         echo "✅ bbx-${VERSION}.${rpm_arch}.rpm 生成完成"
+
+        # DEB (架构名与 Go 一致: amd64 / arm64)
+        nfpm package -f "/tmp/nfpm-$arch.yaml" -p deb -t "release/bbx-${VERSION}.${arch}.deb"
+        echo "✅ bbx-${VERSION}.${arch}.deb 生成完成"
+
+        rm -f "/tmp/nfpm-$arch.yaml"
     else
-        echo "⚠️  nfpm 未安装，跳过 RPM 打包"
+        echo "⚠️  nfpm 未安装，跳过 RPM/DEB 打包"
         echo "    安装命令: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest"
     fi
 

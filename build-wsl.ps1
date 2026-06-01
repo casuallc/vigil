@@ -2,7 +2,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Build Vigil (bbx) install packages and RPMs inside WSL.
+    Build Vigil (bbx) install packages (tar.gz, RPM, DEB) inside WSL.
 .DESCRIPTION
     This script enters WSL, ensures Go and nfpm are installed,
     then runs build_all.sh and package.sh. The resulting tar.gz
