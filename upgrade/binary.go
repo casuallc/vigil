@@ -72,7 +72,12 @@ func (bm *BinaryManager) SaveFromReader(r io.Reader) (string, error) {
 		return "", err
 	}
 
-	return path, nil
+	// Return absolute path to ensure fork/exec works regardless of working directory
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return path, nil // fallback to relative
+	}
+	return absPath, nil
 }
 
 // Download downloads a binary from a URL

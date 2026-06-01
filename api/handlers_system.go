@@ -19,11 +19,11 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/casuallc/vigil/upgrade"
@@ -43,9 +43,21 @@ func (s *Server) handleSystemUpgrade(w http.ResponseWriter, r *http.Request) {
 		Checksum string `json:"checksum"` // optional sha256 checksum
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
-		return
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "multipart/form-data") {
+		// Parse multipart form for upload method (file + fields in form-data)
+		if err := r.ParseMultipartForm(100 << 20); err != nil {
+			writeError(w, http.StatusBadRequest, "failed to parse multipart form: "+err.Error())
+			return
+		}
+		req.Method = r.FormValue("method")
+		req.URL = r.FormValue("url")
+		req.Checksum = r.FormValue("checksum")
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+			return
+		}
 	}
 
 	u := upgrade.NewUpgrade("data")
@@ -68,23 +80,24 @@ func (s *Server) handleSystemUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var binaryReader io.Reader
 	var binaryPath string
 
 	switch req.Method {
 	case "upload":
-		// Expect multipart form with file field
-		if err := r.ParseMultipartForm(100 << 20); err != nil { // 100MB max
-			writeError(w, http.StatusBadRequest, "failed to parse multipart form: "+err.Error())
-			return
-		}
+		// Multipart form already parsed above for multipart requests
 		file, _, err := r.FormFile("file")
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "missing file field: "+err.Error())
 			return
 		}
-		defer file.Close()
-		binaryReader = file
+		// Save synchronously to avoid race between defer file.Close() and goroutine
+		savedPath, err := u.BinaryManager().SaveFromReader(file)
+		file.Close()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to save binary: "+err.Error())
+			return
+		}
+		binaryPath = savedPath
 
 	case "download":
 		if req.URL == "" {
@@ -106,8 +119,9 @@ func (s *Server) handleSystemUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start upgrade (non-blocking, monitors in background)
+	// binaryReader is nil here; for upload we saved synchronously above
 	go func() {
-		if err := u.StartUpgrade(binaryPath, binaryReader, req.Checksum); err != nil {
+		if err := u.StartUpgrade(binaryPath, nil, req.Checksum); err != nil {
 			// Error already logged in StartUpgrade
 			return
 		}
