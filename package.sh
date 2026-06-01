@@ -83,7 +83,7 @@ package_arch() {
 }
 
 # 分别打包 amd64 和 arm64
-package_arch "amd64" "release/linux-amd64" "bbx-linux-amd64.tar.gz"
-package_arch "arm64" "release/linux-arm64" "bbx-linux-arm64.tar.gz"
+package_arch "amd64" "release/linux-amd64" "bbx-${VERSION}-linux-amd64.tar.gz"
+package_arch "arm64" "release/linux-arm64" "bbx-${VERSION}-linux-arm64.tar.gz"
 
 echo "🎉 所有架构打包完成！"
