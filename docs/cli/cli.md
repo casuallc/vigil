@@ -101,6 +101,7 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口。
 | Kafka | `kafka` | 支持生产/消费消息 | [cli_kafka.md](./cli_kafka.md) |
 | MQTT | `mqtt` | 支持发布/订阅消息 | [cli_mqtt.md](./cli_mqtt.md) |
 | Pulsar | `pulsar` | 支持生产/消费消息 | [cli_pulsar.md](./cli_pulsar.md) |
+| ActiveMQ | `activemq` | 支持发送/接收消息（STOMP） | [cli_activemq.md](./cli_activemq.md) |
 | Zookeeper | `zk` | 支持基本操作 | [cli_zk.md](./cli_zk.md) |
 
 ### 通用功能

@@ -145,6 +145,10 @@ OS/Arch:   %s/%s
   pulsarCmd := c.setupPulsarCommands()
   rootCmd.AddCommand(pulsarCmd)
 
+  // Add ActiveMQ commands
+  activemqCmd := c.setupActiveMQCommands()
+  rootCmd.AddCommand(activemqCmd)
+
   // Add Cosmic commands
   cosmicCmd := c.setupCosmicCommands()
   rootCmd.AddCommand(cosmicCmd)
