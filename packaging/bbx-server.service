@@ -14,7 +14,10 @@ RestartSec=5
 LimitNOFILE=65535
 LimitNPROC=65535
 
-PrivateTmp=true
+# PrivateTmp disabled: bbx-server needs to access real /tmp for log streaming
+# and file operations. Enabling PrivateTmp would create a private mount
+# namespace where /tmp is isolated from the system.
+PrivateTmp=false
 
 [Install]
 WantedBy=multi-user.target

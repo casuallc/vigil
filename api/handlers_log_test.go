@@ -282,3 +282,50 @@ func TestHandleLogStreamFileNotFound(t *testing.T) {
 		t.Errorf("expected error message to contain 'failed to open file', got %q", msg)
 	}
 }
+
+// TestHandleLogStreamThroughMiddleware verifies that SSE streaming works
+// when the request goes through LoggingMiddleware (which wraps ResponseWriter).
+func TestHandleLogStreamThroughMiddleware(t *testing.T) {
+	server := &Server{}
+	tempDir := t.TempDir()
+	logPath := createTestLogFile(t, tempDir)
+
+	// Build router with the log stream endpoint
+	router := server.Router()
+	// Wrap with LoggingMiddleware (same as production in server.Start)
+	handler := server.LoggingMiddleware(router)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/files/logs/stream?path="+logPath+"&from_line=0", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	events := parseSSEEvents(t, rr.Body.String())
+	if len(events) != 5 {
+		t.Fatalf("expected 5 line events, got %d", len(events))
+	}
+
+	for i, ev := range events {
+		if ev.event != "line" {
+			t.Errorf("expected event 'line', got %q", ev.event)
+		}
+		var line LogLine
+		if err := json.Unmarshal([]byte(ev.data), &line); err != nil {
+			t.Fatalf("failed to unmarshal line data: %v", err)
+		}
+		if line.LineNumber != i+1 {
+			t.Errorf("expected line_number %d, got %d", i+1, line.LineNumber)
+		}
+		expectedContent := fmt.Sprintf("line%d", i+1)
+		if line.Content != expectedContent {
+			t.Errorf("expected content %q, got %q", expectedContent, line.Content)
+		}
+	}
+}

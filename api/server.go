@@ -219,6 +219,13 @@ func (lrw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) 
   return nil, nil, fmt.Errorf("response writer does not implement http.Hijacker")
 }
 
+// Flush 实现http.Flusher接口，以支持SSE流式响应
+func (lrw *loggingResponseWriter) Flush() {
+  if flusher, ok := lrw.ResponseWriter.(http.Flusher); ok {
+    flusher.Flush()
+  }
+}
+
 // LoggingMiddleware 是一个HTTP中间件，用于记录请求和响应
 func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
