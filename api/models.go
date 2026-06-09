@@ -258,3 +258,18 @@ type HostEntry struct {
 	IP       string `json:"ip"`
 	Hostname string `json:"hostname"`
 }
+
+// NetworkProbeRequest 端口探测请求
+type NetworkProbeRequest struct {
+	TargetIP  string `json:"targetIp"`
+	Port      int    `json:"port"`
+	Protocol  string `json:"protocol"`
+	TimeoutMs int    `json:"timeoutMs"`
+}
+
+// NetworkProbeResponse 端口探测响应
+type NetworkProbeResponse struct {
+	Reachable bool   `json:"reachable"`
+	LatencyMs int64  `json:"latencyMs"`
+	Error     string `json:"error"`
+}

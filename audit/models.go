@@ -52,6 +52,7 @@ const (
   ActionResourceMonitor  ActionType = "resource_monitor"
   ActionConfigManage     ActionType = "config_manage"
   ActionCommandExecute   ActionType = "command_exec"
+  ActionNetworkProbe     ActionType = "network_probe"
 )
 
 // StatusType 审计操作状态

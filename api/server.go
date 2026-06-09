@@ -346,6 +346,8 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
       action = audit.ActionConfigManage
     case strings.HasPrefix(path, "/api/exec"):
       action = audit.ActionCommandExecute
+    case strings.HasPrefix(path, "/api/network/probe"):
+      action = audit.ActionNetworkProbe
     }
 
     // 确定操作状态

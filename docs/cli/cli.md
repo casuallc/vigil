@@ -87,6 +87,20 @@ bbx-cli exec [command/script] [flags]
 
 [cli_exec.md](./cli_exec.md)
 
+## 网络诊断命令
+
+### 命令格式
+
+```
+bbx-cli network [subcommand] [flags]
+```
+
+### 子命令列表
+
+| 命令 | 说明 | 详细文档 |
+|------|------|----------|
+| `probe` | 探测目标 IP 和端口的连通性 | [cli_network.md](./cli_network.md#network-probe) |
+
 ## 消息队列命令
 
 Vigil 支持多种消息队列系统，提供统一的 API 接口。

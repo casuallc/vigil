@@ -158,6 +158,9 @@ func (s *Server) Router() *mux.Router {
   // File log streaming endpoint
   r.HandleFunc("/api/files/logs/stream", s.handleLogStream).Methods("GET")
 
+  // Network endpoints
+  r.HandleFunc("/api/network/probe", s.handleNetworkProbe).Methods("POST")
+
   // Auth endpoints
   r.HandleFunc("/api/auth/change-password", s.handleChangePassword).Methods("POST")
 

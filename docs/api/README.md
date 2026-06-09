@@ -20,6 +20,7 @@
 | 文件管理 | [files.md](files.md) | `/api/files/*` |
 | 用户管理 | [users.md](users.md) | `/api/users/*` |
 | VM 管理 | [vms.md](vms.md) | `/api/vms/*` |
+| 网络诊断 | [network.md](network.md) | `/api/network/*` |
 | 命令模板与历史 | [commands.md](commands.md) | `/api/commands/*` |
 | 定时任务 | [schedules.md](schedules.md) | `/api/schedules/*` |
 | AI 命令助手 | [ai.md](ai.md) | `/api/ai/*` |
@@ -55,6 +56,7 @@
 
 ### 系统运维
 - [巡检检查](inspect.md) - 系统巡检检查
+- [网络诊断](network.md) - 网络端口连通性探测
 
 ### 用户管理
 - [用户管理](users.md) - 用户注册、登录、配置管理
