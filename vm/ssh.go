@@ -25,6 +25,7 @@ import (
   "net"
   "os"
   "path"
+  "strconv"
   "strings"
   "time"
 
@@ -106,7 +107,7 @@ func (c *SSHClient) Connect(host string, port int) error {
   }
 
   // 建立SSH连接
-  addr := fmt.Sprintf("%s:%d", host, port)
+  addr := net.JoinHostPort(host, strconv.Itoa(port))
   client, err := ssh.Dial("tcp", addr, c.config)
   if err != nil {
     return fmt.Errorf("failed to connect to %s: %v", addr, err)
