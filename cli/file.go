@@ -39,6 +39,7 @@ func (c *CLI) setupFileCommand() *cobra.Command {
   fileCmd.AddCommand(c.setupFileDeleteCommand())
   fileCmd.AddCommand(c.setupFileCopyCommand())
   fileCmd.AddCommand(c.setupFileMoveCommand())
+  fileCmd.AddCommand(c.setupFileMkdirCommand())
 
   return fileCmd
 }
@@ -257,5 +258,38 @@ func (c *CLI) handleFileMove(sourcePath, targetPath string) error {
   }
 
   fmt.Printf("File moved successfully: %s -> %s\n", sourcePath, targetPath)
+  return nil
+}
+
+// setupFileMkdirCommand 设置file mkdir命令
+func (c *CLI) setupFileMkdirCommand() *cobra.Command {
+  var path string
+  var parents bool
+
+  mkdirCmd := &cobra.Command{
+    Use:   "mkdir",
+    Short: "Create a directory",
+    Long:  "Create a directory on the server",
+    RunE: func(cmd *cobra.Command, args []string) error {
+      return c.handleFileMkdir(path, parents)
+    },
+  }
+
+  mkdirCmd.Flags().StringVarP(&path, "path", "p", "", "Directory path to create")
+  mkdirCmd.Flags().BoolVarP(&parents, "parents", "P", false, "Create parent directories as needed")
+
+  mkdirCmd.MarkFlagRequired("path")
+
+  return mkdirCmd
+}
+
+// handleFileMkdir 处理file mkdir命令
+func (c *CLI) handleFileMkdir(path string, parents bool) error {
+  // 创建目录
+  if err := c.client.FileMkdir(path, parents); err != nil {
+    return fmt.Errorf("failed to create directory: %v", err)
+  }
+
+  fmt.Printf("Directory created successfully: %s\n", path)
   return nil
 }

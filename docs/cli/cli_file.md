@@ -4,6 +4,8 @@
 
 `file` 命令组用于执行文件操作，包括上传、下载、列出、删除、复制和移动文件。
 
+**编码说明**：CLI 客户端已内置处理中文路径的自动编码，直接使用中文路径即可，无需手动编码。如需对接第三方客户端，请参考 [API 编码规范](../api/files.md#编码规范)。
+
 ## 命令结构
 
 ```
@@ -20,6 +22,7 @@ bbx-cli file [command]
 | `delete` | 删除文件 |
 | `copy` | 复制文件 |
 | `move` | 移动文件 |
+| `mkdir` | 创建目录 |
 
 ## 命令详情
 
@@ -45,6 +48,9 @@ bbx-cli file upload --source <source_path> --target <target_path>
 ```bash
 # 上传本地文件到服务器
 ./bbx-cli file upload --source local.txt --target remote.txt
+
+# 上传中文路径文件（CLI 自动处理编码）
+./bbx-cli file upload --source ./报告.txt --target /data/报告.txt
 ```
 
 ### file download
@@ -69,6 +75,9 @@ bbx-cli file download --source <source_path> --target <target_path>
 ```bash
 # 从服务器下载文件到本地
 ./bbx-cli file download --source remote.txt --target local.txt
+
+# 下载中文路径文件（CLI 自动处理编码）
+./bbx-cli file download --source /data/报告.txt --target ./报告.txt
 ```
 
 ### file list
@@ -167,4 +176,31 @@ bbx-cli file move --source <source_path> --target <target_path>
 ```bash
 # 在服务器上移动文件
 ./bbx-cli file move --source old.txt --target new.txt
+```
+
+### file mkdir
+
+在服务器上创建目录。
+
+**语法：**
+
+```
+bbx-cli file mkdir --path <path> [--parents]
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--path` | `-p` | 目录路径 | 是 | - |
+| `--parents` | `-P` | 递归创建父目录 | 否 | `false` |
+
+**示例：**
+
+```bash
+# 创建单层目录
+./bbx-cli file mkdir --path /132
+
+# 递归创建多级目录
+./bbx-cli file mkdir --path /a/b/c --parents
 ```

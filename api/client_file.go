@@ -22,6 +22,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -66,7 +67,7 @@ func (c *Client) fileStreamUpload(sourcePath, targetPath, endpoint string) error
 
 	// Set request headers
 	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("X-Target-Path", targetPath)
+	req.Header.Set("X-Target-Path", url.PathEscape(targetPath))
 
 	// If Basic Auth is configured, attach to request
 	if c.basicUser != "" && c.basicPass != "" {
@@ -111,8 +112,8 @@ func (c *Client) fileMultipartUpload(sourcePath, targetPath, endpoint string) er
 		return err
 	}
 
-	// Add target path field
-	if err := writer.WriteField("target_path", targetPath); err != nil {
+	// Add target path field (URL-encoded for non-ASCII support)
+	if err := writer.WriteField("target_path", url.PathEscape(targetPath)); err != nil {
 		return err
 	}
 
@@ -415,6 +416,25 @@ func (c *Client) FileMove(sourcePath, targetPath string) error {
 	}
 
 	resp, err := c.doRequest("POST", "/api/files/move", reqBody)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return c.errorFromResponse(resp)
+	}
+
+	return nil
+}
+
+// FileMkdir creates a directory
+func (c *Client) FileMkdir(path string, parents bool) error {
+	reqBody := map[string]interface{}{
+		"path":    path,
+		"parents": parents,
+	}
+
+	resp, err := c.doRequest("POST", "/api/files/mkdir", reqBody)
 	if err != nil {
 		return err
 	}

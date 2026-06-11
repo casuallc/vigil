@@ -158,3 +158,11 @@ func (m *Manager) MoveFile(srcPath, dstPath string) error {
 
   return nil
 }
+
+// Mkdir 创建目录
+func (m *Manager) Mkdir(path string, parents bool) error {
+  if parents {
+    return os.MkdirAll(path, 0755)
+  }
+  return os.Mkdir(path, 0755)
+}

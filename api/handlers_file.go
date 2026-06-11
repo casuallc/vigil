@@ -20,6 +20,7 @@ import (
   "encoding/json"
   "fmt"
   "net/http"
+  "net/url"
   "path/filepath"
 
   "github.com/casuallc/vigil/file"
@@ -62,11 +63,14 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Get target path
+  // Get target path and decode URL encoding (for non-ASCII paths)
   targetPath := r.FormValue("target_path")
   if targetPath == "" {
     writeError(w, http.StatusBadRequest, "target_path is required")
     return
+  }
+  if decoded, err := url.PathUnescape(targetPath); err == nil {
+    targetPath = decoded
   }
 
   // Get uploaded file
@@ -91,12 +95,18 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 
 // handleFileStreamUpload handles uploading large files via raw body stream
 func (s *Server) handleFileStreamUpload(w http.ResponseWriter, r *http.Request) {
-	// Get target path from header
+	// Get target path from header and decode URL encoding (for non-ASCII paths)
 	targetPath := r.Header.Get("X-Target-Path")
 	if targetPath == "" {
 		writeError(w, http.StatusBadRequest, "X-Target-Path header is required")
 		return
 	}
+	decodedPath, err := url.PathUnescape(targetPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid X-Target-Path header")
+		return
+	}
+	targetPath = decodedPath
 
 	// Create file manager
 	fileManager := file.NewManager("")
@@ -132,8 +142,9 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Set response headers
-  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(req.SourcePath)))
+  // Set response headers with RFC 5987 encoding for non-ASCII filenames
+  baseName := filepath.Base(req.SourcePath)
+  w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, baseName, url.PathEscape(baseName)))
   w.Header().Set("Content-Type", "application/octet-stream")
 
   // Write response
@@ -215,4 +226,29 @@ func (s *Server) handleFileMove(w http.ResponseWriter, r *http.Request) {
   }
 
   writeJSON(w, http.StatusOK, map[string]string{"message": "File moved successfully"})
+}
+
+// handleFileMkdir handles creating directories
+func (s *Server) handleFileMkdir(w http.ResponseWriter, r *http.Request) {
+  type MkdirRequest struct {
+    Path    string `json:"path"`
+    Parents bool   `json:"parents"`
+  }
+
+  var req MkdirRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  // Create file manager
+  fileManager := file.NewManager("")
+
+  // Create directory
+  if err := fileManager.Mkdir(req.Path, req.Parents); err != nil {
+    writeError(w, http.StatusInternalServerError, err.Error())
+    return
+  }
+
+  writeJSON(w, http.StatusOK, map[string]string{"message": "Directory created successfully"})
 }

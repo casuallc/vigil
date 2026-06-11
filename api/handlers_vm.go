@@ -21,6 +21,7 @@ import (
   "fmt"
   "net"
   "net/http"
+  "net/url"
   "path/filepath"
   "time"
 
@@ -101,11 +102,14 @@ func (s *Server) handleVmFileUpload(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Get target path
+  // Get target path and decode URL encoding (for non-ASCII paths)
   targetPath := r.FormValue("target_path")
   if targetPath == "" {
     writeError(w, http.StatusBadRequest, "target_path is required")
     return
+  }
+  if decoded, err := url.PathUnescape(targetPath); err == nil {
+    targetPath = decoded
   }
 
   // Get VM info
@@ -161,12 +165,18 @@ func (s *Server) handleVmFileStreamUpload(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get target path from header
+	// Get target path from header and decode URL encoding (for non-ASCII paths)
 	targetPath := r.Header.Get("X-Target-Path")
 	if targetPath == "" {
 		writeError(w, http.StatusBadRequest, "X-Target-Path header is required")
 		return
 	}
+	decodedPath, err := url.PathUnescape(targetPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid X-Target-Path header")
+		return
+	}
+	targetPath = decodedPath
 
 	// Get VM info
 	vmInfo, err := s.vmManager.GetVM(vmName)
@@ -257,8 +267,9 @@ func (s *Server) handleVmFileDownload(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Set response headers
-  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(req.SourcePath)))
+  // Set response headers with RFC 5987 encoding for non-ASCII filenames
+  baseName := filepath.Base(req.SourcePath)
+  w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, baseName, url.PathEscape(baseName)))
   w.Header().Set("Content-Type", "application/octet-stream")
 
   // Write response
