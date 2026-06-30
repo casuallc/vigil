@@ -21,6 +21,7 @@
 | 用户管理 | [users.md](users.md) | `/api/users/*` |
 | VM 管理 | [vms.md](vms.md) | `/api/vms/*` |
 | 网络诊断 | [network.md](network.md) | `/api/network/*` |
+| 文件传输 Agent | [filetransfer.md](filetransfer.md) | `/api/transfer/*`, `/api/fs/*` |
 | 命令模板与历史 | [commands.md](commands.md) | `/api/commands/*` |
 | 定时任务 | [schedules.md](schedules.md) | `/api/schedules/*` |
 | AI 命令助手 | [ai.md](ai.md) | `/api/ai/*` |
@@ -42,6 +43,7 @@
 
 ### 文件操作
 - [文件管理](files.md) - 本地文件的上传、下载、列表、复制、移动
+- [文件传输 Agent](filetransfer.md) - 文件系统浏览与 DIRECT/KAFKA 分块文件传输任务（与 Java agent 互通）
 
 ### VM 管理
 - [VM 管理](vms.md) - VM 服务器管理、分组、SSH 连接、文件操作、权限管理、批量执行、资源监控
@@ -158,6 +160,10 @@ func main() {
 ```
 
 ## 变更日志
+
+### v1.3.0
+
+- 新增文件传输 Agent API `/api/transfer/*`、`/api/fs/*`（DIRECT/KAFKA 分块传输、文件系统浏览，与 Java file-transfer-agent 互通）
 
 ### v1.2.0
 

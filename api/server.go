@@ -36,6 +36,7 @@ import (
   "github.com/casuallc/vigil/audit"
   "github.com/casuallc/vigil/config"
   "github.com/casuallc/vigil/exporter"
+  "github.com/casuallc/vigil/filetransfer"
   "github.com/casuallc/vigil/models"
   "github.com/casuallc/vigil/proc"
   dbsql "github.com/casuallc/vigil/sql"
@@ -65,6 +66,8 @@ type Server struct {
   scheduleExecutionDB *sql.DB
   // Scheduler for automatic task execution
   scheduler *Scheduler
+  // File-transfer agent sub-feature (nil when disabled)
+  filetransfer *filetransfer.Manager
 }
 
 // SSHConnectionInfo represents an active SSH connection
@@ -183,6 +186,23 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
 
   // Start the scheduler
   server.scheduler.Start()
+
+  // Initialize the file-transfer agent sub-feature when enabled.
+  if config.Filetransfer.Enabled {
+    server.filetransfer = filetransfer.NewManager(filetransfer.Options{
+      DataDir:          config.Filetransfer.DataDir,
+      EncryptionKey:    config.Filetransfer.EncryptionKey,
+      DefaultChunkSize: config.Filetransfer.DefaultChunkSize,
+      Roots:            config.Filetransfer.Roots,
+      AuthUser:         config.Filetransfer.AuthUser,
+      AuthPass:         config.Filetransfer.AuthPass,
+    })
+    if err := server.filetransfer.Recover(); err != nil {
+      log.Printf("Warning: filetransfer task recovery failed: %v", err)
+    } else {
+      log.Printf("File-transfer agent initialized")
+    }
+  }
 
   return server
 }
@@ -380,6 +400,14 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 // First checks super admin credentials from config, then checks user database.
 func (s *Server) BasicAuthMiddleware(next http.Handler) http.Handler {
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    // The file-transfer agent endpoints authenticate with their own
+    // credentials (see filetransfer.Manager.basicAuth), so exempt them from
+    // the global Basic Auth here.
+    if strings.HasPrefix(r.URL.Path, "/api/transfer") || strings.HasPrefix(r.URL.Path, "/api/fs") {
+      next.ServeHTTP(w, r)
+      return
+    }
+
     u, p, ok := r.BasicAuth()
     if !ok {
       w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
@@ -598,6 +626,12 @@ func (s *Server) Stop() {
   // Stop the scheduler
   if s.scheduler != nil {
     s.scheduler.Stop()
+  }
+
+  // Cancel any in-flight file-transfer goroutines (state is preserved so
+  // RUNNING tasks resume on next startup).
+  if s.filetransfer != nil {
+    s.filetransfer.Shutdown()
   }
 }
 

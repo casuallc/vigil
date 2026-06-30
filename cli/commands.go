@@ -95,6 +95,10 @@ OS/Arch:   %s/%s
   networkCmd := c.setupNetworkCommands()
   rootCmd.AddCommand(networkCmd)
 
+  // Add Transfer (file-transfer agent) commands
+  transferCmd := c.setupTransferCommands()
+  rootCmd.AddCommand(transferCmd)
+
   // Global flags
   rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:57575", "API server host address")
   rootCmd.PersistentFlags().BoolVar(&insecureSkipVerify, "insecure", false, "Skip TLS certificate verification")
@@ -113,7 +117,8 @@ OS/Arch:   %s/%s
         currentCmd == fileCmd ||
         currentCmd == licenseCmd ||
         currentCmd == logCmd ||
-        currentCmd == networkCmd {
+        currentCmd == networkCmd ||
+        currentCmd == transferCmd {
         c.client = api.NewClient(apiHost, insecureSkipVerify)
         break
       }

@@ -13,7 +13,8 @@
 | 代码归属 | vigil 仓库内的子功能，复用现有 `bbx-server` HTTP 服务 |
 | 核心代码位置 | 新增顶层 `filetransfer/` 目录 |
 | 传输模式 | 本次实现 **DIRECT + KAFKA**（对齐 Java）；Pulsar/ActiveMQ 后续按同一 SPI 扩展 |
-| 互通要求 | Agent REST API 路径/参数、Kafka 消息格式与 Java 对齐；本地持久化走自有方式 |
+| 互通要求 | Agent REST API 路径/参数、Kafka 消息格式与 Java 对齐；**但 GET 响应体用 vigil 原生裸 JSON（非 Java `Result{code,msg,data}` 包裹），故 DIRECT 续传 progress 仅在 Go↔Go 自洽，与 Java agent 双向互通需适配，见 §3.2** |
+| 认证 | filetransfer 端点用自有固定凭据（`admq`/`admq-file-transfer`，对齐 Java），**独立于 vigil 全局 `config.auth`**；需把 `/api/transfer`、`/api/fs` 从全局 `BasicAuthMiddleware` 豁免，改由 filetransfer 自身校验，见 §3.3 |
 | 持久化 | 本地 JSON 文件，目录结构对齐 Java（`{dataDir}/tasks/{taskId}/`） |
 | API 响应格式 | 沿用 vigil 现有风格（`writeJSON` + HTTP 状态码，非 Java 的 `{code,msg,data}` 包装） |
 | CLI | REST API + `bbx-cli transfer` 子命令 |
@@ -26,8 +27,10 @@
 作为 vigil 的子功能，直接扩展现有 `bbx-server`：
 
 - 核心代码放在新增顶层目录 `filetransfer/`。
-- `api.Server` 持有并初始化 `filetransfer.Manager`。
-- 在 `api/routes.go` 注册与 Java agent 兼容的 REST 路由，复用 `api.Server` 的 Basic Auth 中间件（`s.authMiddleware`）。
+- `api.Server` 持有并初始化 `filetransfer.Manager`（在 `NewServerWithManager(...)` 中构造）。
+- 在 `api/routes.go` 注册与 Java agent 兼容的 REST 路由。
+  - 认证现状：vigil 的 Basic Auth 是 `s.BasicAuthMiddleware`，在 `Server.Start()` 中**全局**包裹整个 router（仅当 `config.auth.enabled` 时生效），**并非**按路由注册，也不存在 `s.authMiddleware`。
+  - filetransfer 需要自有固定凭据（`admq`/`admq-file-transfer`，对齐 Java agent），与 vigil 全局 `config.auth` 解耦。因此 `/api/transfer/*`、`/api/fs/*` 须从全局 `BasicAuthMiddleware` 豁免（在该中间件内对这些前缀放行），改由 filetransfer 自身的 basic-auth 包装校验 §5.1 的 `auth_user/auth_pass`。详见 §3.3。
 - 复用 vigil 已有依赖：`github.com/IBM/sarama`（Kafka）。Pulsar（`apache/pulsar-client-go`）、ActiveMQ（`go-stomp/stomp/v3`）依赖已存在，本次不使用。
 - `bbx-cli` 增加 `transfer` 子命令，通过 `api.Client` 调用 REST。
 
@@ -46,7 +49,7 @@ api/
   routes.go           # 新增 filetransfer 路由注册
   server.go           # Server 结构增加 *filetransfer.Manager 字段与初始化
 cli/
-  handlers_filetransfer.go  # bbx-cli transfer ... 子命令
+  transfer.go         # bbx-cli transfer ... 子命令（与现有 file.go/network.go/vm.go 命名一致）
 config/
   config.go           # 增加 FiletransferConfig
 ```
@@ -224,17 +227,23 @@ type taskRuntime struct {
 ### 3.2 响应格式
 - 沿用 vigil 现有风格：`writeJSON(w, statusCode, data)` 直接返回数据对象，错误用 `writeError(w, statusCode, msg)`（`{"error": ...}`）+ 对应 HTTP 状态码。
 - **不**使用 Java 的 `{code,msg,data}` 包装。
-- 这意味着 DIRECT 发送端（`transport_direct.go`）查询对端 progress 时，按 vigil 的响应结构解析（直接 `[]FileProgress`，而非 `Result<List>`）。Go agent ↔ Go agent 自洽；与 Java agent 互通时，progress 响应结构差异需由 Manager/调用方知悉（本设计两端均为 Go agent）。
+- 这意味着 DIRECT 发送端（`transport_direct.go`）查询对端 progress 时，按 vigil 的响应结构解析（直接 `[]FileProgress`，而非 Java 的 `Result<List<FileProgress>>`）。Go agent ↔ Go agent 自洽。
+- **与 Java agent 互通的边界**：
+  - Java agent 作为接收端、Go agent 作为发送端：Go 发送端解析 progress 时需识别 `Result{code,msg,data}` 包裹（或两种结构都兼容）。
+  - Go agent 作为接收端、Java agent 作为发送端：Java 发送端按 `Result<List>` 解析裸 JSON 会失败并退化为 `resumeOffset=0`（每次全量重传，不影响正确性但无续传）。
+  - 如需与 Java 双向续传互通，应让 GET `/progress`（及 `/status`）支持返回 `Result` 包裹，或发送端兼容两种结构。本设计两端均为 Go agent，默认不做此适配。
 
 ### 3.3 认证
-- 复用 vigil 现有 Basic Auth 中间件。
-- 配置见 §5.1；密码内存明文校验（与 Java 一致，不走 bcrypt）。
-- DIRECT 接收 `/chunks` 时，除 Basic Auth 外，校验 `recvToken`（与任务配置一致）。
+- filetransfer 端点（`/api/transfer/*`、`/api/fs/*`）用**自有** basic-auth 校验，凭据取 §5.1 的 `auth_user/auth_pass`（默认 `admq`/`admq-file-transfer`，与 Java agent 对齐），与 vigil 全局 `config.auth` 解耦。
+- 实现：在 vigil 全局 `s.BasicAuthMiddleware` 内对 `/api/transfer`、`/api/fs` 前缀放行（否则全局凭据会拦截 agent 凭据，或全局 `auth.enabled=false` 时 agent 端点完全无鉴权），由 filetransfer 自身包装中间件做内存明文比对（凭据匹配即放行）。
+- **更正**：Java 端用 Spring Security `BCryptPasswordEncoder` 对配置口令做 BCrypt 编码后比对（即 Java 走 bcrypt）。但两端凭据均来自静态配置、互通只取决于明文凭据是否一致，故 Go 端直接明文比对即可，无需复刻 BCrypt。
+- DIRECT 接收 `/chunks` 时，除 basic-auth 外，校验 `recvToken`（与任务配置一致）。
 
 ### 3.4 FS 浏览与 Path Jail
-- `FsItem`：`name`、`path`、`isDir`、`size`、`modTime`。
+- `list?path=` → `[]FsItem`，字段对齐 Java：`name`(string)、`dir`(bool)、`size`(int64，目录为 0)、`mtime`(int64，毫秒时间戳)。要求 path 为目录。
+- `stat?path=` → map：`isDir`(bool)、`size`(int64，目录为 0)、`fileCount`(int64)、`totalSize`(int64，目录递归汇总；文件时 fileCount/totalSize 为 0)。
 - 白名单 `roots`：为空时默认只允许用户主目录（`os.UserHomeDir()`）。
-- Path Jail：`filepath.Abs` + `filepath.Clean`，拒绝含 `..` 的路径，解析后必须落在白名单根目录内（`strings.HasPrefix` 比较，注意补足分隔符避免前缀误判）。
+- Path Jail（对齐 Java `FsService.resolveAndValidate`）：path 为空报错；含 `..` 直接拒绝；`filepath.Abs` + `filepath.Clean`（可选 `EvalSymlinks`，失败回退 normalized）；解析后必须落在某个根目录内（边界比较时补足分隔符避免前缀误判，如 `/data` 不应误配 `/database`）。
 
 ---
 
@@ -322,9 +331,10 @@ filetransfer:
 ### 5.4 加密
 - 字段：`TargetConfig.AuthPass`、`KafkaConfig.Password`。
 - 算法：AES-128-GCM，IV 12 字节，Tag 128 位。
-- key 派生：配置 `encryption_key` 前 16 字节 UTF-8（与 Java 一致）。
+- key 派生：配置 `encryption_key` 前 16 字节 UTF-8（与 Java 算法一致）。
 - 密文格式：`Base64(iv || ciphertext)`。
 - 加/解密失败时降级为明文（与 Java 行为一致）。
+- 注：持久化为本地自有文件，密钥值无需与 Java 相同；仅当要直接读取 Java agent 写出的 `config.json` 迁移任务时，才需令 `encryption_key` 与 Java 默认值（`admq-file-transfer-agent-key-16`）一致。
 
 ---
 
@@ -369,7 +379,8 @@ bbx-cli transfer task progress --id 1
 7. **AES-GCM**：key 取前 16 字节；解密失败回退明文。
 8. **优雅关闭**：`bbx-server` 退出时不强行改任务状态（保持 RUNNING，下次启动自动恢复）；正在执行的 goroutine 通过 context 取消。
 9. **transport 注册表**：`map[RelayType]RelayTransport`，Manager 按 `relayType` 取实现，避免模式判断散落。
-10. **消息大小**：创建任务时可选校验 `chunkSize` ≤ Kafka `max.message.bytes`。
+10. **消息大小**：创建任务时可选校验 `chunkSize` ≤ Kafka `max.message.bytes`（Java producer 设 `MAX_REQUEST_SIZE=10MB`，sarama 对应 `Producer.MaxMessageBytes`）。
+11. **全局中间件副作用**：vigil 的 `LoggingMiddleware` 会对每个请求 `io.ReadAll(r.Body)` 全量读入内存再回填，并缓存响应体。`/chunks` 是二进制分块端点，故 `chunkSize` 须保持适中（默认 1MB 可接受），不要照搬 `/api/files/stream` 那种 >100MB 原始流式上传的预期——在该中间件下不会真正流式。filetransfer 不新增 >100MB 原始流端点。
 
 ---
 
@@ -384,13 +395,16 @@ bbx-cli transfer task progress --id 1
 - `filetransfer/transport_kafka.go`
 - `filetransfer/manager.go`
 - `filetransfer/handlers.go`
-- `cli/handlers_filetransfer.go`
+- `cli/transfer.go`
 
 改动：
-- `config/config.go`：增加 `FiletransferConfig`
-- `api/server.go`：`Server` 增加 `*filetransfer.Manager` 字段与初始化、启动恢复
+- `config/config.go`：增加 `FiletransferConfig`，挂到 `config.Config`（与 `VMConfig` 等并列）
+- `api/server.go`：
+  - `Server` 增加 `*filetransfer.Manager` 字段；在 `NewServerWithManager(config, manager, configPath)` 中构造并执行启动恢复（扫描 `{dataDir}/tasks/`，`state=RUNNING` 的自动 resume）。
+  - `BasicAuthMiddleware` 对 `/api/transfer`、`/api/fs` 前缀放行，交由 filetransfer 自身鉴权（见 §3.3）。
+  - `Stop()` 中调用 Manager 关闭：context 取消执行中的 goroutine，但不改任务状态（保持 RUNNING，下次启动自动恢复，见 §7.8）。
 - `api/routes.go`：注册 filetransfer 路由
-- `cli/`：注册 `transfer` 命令（`NewCLI` 处）
+- `cli/cli.go`：在 `NewCLI` 处注册 `transfer` 命令
 - `conf/config.yaml`：增加 `filetransfer` 段
 
 ---

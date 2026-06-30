@@ -29,16 +29,17 @@ import (
 
 // Config represents the program configuration
 type Config struct {
-  Addr        string         `yaml:"addr"`
-  BasicAuth   BasicAuth      `yaml:"auth"`
-  Log         LogConfig      `yaml:"log"`
-  Monitor     MonitorConfig  `yaml:"monitor"`
-  Process     ProcConfig     `yaml:"process"`
-  Security    SecurityConfig `yaml:"security"`
-  HTTPS       HTTPSConfig    `yaml:"https"`
-  Database    DatabaseConfig `yaml:"database"`
-  ManagedApps []AppConfig    `yaml:"managed_apps"`
-  VM          VMConfig       `yaml:"vm"`
+  Addr         string             `yaml:"addr"`
+  BasicAuth    BasicAuth          `yaml:"auth"`
+  Log          LogConfig          `yaml:"log"`
+  Monitor      MonitorConfig      `yaml:"monitor"`
+  Process      ProcConfig         `yaml:"process"`
+  Security     SecurityConfig     `yaml:"security"`
+  HTTPS        HTTPSConfig        `yaml:"https"`
+  Database     DatabaseConfig     `yaml:"database"`
+  ManagedApps  []AppConfig        `yaml:"managed_apps"`
+  VM           VMConfig           `yaml:"vm"`
+  Filetransfer FiletransferConfig `yaml:"filetransfer"`
 }
 
 type BasicAuth struct {
@@ -88,6 +89,17 @@ type AppConfig struct {
 
 type VMConfig struct {
   LocalhostFallback bool `yaml:"localhost_fallback"` // fallback to local shell when vm_name=="localhost" and SSH fails
+}
+
+// FiletransferConfig configures the file-transfer agent sub-feature.
+type FiletransferConfig struct {
+  Enabled          bool     `yaml:"enabled"`
+  AuthUser         string   `yaml:"auth_user"`
+  AuthPass         string   `yaml:"auth_pass"`
+  DataDir          string   `yaml:"data_dir"`           // empty -> ~/.admq-file-transfer-agent
+  DefaultChunkSize int      `yaml:"default_chunk_size"` // bytes; 0 -> 1MB
+  EncryptionKey    string   `yaml:"encryption_key"`     // first 16 bytes used as AES-128 key
+  Roots            []string `yaml:"roots"`              // allowed browse/landing roots; empty -> user home
 }
 
 // generateRandomKey generates a random key for encryption

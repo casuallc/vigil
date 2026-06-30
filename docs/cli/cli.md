@@ -101,6 +101,26 @@ bbx-cli network [subcommand] [flags]
 |------|------|----------|
 | `probe` | 探测目标 IP 和端口的连通性 | [cli_network.md](./cli_network.md#network-probe) |
 
+## 文件传输 Agent 命令
+
+### 命令格式
+
+```
+bbx-cli transfer [subcommand] [flags]
+```
+
+### 子命令列表
+
+| 命令 | 说明 | 详细文档 |
+|------|------|----------|
+| `fs list` | 列出 Agent 上的目录内容 | [cli_transfer.md](./cli_transfer.md#transfer-fs-list) |
+| `fs stat` | 查看文件/目录统计信息 | [cli_transfer.md](./cli_transfer.md#transfer-fs-stat) |
+| `task create` | 从 JSON 文件创建任务 | [cli_transfer.md](./cli_transfer.md#transfer-task-create) |
+| `task list` | 列出所有任务 | [cli_transfer.md](./cli_transfer.md#transfer-task-list) |
+| `task get/status/progress` | 查询任务配置/状态/进度 | [cli_transfer.md](./cli_transfer.md#transfer-task-get--status--progress) |
+| `task start/pause/resume/cancel` | 驱动任务生命周期 | [cli_transfer.md](./cli_transfer.md#transfer-task-start--pause--resume--cancel) |
+| `task delete` | 删除任务 | [cli_transfer.md](./cli_transfer.md#transfer-task-delete) |
+
 ## 消息队列命令
 
 Vigil 支持多种消息队列系统，提供统一的 API 接口。

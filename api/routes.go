@@ -175,5 +175,10 @@ func (s *Server) Router() *mux.Router {
   r.HandleFunc("/api/users/{username}/configs", s.handleGetUserConfigs).Methods("GET")
   r.HandleFunc("/api/users/{username}/configs", s.handleUpdateUserConfigs).Methods("PUT")
 
+  // File-transfer agent endpoints (self-authenticated; registered when enabled)
+  if s.filetransfer != nil {
+    s.filetransfer.RegisterRoutes(r)
+  }
+
   return r
 }
