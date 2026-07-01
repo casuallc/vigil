@@ -42,6 +42,11 @@ go test ./inspection/... -run TestInspectionRules
 ./bbx-cli proc list -H http://127.0.0.1:57575
 ```
 
+## Git 提交规范
+
+- **每次修复问题或新增功能后都必须提交（commit）**。完成一处 bug 修复或一个功能点后，应立即创建一个聚焦、独立的提交，不要把多个不相关的改动混在一起。
+- 提交信息使用约定式提交格式（Conventional Commits），例如 `fix(filetransfer): ...`、`feat(network): ...`、`docs(...): ...`，与现有历史保持一致。
+
 ## Project Structure
 
 Vigil is a Go-based process management and message queue client tool (module: `github.com/casuallc/vigil`).
