@@ -42,26 +42,12 @@ func newReceiverServer(t *testing.T, targetDir string) (*Manager, *httptest.Serv
 		DataDir:       t.TempDir(),
 		EncryptionKey: testKey,
 		Roots:         []string{targetDir},
-		AuthUser:      itAuthUser,
-		AuthPass:      itAuthPass,
 	})
 	r := mux.NewRouter()
 	m.RegisterRoutes(r)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 	return m, srv
-}
-
-func TestHandlerUnauthorizedWithoutCreds(t *testing.T) {
-	_, srv := newReceiverServer(t, t.TempDir())
-	resp, err := http.Get(srv.URL + "/api/transfer/tasks")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", resp.StatusCode)
-	}
 }
 
 func TestDirectTransferEndToEnd(t *testing.T) {

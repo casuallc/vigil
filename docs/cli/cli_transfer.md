@@ -4,7 +4,7 @@
 
 `transfer` 命令组用于操作文件传输 Agent：浏览 Agent 所在主机的文件系统，以及创建、管理分块文件传输任务。命令通过 REST API 与 `bbx-server` 通信。
 
-> 这些命令访问 Agent 自有认证的 `/api/transfer/*`、`/api/fs/*` 接口。CLI 会从 `conf/config.yaml` 的 `filetransfer.auth_user` / `filetransfer.auth_pass` 读取凭据（默认 `admq` / `admq-file-transfer`），与全局 `auth` 凭据相互独立。需确保 `filetransfer.enabled: true`。
+> 这些命令访问 `/api/transfer/*`、`/api/fs/*` 接口，认证复用 vigil 全局 `auth` 凭据（与其它 API 一致），CLI 会从 `conf/config.yaml` 的 `auth` 读取。需确保 `filetransfer.enabled: true`。
 
 ## 命令结构
 

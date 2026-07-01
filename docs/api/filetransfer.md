@@ -6,13 +6,13 @@
 
 ## 认证
 
-这些接口使用 **Agent 自有的 Basic Auth**，凭据取自 `filetransfer.auth_user` / `filetransfer.auth_pass`（默认 `admq` / `admq-file-transfer`），**独立于** vigil 全局 `auth`。`/api/transfer/*` 与 `/api/fs/*` 已从全局 Basic Auth 中豁免，仅由 Agent 自身校验。
+这些接口复用 **vigil 全局 Basic Auth**（`conf/config.yaml` 的 `auth`，即超管凭据或用户库中的注册用户），与其它 API 一致。它们**不再**使用独立的 Agent 凭据。
 
 ```
-Authorization: Basic base64(auth_user:auth_pass)
+Authorization: Basic base64(username:password)
 ```
 
-未携带或凭据错误返回 `401`，响应头带 `WWW-Authenticate: Basic realm="file-transfer-agent"`。
+未携带或凭据错误返回 `401`，响应头带 `WWW-Authenticate: Basic realm="vigil"`。
 
 ## 接口列表
 
@@ -67,7 +67,7 @@ Authorization: Basic base64(auth_user:auth_pass)
 **cURL 示例**：
 
 ```bash
-curl -u admq:admq-file-transfer \
+curl -u <username>:<password> \
   "http://localhost:57575/api/fs/list?path=/data/logs"
 ```
 
@@ -125,7 +125,7 @@ curl -u admq:admq-file-transfer \
 | recvToken | string | 接收令牌（RECV 端，可选） |
 | kafka | KafkaConfig | Kafka 配置（relayType=KAFKA 时） |
 
-`TargetConfig`：`host`、`port`、`authUser`、`authPass`、`recvToken`、`agentTaskId`（对端任务 ID）。
+`TargetConfig`：`host`、`port`、`authUser`、`authPass`、`recvToken`、`agentTaskId`（对端任务 ID）。其中 `authUser`/`authPass` 为**对端 vigil 的全局 Basic Auth 凭据**（SEND 端向对端 RECV 推送分块时使用）。
 `KafkaConfig`：`bootstrapServers`、`topic`、`groupId`、`authEnabled`、`saslMechanism`、`securityProtocol`、`username`、`password`。
 
 > 落盘时 `targets[].authPass` 与 `kafka.password` 以 AES-128-GCM 加密。
@@ -157,7 +157,7 @@ curl -u admq:admq-file-transfer \
 **cURL 示例**：
 
 ```bash
-curl -u admq:admq-file-transfer -X POST \
+curl -u <username>:<password> -X POST \
   -H "Content-Type: application/json" \
   -d @task.json \
   http://localhost:57575/api/transfer/tasks
@@ -291,7 +291,7 @@ curl -u admq:admq-file-transfer -X POST \
 **cURL 示例**：
 
 ```bash
-curl -u admq:admq-file-transfer -X POST \
+curl -u <username>:<password> -X POST \
   -H "Content-Type: application/octet-stream" \
   --data-binary @chunk0.bin \
   "http://localhost:57575/api/transfer/tasks/1001/chunks?relPath=a.bin&chunkIndex=0&offset=0&length=1048576&crc32=123456789&eof=false"
@@ -322,13 +322,13 @@ KAFKA 模式下，每个分块作为一条 Kafka 消息：
 ```yaml
 filetransfer:
   enabled: true
-  auth_user: admq
-  auth_pass: admq-file-transfer
   data_dir: ""                          # 空则默认 ~/.admq-file-transfer-agent
   default_chunk_size: 1048576           # 1MB
   encryption_key: "admq-file-transfer-agent-key-16"
   roots: []                             # 允许浏览/落地的根目录白名单；为空则仅用户主目录
 ```
+
+> 认证复用全局 `auth`（见「认证」），本节不再有独立的 `auth_user` / `auth_pass`。
 
 本地持久化目录结构（对齐 Java）：
 

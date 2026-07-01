@@ -94,8 +94,6 @@ type VMConfig struct {
 // FiletransferConfig configures the file-transfer agent sub-feature.
 type FiletransferConfig struct {
   Enabled          bool     `yaml:"enabled"`
-  AuthUser         string   `yaml:"auth_user"`
-  AuthPass         string   `yaml:"auth_pass"`
   DataDir          string   `yaml:"data_dir"`           // empty -> ~/.admq-file-transfer-agent
   DefaultChunkSize int      `yaml:"default_chunk_size"` // bytes; 0 -> 1MB
   EncryptionKey    string   `yaml:"encryption_key"`     // first 16 bytes used as AES-128 key

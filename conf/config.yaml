@@ -33,8 +33,6 @@ vm:
 
 filetransfer:
   enabled: true
-  auth_user: admq
-  auth_pass: admq-file-transfer
   data_dir: ""                          # empty -> ~/.admq-file-transfer-agent
   default_chunk_size: 1048576           # 1MB
   encryption_key: "admq-file-transfer-agent-key-16"

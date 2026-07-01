@@ -27,8 +27,9 @@ import (
 	"github.com/casuallc/vigil/filetransfer"
 )
 
-// doTransferRequest issues a request to a file-transfer agent endpoint using
-// the agent credentials (which differ from vigil's global Basic Auth).
+// doTransferRequest issues a request to a file-transfer agent endpoint. These
+// endpoints share vigil's global Basic Auth, so it reuses the same credentials
+// as every other API call.
 func (c *Client) doTransferRequest(method, path string, body interface{}) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
@@ -45,8 +46,8 @@ func (c *Client) doTransferRequest(method, path string, body interface{}) (*http
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if c.ftUser != "" || c.ftPass != "" {
-		req.SetBasicAuth(c.ftUser, c.ftPass)
+	if c.basicUser != "" && c.basicPass != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
 	}
 	return c.httpClient.Do(req)
 }

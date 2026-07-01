@@ -194,8 +194,6 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
       EncryptionKey:    config.Filetransfer.EncryptionKey,
       DefaultChunkSize: config.Filetransfer.DefaultChunkSize,
       Roots:            config.Filetransfer.Roots,
-      AuthUser:         config.Filetransfer.AuthUser,
-      AuthPass:         config.Filetransfer.AuthPass,
     })
     if err := server.filetransfer.Recover(); err != nil {
       log.Printf("Warning: filetransfer task recovery failed: %v", err)
@@ -400,14 +398,6 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 // First checks super admin credentials from config, then checks user database.
 func (s *Server) BasicAuthMiddleware(next http.Handler) http.Handler {
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    // The file-transfer agent endpoints authenticate with their own
-    // credentials (see filetransfer.Manager.basicAuth), so exempt them from
-    // the global Basic Auth here.
-    if strings.HasPrefix(r.URL.Path, "/api/transfer") || strings.HasPrefix(r.URL.Path, "/api/fs") {
-      next.ServeHTTP(w, r)
-      return
-    }
-
     u, p, ok := r.BasicAuth()
     if !ok {
       w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)

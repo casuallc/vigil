@@ -25,39 +25,24 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// RegisterRoutes registers the file-transfer agent endpoints on r. Every
-// endpoint is guarded by the agent's own Basic Auth (independent of vigil's
-// global auth), matching the Java agent credentials.
+// RegisterRoutes registers the file-transfer agent endpoints on r.
+// Authentication is the embedding server's responsibility: these endpoints go
+// through vigil's global Basic Auth just like every other API route.
 func (m *Manager) RegisterRoutes(r *mux.Router) {
-	a := m.basicAuth
+	r.HandleFunc("/api/fs/list", m.handleFsList).Methods(http.MethodGet)
+	r.HandleFunc("/api/fs/stat", m.handleFsStat).Methods(http.MethodGet)
 
-	r.HandleFunc("/api/fs/list", a(m.handleFsList)).Methods(http.MethodGet)
-	r.HandleFunc("/api/fs/stat", a(m.handleFsStat)).Methods(http.MethodGet)
-
-	r.HandleFunc("/api/transfer/tasks", a(m.handleCreateTask)).Methods(http.MethodPost)
-	r.HandleFunc("/api/transfer/tasks", a(m.handleListTasks)).Methods(http.MethodGet)
-	r.HandleFunc("/api/transfer/tasks/{id}", a(m.handleGetTask)).Methods(http.MethodGet)
-	r.HandleFunc("/api/transfer/tasks/{id}", a(m.handleDeleteTask)).Methods(http.MethodDelete)
-	r.HandleFunc("/api/transfer/tasks/{id}/start", a(m.handleStart)).Methods(http.MethodPost)
-	r.HandleFunc("/api/transfer/tasks/{id}/pause", a(m.handlePause)).Methods(http.MethodPost)
-	r.HandleFunc("/api/transfer/tasks/{id}/resume", a(m.handleResume)).Methods(http.MethodPost)
-	r.HandleFunc("/api/transfer/tasks/{id}/cancel", a(m.handleCancel)).Methods(http.MethodPost)
-	r.HandleFunc("/api/transfer/tasks/{id}/status", a(m.handleStatus)).Methods(http.MethodGet)
-	r.HandleFunc("/api/transfer/tasks/{id}/progress", a(m.handleProgress)).Methods(http.MethodGet)
-	r.HandleFunc("/api/transfer/tasks/{id}/chunks", a(m.handleChunks)).Methods(http.MethodPost)
-}
-
-// basicAuth wraps a handler with the agent's own credential check.
-func (m *Manager) basicAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		u, p, ok := r.BasicAuth()
-		if !ok || u != m.authUser || p != m.authPass {
-			w.Header().Set("WWW-Authenticate", `Basic realm="file-transfer-agent"`)
-			ftWriteError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		next(w, r)
-	}
+	r.HandleFunc("/api/transfer/tasks", m.handleCreateTask).Methods(http.MethodPost)
+	r.HandleFunc("/api/transfer/tasks", m.handleListTasks).Methods(http.MethodGet)
+	r.HandleFunc("/api/transfer/tasks/{id}", m.handleGetTask).Methods(http.MethodGet)
+	r.HandleFunc("/api/transfer/tasks/{id}", m.handleDeleteTask).Methods(http.MethodDelete)
+	r.HandleFunc("/api/transfer/tasks/{id}/start", m.handleStart).Methods(http.MethodPost)
+	r.HandleFunc("/api/transfer/tasks/{id}/pause", m.handlePause).Methods(http.MethodPost)
+	r.HandleFunc("/api/transfer/tasks/{id}/resume", m.handleResume).Methods(http.MethodPost)
+	r.HandleFunc("/api/transfer/tasks/{id}/cancel", m.handleCancel).Methods(http.MethodPost)
+	r.HandleFunc("/api/transfer/tasks/{id}/status", m.handleStatus).Methods(http.MethodGet)
+	r.HandleFunc("/api/transfer/tasks/{id}/progress", m.handleProgress).Methods(http.MethodGet)
+	r.HandleFunc("/api/transfer/tasks/{id}/chunks", m.handleChunks).Methods(http.MethodPost)
 }
 
 // ===================== FS =====================

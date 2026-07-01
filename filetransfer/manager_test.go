@@ -36,8 +36,6 @@ func newTestManager(t *testing.T, roots ...string) *Manager {
 		DataDir:       t.TempDir(),
 		EncryptionKey: testKey,
 		Roots:         roots,
-		AuthUser:      "admq",
-		AuthPass:      "admq-file-transfer",
 	})
 }
 

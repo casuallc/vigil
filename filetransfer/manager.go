@@ -37,8 +37,6 @@ type Options struct {
 	EncryptionKey    string
 	DefaultChunkSize int
 	Roots            []string
-	AuthUser         string
-	AuthPass         string
 }
 
 // Manager is the core orchestrator: task CRUD, lifecycle, execution, status
@@ -49,8 +47,6 @@ type Manager struct {
 	fs               *FS
 	registry         *transportRegistry
 	defaultChunkSize int
-	authUser         string
-	authPass         string
 
 	mu       sync.RWMutex
 	runtimes map[int64]*taskRuntime
@@ -85,16 +81,9 @@ func NewManager(opts Options) *Manager {
 		fs:               newFS(opts.Roots),
 		registry:         reg,
 		defaultChunkSize: chunkSize,
-		authUser:         opts.AuthUser,
-		authPass:         opts.AuthPass,
 		runtimes:         make(map[int64]*taskRuntime),
 	}
 }
-
-// AuthUser/AuthPass expose the agent credentials for the HTTP layer's
-// self-authentication.
-func (m *Manager) AuthUser() string { return m.authUser }
-func (m *Manager) AuthPass() string { return m.authPass }
 
 // FS returns the path-jailed filesystem browser.
 func (m *Manager) FS() *FS { return m.fs }

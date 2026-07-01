@@ -40,8 +40,6 @@ type Client struct {
   baseURL            string
   basicUser          string
   basicPass          string
-  ftUser             string // file-transfer agent credentials (for /api/transfer, /api/fs)
-  ftPass             string
   insecureSkipVerify bool
 }
 
@@ -88,9 +86,6 @@ func NewClient(host string, insecureSkipVerify ...bool) *Client {
     if cfg, err := config.LoadConfig(filepath.Join(filepath.Dir(exePath), "conf", "config.yaml")); err == nil && cfg != nil {
       client.basicUser = cfg.BasicAuth.Username
       client.basicPass = cfg.BasicAuth.Password
-      // File-transfer agent uses its own credentials for /api/transfer and /api/fs.
-      client.ftUser = cfg.Filetransfer.AuthUser
-      client.ftPass = cfg.Filetransfer.AuthPass
     }
   }
 
