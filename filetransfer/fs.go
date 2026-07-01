@@ -19,6 +19,7 @@ package filetransfer
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 )
@@ -66,11 +67,25 @@ func (fs *FS) allowedRoots() ([]string, error) {
 	if len(fs.roots) > 0 {
 		return fs.roots, nil
 	}
-	home, err := os.UserHomeDir()
+	home, err := defaultHome()
 	if err != nil {
 		return nil, fmt.Errorf("user home not available: %w", err)
 	}
 	return []string{home}, nil
+}
+
+// defaultHome resolves the current user's home directory. It prefers
+// os.UserHomeDir() (the $HOME env var), but falls back to the OS user database
+// when $HOME is unset — which is common when the server runs as a daemon (e.g.
+// under systemd or `su`) with no login environment.
+func defaultHome() (string, error) {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return home, nil
+	}
+	if u, err := user.Current(); err == nil && u.HomeDir != "" {
+		return u.HomeDir, nil
+	}
+	return "", fmt.Errorf("$HOME is not defined")
 }
 
 // resolveSafe validates path against the jail and returns the resolved

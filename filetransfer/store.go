@@ -112,7 +112,7 @@ type Store struct {
 func newStore(dataDir, encKey string) *Store {
 	var tasksDir string
 	if dataDir == "" {
-		home, err := os.UserHomeDir()
+		home, err := defaultHome()
 		if err != nil {
 			home = "."
 		}
