@@ -10,11 +10,13 @@
 .EXAMPLE
     .\build-wsl.ps1
     .\build-wsl.ps1 -Version 2.1.0
+    .\build-wsl.ps1 -SudoPassword 'your_wsl_password'
 #>
 
 param(
     [string]$Version = "",
-    [string]$ProjectRoot = "$PSScriptRoot"
+    [string]$ProjectRoot = "$PSScriptRoot",
+    [string]$SudoPassword = ""
 )
 
 # Resolve full path because /mnt/c/... needs an absolute path
@@ -37,24 +39,54 @@ echo "=========================================="
 # Ensure Go binary path is present before we check
 export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
 
-# ------------------ Install Go if missing ------------------
-if ! command -v go >/dev/null 2>&1; then
-    echo "[WSL] Go not found. Installing Go..."
+# Use China-accessible module proxy and disable toolchain auto-download
+# (the installed Go version must already satisfy go.mod).
+# GOSUMDB is set to off because sum.golang.org is not reachable from this network.
+export GOPROXY=https://goproxy.cn,direct
+export GOSUMDB=off
+export GOTOOLCHAIN=local
 
-    GO_VERSION="1.24.2"
-    GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
+# ------------------ Install Go if missing or version mismatch ------------------
+GO_VERSION="1.26.4"
+GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
+GO_MIRRORS=(
+    "https://go.dev/dl"
+    "https://mirrors.aliyun.com/golang"
+)
 
-    if [ ! -f "/tmp/$GO_TARBALL" ]; then
-        wget -q --show-progress "https://go.dev/dl/$GO_TARBALL" -O "/tmp/$GO_TARBALL" || true
+CURRENT_GO_VERSION=$(go version 2>/dev/null | awk '{print $3}' | sed 's/go//')
+
+if [ -z "$CURRENT_GO_VERSION" ] || [ "$CURRENT_GO_VERSION" != "$GO_VERSION" ]; then
+    echo "[WSL] Installing Go $GO_VERSION (current: ${CURRENT_GO_VERSION:-none})..."
+
+    download_go() {
+        for mirror in "${GO_MIRRORS[@]}"; do
+            echo "[WSL] Trying mirror: $mirror"
+            rm -f "/tmp/$GO_TARBALL"
+            if wget -q --timeout=60 --tries=2 "$mirror/$GO_TARBALL" -O "/tmp/$GO_TARBALL"; then
+                if tar -tzf "/tmp/$GO_TARBALL" >/dev/null 2>&1; then
+                    echo "[WSL] Downloaded valid tarball from $mirror"
+                    return 0
+                fi
+                echo "[WSL] Tarball from $mirror is invalid"
+            else
+                echo "[WSL] Download from $mirror failed"
+            fi
+        done
+        return 1
+    }
+
+    if ! download_go; then
+        echo "[WSL] Falling back to apt install..."
+        __SUDO__apt-get update
+        __SUDO__apt-get install -y golang-go
     fi
 
     if [ -f "/tmp/$GO_TARBALL" ]; then
-        sudo rm -rf /usr/local/go
-        sudo tar -C /usr/local -xzf "/tmp/$GO_TARBALL"
+        __SUDO__rm -rf /usr/local/go
+        __SUDO__tar -C /usr/local -xzf "/tmp/$GO_TARBALL"
     else
-        echo "[WSL] Download failed, falling back to apt install..."
-        sudo apt-get update
-        sudo apt-get install -y golang-go
+        echo "[WSL] No valid Go tarball available; apt install should have provided Go"
     fi
 fi
 
@@ -95,9 +127,18 @@ $bashScript = $bashScriptTemplate.
     Replace('__WSLROOT__', $WslRoot).
     Replace('__VERSION__', $Version)
 
+# Handle sudo password for non-interactive installs in WSL.
+# When a password is supplied, pipe it to sudo -S for each privileged command.
+if ($SudoPassword) {
+    $bashScript = $bashScript.Replace('__SUDO__', 'echo "$SUDO_PASSWORD" | sudo -S ')
+} else {
+    $bashScript = $bashScript.Replace('__SUDO__', 'sudo ')
+}
 # Write bash script to a temp file and pass it to WSL
 $TempFile = Join-Path $env:TEMP "build-vigil-wsl.sh"
-$bashScript | Out-File -FilePath $TempFile -Encoding utf8 -NoNewline
+# PowerShell 5.1's Out-File -Encoding utf8 emits a UTF-8 BOM, which breaks
+# bash. Write UTF-8 without BOM explicitly.
+[System.IO.File]::WriteAllText($TempFile, $bashScript, [System.Text.UTF8Encoding]::new($false))
 
 # Convert temp file path to WSL path
 $WslTempFile = ($TempFile -replace '^([A-Za-z]):', '/mnt/$1' -replace '\\', '/').ToLower()
@@ -105,7 +146,16 @@ $WslTempFile = ($TempFile -replace '^([A-Za-z]):', '/mnt/$1' -replace '\\', '/')
 Write-Host "[PowerShell] Entering WSL to build at: $WslRoot" -ForegroundColor Cyan
 
 # Execute via temp file inside WSL
-wsl bash "$WslTempFile"
+if ($SudoPassword) {
+    # Escape single quotes for the bash command line.
+    $escapedPassword = $SudoPassword -replace "'", "'\''"
+    wsl -e bash -c "SUDO_PASSWORD='$escapedPassword' bash '$WslTempFile'"
+    # Clear the password from memory as soon as possible.
+    $SudoPassword = $null
+    $escapedPassword = $null
+} else {
+    wsl bash "$WslTempFile"
+}
 
 $exitCode = $LASTEXITCODE
 Remove-Item -Path $TempFile -ErrorAction SilentlyContinue
