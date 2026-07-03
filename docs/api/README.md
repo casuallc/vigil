@@ -20,6 +20,7 @@
 | 文件管理 | [files.md](files.md) | `/api/files/*` |
 | 用户管理 | [users.md](users.md) | `/api/users/*` |
 | VM 管理 | [vms.md](vms.md) | `/api/vms/*` |
+| Docker 容器管理 | [docker.md](docker.md) | `/api/docker/*` |
 | 网络诊断 | [network.md](network.md) | `/api/network/*` |
 | 文件传输 Agent | [filetransfer.md](filetransfer.md) | `/api/transfer/*`, `/api/fs/*` |
 | 命令模板与历史 | [commands.md](commands.md) | `/api/commands/*` |
@@ -47,6 +48,9 @@
 
 ### VM 管理
 - [VM 管理](vms.md) - VM 服务器管理、分组、SSH 连接、文件操作、权限管理、批量执行、资源监控
+
+### 容器管理
+- [Docker 容器管理](docker.md) - 本地 Docker 容器生命周期、执行、日志/指标流式传输
 
 ### 命令相关
 - [命令执行](exec.md) - 远程命令执行
@@ -160,6 +164,10 @@ func main() {
 ```
 
 ## 变更日志
+
+### v1.4.0
+
+- 新增 Docker 容器管理 API `/api/docker/*`（本地 Daemon 容器生命周期、exec、日志/指标流）
 
 ### v1.3.0
 
