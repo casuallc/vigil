@@ -180,5 +180,24 @@ func (s *Server) Router() *mux.Router {
     s.filetransfer.RegisterRoutes(r)
   }
 
+  // Docker management endpoints (registered when daemon is available)
+  if s.dockerManager != nil {
+    r.HandleFunc("/api/docker/ping", s.handleDockerPing).Methods("GET")
+    r.HandleFunc("/api/docker/containers", s.handleDockerListContainers).Methods("GET")
+    r.HandleFunc("/api/docker/containers", s.handleDockerCreateContainer).Methods("POST")
+    r.HandleFunc("/api/docker/containers/{id}", s.handleDockerInspectContainer).Methods("GET")
+    r.HandleFunc("/api/docker/containers/{id}", s.handleDockerRemoveContainer).Methods("DELETE")
+    r.HandleFunc("/api/docker/containers/{id}/start", s.handleDockerStartContainer).Methods("POST")
+    r.HandleFunc("/api/docker/containers/{id}/stop", s.handleDockerStopContainer).Methods("POST")
+    r.HandleFunc("/api/docker/containers/{id}/restart", s.handleDockerRestartContainer).Methods("POST")
+    r.HandleFunc("/api/docker/containers/{id}/pause", s.handleDockerPauseContainer).Methods("POST")
+    r.HandleFunc("/api/docker/containers/{id}/unpause", s.handleDockerUnpauseContainer).Methods("POST")
+    r.HandleFunc("/api/docker/containers/{id}/exec", s.handleDockerExecContainer).Methods("POST")
+    r.HandleFunc("/api/docker/containers/{id}/logs", s.handleDockerStreamLogs).Methods("GET")
+    r.HandleFunc("/api/docker/containers/{id}/stats", s.handleDockerStreamStats).Methods("GET")
+    r.HandleFunc("/api/docker/containers/{id}/exec/ws", s.handleDockerExecWebSocket)
+    r.HandleFunc("/api/docker/containers/{id}/logs/ws", s.handleDockerLogsWebSocket)
+  }
+
   return r
 }

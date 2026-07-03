@@ -38,3 +38,9 @@ filetransfer:
   encryption_key: "admq-file-transfer-agent-key-16"
   roots:                                # allowed browse/landing roots; empty -> user home
     - /                                  # entire filesystem (agent runs as root)
+
+# Docker management configuration.
+# Enabled by default (omit or set to true). Set to false to disable.
+docker:
+  enabled: true
+  host: ""                              # optional Docker daemon host override

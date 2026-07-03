@@ -19,6 +19,7 @@ package api
 import (
   "bufio"
   "bytes"
+  "context"
   "crypto/tls"
   "database/sql"
   "encoding/json"
@@ -35,6 +36,7 @@ import (
 
   "github.com/casuallc/vigil/audit"
   "github.com/casuallc/vigil/config"
+  "github.com/casuallc/vigil/docker"
   "github.com/casuallc/vigil/exporter"
   "github.com/casuallc/vigil/filetransfer"
   "github.com/casuallc/vigil/models"
@@ -68,6 +70,8 @@ type Server struct {
   scheduler *Scheduler
   // File-transfer agent sub-feature (nil when disabled)
   filetransfer *filetransfer.Manager
+  // Docker management sub-feature (nil when disabled/unavailable)
+  dockerManager *docker.Manager
 }
 
 // SSHConnectionInfo represents an active SSH connection
@@ -199,6 +203,24 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
       log.Printf("Warning: filetransfer task recovery failed: %v", err)
     } else {
       log.Printf("File-transfer agent initialized")
+    }
+  }
+
+  // Initialize Docker manager when enabled (default true when unset).
+  if config.Docker.Enabled == nil || *config.Docker.Enabled {
+    dockerMgr, err := docker.NewManager(config.Docker.Host)
+    if err != nil {
+      log.Printf("Warning: failed to initialize Docker manager: %v", err)
+    } else {
+      ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+      if _, pingErr := dockerMgr.Ping(ctx); pingErr != nil {
+        log.Printf("Warning: Docker daemon not reachable: %v", pingErr)
+        _ = dockerMgr.Close()
+      } else {
+        server.dockerManager = dockerMgr
+        log.Printf("Docker manager initialized")
+      }
+      cancel()
     }
   }
 
@@ -366,6 +388,45 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
       action = audit.ActionCommandExecute
     case strings.HasPrefix(path, "/api/network/probe"):
       action = audit.ActionNetworkProbe
+    case strings.HasPrefix(path, "/api/docker"):
+      resource = dockerContainerResource(path)
+      switch {
+      case path == "/api/docker/ping":
+        action = audit.ActionDockerContainerPing
+      case strings.Contains(path, "/containers"):
+        switch r.Method {
+        case http.MethodGet:
+          if strings.Contains(path, "/logs") {
+            action = audit.ActionDockerContainerLogs
+          } else if strings.Contains(path, "/stats") {
+            action = audit.ActionDockerContainerStats
+          } else if strings.Contains(path, "/exec") {
+            action = audit.ActionDockerContainerExec
+          } else if strings.Count(path, "/") == 4 {
+            action = audit.ActionDockerContainerInspect
+          } else {
+            action = audit.ActionDockerContainerList
+          }
+        case http.MethodPost:
+          if strings.Contains(path, "/start") {
+            action = audit.ActionDockerContainerStart
+          } else if strings.Contains(path, "/stop") {
+            action = audit.ActionDockerContainerStop
+          } else if strings.Contains(path, "/restart") {
+            action = audit.ActionDockerContainerRestart
+          } else if strings.Contains(path, "/unpause") {
+            action = audit.ActionDockerContainerUnpause
+          } else if strings.Contains(path, "/pause") {
+            action = audit.ActionDockerContainerPause
+          } else if strings.Contains(path, "/exec") {
+            action = audit.ActionDockerContainerExec
+          } else if strings.Count(path, "/") == 3 {
+            action = audit.ActionDockerContainerCreate
+          }
+        case http.MethodDelete:
+          action = audit.ActionDockerContainerRemove
+        }
+      }
     }
 
     // 确定操作状态
@@ -446,7 +507,7 @@ func writeError(w http.ResponseWriter, statusCode int, message string) {
   writeJSON(w, statusCode, map[string]string{"error": message})
 }
 
-// 获取 namespace
+// getNamespace returns the namespace from path vars, defaulting to "default".
 func getNamespace(vars map[string]string) string {
   namespace := vars["namespace"]
 
@@ -455,6 +516,20 @@ func getNamespace(vars map[string]string) string {
     namespace = "default"
   }
   return namespace
+}
+
+// dockerContainerResource extracts the container id from /api/docker/containers/{id}/...
+// for audit resource tagging.
+func dockerContainerResource(path string) string {
+  prefix := "/api/docker/containers/"
+  if !strings.HasPrefix(path, prefix) {
+    return ""
+  }
+  rest := strings.TrimPrefix(path, prefix)
+  if idx := strings.Index(rest, "/"); idx >= 0 {
+    return rest[:idx]
+  }
+  return rest
 }
 
 // getConnectionUser extracts the authenticated user from the request context
@@ -622,6 +697,11 @@ func (s *Server) Stop() {
   // RUNNING tasks resume on next startup).
   if s.filetransfer != nil {
     s.filetransfer.Shutdown()
+  }
+
+  // Close Docker manager connection.
+  if s.dockerManager != nil {
+    s.dockerManager.Close()
   }
 }
 

@@ -40,6 +40,7 @@ type Config struct {
   ManagedApps  []AppConfig        `yaml:"managed_apps"`
   VM           VMConfig           `yaml:"vm"`
   Filetransfer FiletransferConfig `yaml:"filetransfer"`
+  Docker       DockerConfig       `yaml:"docker"`
 }
 
 type BasicAuth struct {
@@ -98,6 +99,12 @@ type FiletransferConfig struct {
   DefaultChunkSize int      `yaml:"default_chunk_size"` // bytes; 0 -> 1MB
   EncryptionKey    string   `yaml:"encryption_key"`     // first 16 bytes used as AES-128 key
   Roots            []string `yaml:"roots"`              // allowed browse/landing roots; empty -> user home
+}
+
+// DockerConfig configures the Docker management sub-feature.
+type DockerConfig struct {
+  Enabled *bool  `yaml:"enabled"` // nil or true = enabled; false = disabled
+  Host    string `yaml:"host"`    // optional override for DOCKER_HOST
 }
 
 // generateRandomKey generates a random key for encryption

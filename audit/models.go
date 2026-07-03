@@ -53,6 +53,20 @@ const (
   ActionConfigManage     ActionType = "config_manage"
   ActionCommandExecute   ActionType = "command_exec"
   ActionNetworkProbe     ActionType = "network_probe"
+
+  ActionDockerContainerList    ActionType = "docker_container_list"
+  ActionDockerContainerInspect ActionType = "docker_container_inspect"
+  ActionDockerContainerStart   ActionType = "docker_container_start"
+  ActionDockerContainerStop    ActionType = "docker_container_stop"
+  ActionDockerContainerRestart ActionType = "docker_container_restart"
+  ActionDockerContainerPause   ActionType = "docker_container_pause"
+  ActionDockerContainerUnpause ActionType = "docker_container_unpause"
+  ActionDockerContainerRemove  ActionType = "docker_container_remove"
+  ActionDockerContainerCreate  ActionType = "docker_container_create"
+  ActionDockerContainerExec    ActionType = "docker_container_exec"
+  ActionDockerContainerLogs    ActionType = "docker_container_logs"
+  ActionDockerContainerStats   ActionType = "docker_container_stats"
+  ActionDockerContainerPing    ActionType = "docker_container_ping"
 )
 
 // StatusType 审计操作状态

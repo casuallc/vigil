@@ -8,6 +8,9 @@ require (
 	github.com/apache/rocketmq-client-go/v2 v2.1.2
 	github.com/cilium/ebpf v0.16.0
 	github.com/creack/pty v1.1.24
+	github.com/docker/docker v27.5.1+incompatible
+	github.com/docker/go-connections v0.5.0
+	github.com/opencontainers/image-spec v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/expr-lang/expr v1.17.6
 	github.com/go-stomp/stomp/v3 v3.1.3
