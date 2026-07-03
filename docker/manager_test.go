@@ -29,26 +29,26 @@ import (
 
 // fakeClient implements the docker.Client interface for tests.
 type fakeClient struct {
-	containers        []types.Container
-	inspect           types.ContainerJSON
-	createdID         string
-	execID            string
-	hijacked          types.HijackedResponse
-	timesStopped      int
-	timesStarted      int
-	timesRestarted    int
-	timesPaused       int
-	timesUnpaused     int
-	timesRemoved      int
-	timesResized      int
-	containerListErr  error
-	containerStopErr  error
-	containerStartErr error
+	containers         []types.Container
+	inspect            types.ContainerJSON
+	createdID          string
+	execID             string
+	hijacked           types.HijackedResponse
+	timesStopped       int
+	timesStarted       int
+	timesRestarted     int
+	timesPaused        int
+	timesUnpaused      int
+	timesRemoved       int
+	timesResized       int
+	containerListErr   error
+	containerStopErr   error
+	containerStartErr  error
 	containerCreateErr error
-	pingErr           error
+	pingErr            error
 }
 
-func (f *fakeClient) ContainerList(ctx context.Context, options types.ContainerListOptions) ([]types.Container, error) {
+func (f *fakeClient) ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
 	return f.containers, f.containerListErr
 }
 
@@ -56,7 +56,7 @@ func (f *fakeClient) ContainerInspect(ctx context.Context, containerID string) (
 	return f.inspect, nil
 }
 
-func (f *fakeClient) ContainerStart(ctx context.Context, containerID string, options types.ContainerStartOptions) error {
+func (f *fakeClient) ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error {
 	f.timesStarted++
 	return f.containerStartErr
 }
@@ -81,7 +81,7 @@ func (f *fakeClient) ContainerUnpause(ctx context.Context, containerID string) e
 	return nil
 }
 
-func (f *fakeClient) ContainerRemove(ctx context.Context, containerID string, options types.ContainerRemoveOptions) error {
+func (f *fakeClient) ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error {
 	f.timesRemoved++
 	return nil
 }
@@ -90,29 +90,29 @@ func (f *fakeClient) ContainerCreate(ctx context.Context, config *container.Conf
 	return container.CreateResponse{ID: f.createdID}, f.containerCreateErr
 }
 
-func (f *fakeClient) ContainerExecCreate(ctx context.Context, container string, config types.ExecConfig) (types.IDResponse, error) {
+func (f *fakeClient) ContainerExecCreate(ctx context.Context, containerID string, options container.ExecOptions) (types.IDResponse, error) {
 	return types.IDResponse{ID: f.execID}, nil
 }
 
-func (f *fakeClient) ContainerExecAttach(ctx context.Context, execID string, config types.ExecStartCheck) (types.HijackedResponse, error) {
+func (f *fakeClient) ContainerExecAttach(ctx context.Context, execID string, options container.ExecAttachOptions) (types.HijackedResponse, error) {
 	return f.hijacked, nil
 }
 
-func (f *fakeClient) ContainerExecInspect(ctx context.Context, execID string) (types.ContainerExecInspect, error) {
-	return types.ContainerExecInspect{Running: false}, nil
+func (f *fakeClient) ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error) {
+	return container.ExecInspect{Running: false}, nil
 }
 
-func (f *fakeClient) ContainerExecResize(ctx context.Context, execID string, options types.ResizeOptions) error {
+func (f *fakeClient) ContainerExecResize(ctx context.Context, execID string, options container.ResizeOptions) error {
 	f.timesResized++
 	return nil
 }
 
-func (f *fakeClient) ContainerLogs(ctx context.Context, container string, options types.ContainerLogsOptions) (io.ReadCloser, error) {
+func (f *fakeClient) ContainerLogs(ctx context.Context, containerID string, options container.LogsOptions) (io.ReadCloser, error) {
 	return io.NopCloser(nil), nil
 }
 
-func (f *fakeClient) ContainerStats(ctx context.Context, container string, stream bool) (types.ContainerStats, error) {
-	return types.ContainerStats{Body: io.NopCloser(nil)}, nil
+func (f *fakeClient) ContainerStats(ctx context.Context, containerID string, stream bool) (container.StatsResponseReader, error) {
+	return container.StatsResponseReader{Body: io.NopCloser(nil)}, nil
 }
 
 func (f *fakeClient) Ping(ctx context.Context) (types.Ping, error) {

@@ -25,11 +25,9 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
-	specs "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // Manager wraps the Docker Engine API client to manage local containers.
@@ -72,7 +70,7 @@ func (m *Manager) Ping(ctx context.Context) (types.Ping, error) {
 
 // ListContainers returns containers from the Docker daemon.
 func (m *Manager) ListContainers(ctx context.Context, all bool) ([]types.Container, error) {
-	return m.cli.ContainerList(ctx, types.ContainerListOptions{All: all})
+	return m.cli.ContainerList(ctx, container.ListOptions{All: all})
 }
 
 // InspectContainer returns detailed information about a container.
@@ -82,7 +80,7 @@ func (m *Manager) InspectContainer(ctx context.Context, id string) (types.Contai
 
 // StartContainer starts a container.
 func (m *Manager) StartContainer(ctx context.Context, id string) error {
-	return m.cli.ContainerStart(ctx, id, types.ContainerStartOptions{})
+	return m.cli.ContainerStart(ctx, id, container.StartOptions{})
 }
 
 // StopContainer stops a container with an optional timeout (seconds).
@@ -117,7 +115,7 @@ func (m *Manager) UnpauseContainer(ctx context.Context, id string) error {
 
 // RemoveContainer removes a container, optionally forcing removal.
 func (m *Manager) RemoveContainer(ctx context.Context, id string, force bool) error {
-	return m.cli.ContainerRemove(ctx, id, types.ContainerRemoveOptions{Force: force})
+	return m.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: force})
 }
 
 // CreateContainer creates a new container from an image.
@@ -133,10 +131,12 @@ func (m *Manager) CreateContainer(ctx context.Context, name, image string, cmd, 
 		exposedPorts := make(nat.PortSet)
 		portBindings := make(nat.PortMap)
 		for containerPort, hostValue := range ports {
-			cp, err := nat.NewPort("tcp", containerPort)
-			if err != nil {
-				// Try parsing as "80/tcp" or "80/udp"
-				cp, err = nat.ParsePort(containerPort)
+			var cp nat.Port
+			if strings.Contains(containerPort, "/") {
+				cp = nat.Port(containerPort)
+			} else {
+				var err error
+				cp, err = nat.NewPort("tcp", containerPort)
 				if err != nil {
 					return "", err
 				}
@@ -166,7 +166,7 @@ func (m *Manager) CreateContainer(ctx context.Context, name, image string, cmd, 
 
 // ExecCommand runs a one-shot command inside a container and returns the output.
 func (m *Manager) ExecCommand(ctx context.Context, id string, cmd []string, tty bool) (string, error) {
-	execResp, err := m.cli.ContainerExecCreate(ctx, id, types.ExecConfig{
+	execResp, err := m.cli.ContainerExecCreate(ctx, id, container.ExecOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -176,7 +176,7 @@ func (m *Manager) ExecCommand(ctx context.Context, id string, cmd []string, tty 
 		return "", err
 	}
 
-	attach, err := m.cli.ContainerExecAttach(ctx, execResp.ID, types.ExecStartCheck{Tty: tty})
+	attach, err := m.cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{Tty: tty})
 	if err != nil {
 		return "", err
 	}
@@ -215,7 +215,7 @@ func (m *Manager) ExecCommand(ctx context.Context, id string, cmd []string, tty 
 
 // StreamLogs streams container logs to the provided writer.
 func (m *Manager) StreamLogs(ctx context.Context, id string, follow bool, tail, since string, w io.Writer) error {
-	opts := types.ContainerLogsOptions{
+	opts := container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     follow,
@@ -254,7 +254,7 @@ func (m *Manager) StreamStats(ctx context.Context, id string, stream bool, w io.
 // connection along with the exec ID. The caller is responsible for closing the
 // returned HijackedResponse.
 func (m *Manager) ExecInteractive(ctx context.Context, id string, cmd []string, tty bool, w, h int) (types.HijackedResponse, string, error) {
-	execResp, err := m.cli.ContainerExecCreate(ctx, id, types.ExecConfig{
+	execResp, err := m.cli.ContainerExecCreate(ctx, id, container.ExecOptions{
 		Cmd:          cmd,
 		AttachStdin:  true,
 		AttachStdout: true,
@@ -265,13 +265,19 @@ func (m *Manager) ExecInteractive(ctx context.Context, id string, cmd []string, 
 		return types.HijackedResponse{}, "", err
 	}
 
-	attach, err := m.cli.ContainerExecAttach(ctx, execResp.ID, types.ExecStartCheck{Tty: tty})
+	consoleSize := &[2]uint{uint(h), uint(w)}
+	attachOpts := container.ExecAttachOptions{Tty: tty}
+	if w > 0 && h > 0 {
+		attachOpts.ConsoleSize = consoleSize
+	}
+
+	attach, err := m.cli.ContainerExecAttach(ctx, execResp.ID, attachOpts)
 	if err != nil {
 		return types.HijackedResponse{}, "", err
 	}
 
 	if w > 0 && h > 0 {
-		_ = m.cli.ContainerExecResize(ctx, execResp.ID, types.ResizeOptions{
+		_ = m.cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
 			Width:  uint(w),
 			Height: uint(h),
 		})
@@ -282,7 +288,7 @@ func (m *Manager) ExecInteractive(ctx context.Context, id string, cmd []string, 
 
 // ExecResize resizes an active exec session.
 func (m *Manager) ExecResize(ctx context.Context, execID string, w, h int) error {
-	return m.cli.ContainerExecResize(ctx, execID, types.ResizeOptions{
+	return m.cli.ContainerExecResize(ctx, execID, container.ResizeOptions{
 		Width:  uint(w),
 		Height: uint(h),
 	})
