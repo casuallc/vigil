@@ -142,6 +142,23 @@ Vigil 支持多种消息队列系统，提供统一的 API 接口。
 
 所有消息队列客户端都实现了消息计数功能，在退出时会打印生产和消费的消息总数。
 
+## Docker 管理命令
+
+### 命令格式
+
+```
+bbx-cli docker [subcommand] [flags]
+```
+
+### 子命令列表
+
+| 命令 | 说明 | 详细文档 |
+|------|------|----------|
+| `ping` | 检查 Docker daemon 连通性 | [cli_docker.md](./cli_docker.md#docker-ping) |
+| `image` | Docker 镜像操作 | [cli_docker.md](./cli_docker.md#docker-image) |
+| `container` | Docker 容器操作 | [cli_docker.md](./cli_docker.md#docker-container) |
+| `compose` | Docker Compose 操作 | [cli_docker.md](./cli_docker.md#docker-compose) |
+
 ## 集成测试命令
 
 ### 命令格式
