@@ -59,6 +59,7 @@ Vigil is a Go-based process management and message queue client tool (module: `g
 ├── common/           # Shared utilities (exec.go, utils.go)
 ├── config/           # Configuration loading (config.yaml, scan.yaml)
 ├── crypto/           # Encryption utilities
+├── docker/           # Docker container, compose, and registry management
 ├── docs/             # Documentation (CLI references, testing guides, API docs)
 ├── inspection/       # Cosmic inspection rules and evaluation engine
 ├── proc/             # Process management (scan, create, lifecycle, mounts)
@@ -81,12 +82,15 @@ Vigil is a Go-based process management and message queue client tool (module: `g
 - **User/Auth System**: SQLite-backed user database (`models.SQLiteUserDatabase`) with basic auth, login logs, and per-user configs.
 - **Audit System**: `audit.Logger` records all API requests including operation type, timestamp, user, IP, and status.
 - **Persistence**: Server uses `modernc.org/sqlite` for multiple features (users, login logs, command templates/history, schedules, VM data).
+- **Docker Manager**: `docker.Manager` wraps the official Docker SDK to manage local containers (list, inspect, create, start/stop/restart, pause/unpause, exec, logs, stats) and compose projects. Exposes `/api/docker/*` REST and WebSocket endpoints.
+- **Docker Registry**: Embedded Docker Registry HTTP API V2 implementation (`api/handlers_docker_registry.go`) backed by local filesystem storage, enabling `docker login / tag / push / pull` against the server.
 
 ## Key Configuration Files
 
 - `conf/config.yaml`: Server configuration (addr, auth, log level, HTTPS, encryption key, database)
 - `conf/scan.yaml`: Batch process scan configuration
 - `conf/cosmic/`: Cosmic inspection rules (YAML-based)
+- `conf/config.yaml` Docker sections: `docker` (container/compose enablement) and `docker_registry` (embedded registry enablement and storage path)
 
 ## Testing Patterns
 
