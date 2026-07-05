@@ -18,6 +18,8 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -25,6 +27,10 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
@@ -331,4 +337,102 @@ func ParseTimeout(s string) *int {
 		return &v
 	}
 	return nil
+}
+
+// PullImage pulls an image and waits for the operation to complete.
+func (m *Manager) PullImage(ctx context.Context, imageRef string) error {
+	rc, err := m.cli.ImagePull(ctx, imageRef, image.PullOptions{})
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	// Drain the pull progress stream so the daemon finishes the pull.
+	dec := json.NewDecoder(rc)
+	for {
+		var msg map[string]interface{}
+		if err := dec.Decode(&msg); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// ListProjectContainers returns containers belonging to a compose project.
+func (m *Manager) ListProjectContainers(ctx context.Context, project string) ([]types.Container, error) {
+	f := filters.NewArgs()
+	f.Add("label", fmt.Sprintf("%s=%s", ComposeProjectLabel, project))
+	return m.cli.ContainerList(ctx, container.ListOptions{Filters: f, All: true})
+}
+
+// CreateNetwork creates a project-scoped network.
+func (m *Manager) CreateNetwork(ctx context.Context, name, project string, cfg ComposeNetwork) (string, error) {
+	driver := cfg.Driver
+	if driver == "" {
+		driver = "bridge"
+	}
+	labels := map[string]string{ComposeProjectLabel: project}
+	for k, v := range cfg.Labels {
+		labels[k] = v
+	}
+	resp, err := m.cli.NetworkCreate(ctx, name, network.CreateOptions{
+		Driver: driver,
+		Labels: labels,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.ID, nil
+}
+
+// CreateVolume creates a project-scoped volume.
+func (m *Manager) CreateVolume(ctx context.Context, name, project string, cfg ComposeVolume) (string, error) {
+	driver := cfg.Driver
+	if driver == "" {
+		driver = "local"
+	}
+	labels := map[string]string{ComposeProjectLabel: project}
+	for k, v := range cfg.Labels {
+		labels[k] = v
+	}
+	vol, err := m.cli.VolumeCreate(ctx, volume.CreateOptions{
+		Name:       name,
+		Driver:     driver,
+		DriverOpts: map[string]string{},
+		Labels:     labels,
+	})
+	if err != nil {
+		return "", err
+	}
+	return vol.Name, nil
+}
+
+// ListProjectNetworks returns networks labeled with the compose project.
+func (m *Manager) ListProjectNetworks(ctx context.Context, project string) ([]network.Summary, error) {
+	f := filters.NewArgs()
+	f.Add("label", fmt.Sprintf("%s=%s", ComposeProjectLabel, project))
+	return m.cli.NetworkList(ctx, network.ListOptions{Filters: f})
+}
+
+// ListProjectVolumes returns volumes labeled with the compose project.
+func (m *Manager) ListProjectVolumes(ctx context.Context, project string) ([]*volume.Volume, error) {
+	f := filters.NewArgs()
+	f.Add("label", fmt.Sprintf("%s=%s", ComposeProjectLabel, project))
+	resp, err := m.cli.VolumeList(ctx, volume.ListOptions{Filters: f})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Volumes, nil
+}
+
+// RemoveNetwork removes a network by ID or name.
+func (m *Manager) RemoveNetwork(ctx context.Context, id string) error {
+	return m.cli.NetworkRemove(ctx, id)
+}
+
+// RemoveVolume removes a volume by name.
+func (m *Manager) RemoveVolume(ctx context.Context, name string, force bool) error {
+	return m.cli.VolumeRemove(ctx, name, force)
 }

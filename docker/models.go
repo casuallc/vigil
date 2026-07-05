@@ -65,3 +65,25 @@ type PortMapping struct {
 	PublicPort  uint16 `json:"public_port"`
 	Type        string `json:"type"`
 }
+
+// ComposeDeployRequest is the body for POST /api/docker/compose.
+type ComposeDeployRequest struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Start   *bool  `json:"start,omitempty"`
+}
+
+// ComposeServiceStatus represents one service in a compose project response.
+type ComposeServiceStatus struct {
+	Name       string             `json:"name"`
+	Image      string             `json:"image"`
+	Command    string             `json:"command,omitempty"`
+	Replicas   int                `json:"replicas"`
+	Containers []ContainerSummary `json:"containers"`
+}
+
+// ComposeProjectStatus is the response for compose project endpoints.
+type ComposeProjectStatus struct {
+	Name     string                 `json:"name"`
+	Services []ComposeServiceStatus `json:"services"`
+}

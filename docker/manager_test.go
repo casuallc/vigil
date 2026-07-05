@@ -19,16 +19,19 @@ package docker
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/volume"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// fakeClient implements the docker.Client interface for tests.
-type fakeClient struct {
+// FakeClient implements the docker.Client interface for tests.
+type FakeClient struct {
 	containers         []types.Container
 	inspect            types.ContainerJSON
 	createdID          string
@@ -46,85 +49,144 @@ type fakeClient struct {
 	containerStartErr  error
 	containerCreateErr error
 	pingErr            error
+	// Compose-related fake state
+	imagesPulled     []string
+	networksCreated  []string
+	volumesCreated   []string
+	networkList      []network.Summary
+	volumeList       volume.ListResponse
+	pullErr          error
+	networkCreateErr error
+	networkListErr   error
+	networkRemoveErr error
+	volumeCreateErr  error
+	volumeListErr    error
+	volumeRemoveErr  error
 }
 
-func (f *fakeClient) ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
+func (f *FakeClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
+	if f.pullErr != nil {
+		return nil, f.pullErr
+	}
+	f.imagesPulled = append(f.imagesPulled, ref)
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
+func (f *FakeClient) NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error) {
+	if f.networkCreateErr != nil {
+		return network.CreateResponse{}, f.networkCreateErr
+	}
+	f.networksCreated = append(f.networksCreated, name)
+	return network.CreateResponse{ID: name + "-id"}, nil
+}
+
+func (f *FakeClient) NetworkList(ctx context.Context, options network.ListOptions) ([]network.Summary, error) {
+	if f.networkListErr != nil {
+		return nil, f.networkListErr
+	}
+	return f.networkList, nil
+}
+
+func (f *FakeClient) NetworkRemove(ctx context.Context, networkID string) error {
+	return f.networkRemoveErr
+}
+
+func (f *FakeClient) VolumeCreate(ctx context.Context, options volume.CreateOptions) (volume.Volume, error) {
+	if f.volumeCreateErr != nil {
+		return volume.Volume{}, f.volumeCreateErr
+	}
+	f.volumesCreated = append(f.volumesCreated, options.Name)
+	return volume.Volume{Name: options.Name}, nil
+}
+
+func (f *FakeClient) VolumeList(ctx context.Context, options volume.ListOptions) (volume.ListResponse, error) {
+	if f.volumeListErr != nil {
+		return volume.ListResponse{}, f.volumeListErr
+	}
+	return f.volumeList, nil
+}
+
+func (f *FakeClient) VolumeRemove(ctx context.Context, volumeID string, force bool) error {
+	return f.volumeRemoveErr
+}
+
+func (f *FakeClient) ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
 	return f.containers, f.containerListErr
 }
 
-func (f *fakeClient) ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) {
+func (f *FakeClient) ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) {
 	return f.inspect, nil
 }
 
-func (f *fakeClient) ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error {
+func (f *FakeClient) ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error {
 	f.timesStarted++
 	return f.containerStartErr
 }
 
-func (f *fakeClient) ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error {
+func (f *FakeClient) ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error {
 	f.timesStopped++
 	return f.containerStopErr
 }
 
-func (f *fakeClient) ContainerRestart(ctx context.Context, containerID string, options container.StopOptions) error {
+func (f *FakeClient) ContainerRestart(ctx context.Context, containerID string, options container.StopOptions) error {
 	f.timesRestarted++
 	return nil
 }
 
-func (f *fakeClient) ContainerPause(ctx context.Context, containerID string) error {
+func (f *FakeClient) ContainerPause(ctx context.Context, containerID string) error {
 	f.timesPaused++
 	return nil
 }
 
-func (f *fakeClient) ContainerUnpause(ctx context.Context, containerID string) error {
+func (f *FakeClient) ContainerUnpause(ctx context.Context, containerID string) error {
 	f.timesUnpaused++
 	return nil
 }
 
-func (f *fakeClient) ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error {
+func (f *FakeClient) ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error {
 	f.timesRemoved++
 	return nil
 }
 
-func (f *fakeClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *specs.Platform, containerName string) (container.CreateResponse, error) {
+func (f *FakeClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *specs.Platform, containerName string) (container.CreateResponse, error) {
 	return container.CreateResponse{ID: f.createdID}, f.containerCreateErr
 }
 
-func (f *fakeClient) ContainerExecCreate(ctx context.Context, containerID string, options container.ExecOptions) (types.IDResponse, error) {
+func (f *FakeClient) ContainerExecCreate(ctx context.Context, containerID string, options container.ExecOptions) (types.IDResponse, error) {
 	return types.IDResponse{ID: f.execID}, nil
 }
 
-func (f *fakeClient) ContainerExecAttach(ctx context.Context, execID string, options container.ExecAttachOptions) (types.HijackedResponse, error) {
+func (f *FakeClient) ContainerExecAttach(ctx context.Context, execID string, options container.ExecAttachOptions) (types.HijackedResponse, error) {
 	return f.hijacked, nil
 }
 
-func (f *fakeClient) ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error) {
+func (f *FakeClient) ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error) {
 	return container.ExecInspect{Running: false}, nil
 }
 
-func (f *fakeClient) ContainerExecResize(ctx context.Context, execID string, options container.ResizeOptions) error {
+func (f *FakeClient) ContainerExecResize(ctx context.Context, execID string, options container.ResizeOptions) error {
 	f.timesResized++
 	return nil
 }
 
-func (f *fakeClient) ContainerLogs(ctx context.Context, containerID string, options container.LogsOptions) (io.ReadCloser, error) {
+func (f *FakeClient) ContainerLogs(ctx context.Context, containerID string, options container.LogsOptions) (io.ReadCloser, error) {
 	return io.NopCloser(nil), nil
 }
 
-func (f *fakeClient) ContainerStats(ctx context.Context, containerID string, stream bool) (container.StatsResponseReader, error) {
+func (f *FakeClient) ContainerStats(ctx context.Context, containerID string, stream bool) (container.StatsResponseReader, error) {
 	return container.StatsResponseReader{Body: io.NopCloser(nil)}, nil
 }
 
-func (f *fakeClient) Ping(ctx context.Context) (types.Ping, error) {
+func (f *FakeClient) Ping(ctx context.Context) (types.Ping, error) {
 	return types.Ping{}, f.pingErr
 }
 
-func (f *fakeClient) Close() error {
+func (f *FakeClient) Close() error {
 	return nil
 }
 
 func TestManager_ListContainers(t *testing.T) {
-	fc := &fakeClient{
+	fc := &FakeClient{
 		containers: []types.Container{
 			{ID: "abc123", Names: []string{"/test"}, Image: "alpine"},
 		},
@@ -141,7 +203,7 @@ func TestManager_ListContainers(t *testing.T) {
 }
 
 func TestManager_StopContainer(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &FakeClient{}
 	m := NewManagerWithClient(fc)
 
 	timeout := 10
@@ -154,7 +216,7 @@ func TestManager_StopContainer(t *testing.T) {
 }
 
 func TestManager_StartContainer(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &FakeClient{}
 	m := NewManagerWithClient(fc)
 
 	if err := m.StartContainer(context.Background(), "abc"); err != nil {
@@ -166,7 +228,7 @@ func TestManager_StartContainer(t *testing.T) {
 }
 
 func TestManager_CreateContainer(t *testing.T) {
-	fc := &fakeClient{createdID: "newid"}
+	fc := &FakeClient{createdID: "newid"}
 	m := NewManagerWithClient(fc)
 
 	id, err := m.CreateContainer(context.Background(), "mycontainer", "alpine", []string{"sleep", "1"}, []string{"FOO=bar"}, map[string]string{"80": "8080"})

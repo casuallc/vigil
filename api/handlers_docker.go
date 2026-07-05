@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/casuallc/vigil/docker"
@@ -303,6 +304,81 @@ func (s *Server) handleDockerStreamStats(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// handleDockerComposeDeploy POST /api/docker/compose
+func (s *Server) handleDockerComposeDeploy(w http.ResponseWriter, r *http.Request) {
+	if s.composeManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker compose manager not initialized")
+		return
+	}
+
+	var req docker.ComposeDeployRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if req.Content == "" {
+		writeError(w, http.StatusBadRequest, "content is required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+
+	status, err := s.composeManager.DeployProject(ctx, req)
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, status)
+}
+
+// handleDockerComposeGet GET /api/docker/compose/{project}
+func (s *Server) handleDockerComposeGet(w http.ResponseWriter, r *http.Request) {
+	if s.composeManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker compose manager not initialized")
+		return
+	}
+
+	project := mux.Vars(r)["project"]
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	status, err := s.composeManager.GetProject(ctx, project)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+// handleDockerComposeRemove DELETE /api/docker/compose/{project}?force=true
+func (s *Server) handleDockerComposeRemove(w http.ResponseWriter, r *http.Request) {
+	if s.composeManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker compose manager not initialized")
+		return
+	}
+
+	project := mux.Vars(r)["project"]
+	force := r.URL.Query().Get("force") == "true"
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	if err := s.composeManager.RemoveProject(ctx, project, force); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
+}
+
 // handleDockerPing GET /api/docker/ping
 func (s *Server) handleDockerPing(w http.ResponseWriter, r *http.Request) {
 	if s.dockerManager == nil {
@@ -320,4 +396,3 @@ func (s *Server) handleDockerPing(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, ping)
 }
-

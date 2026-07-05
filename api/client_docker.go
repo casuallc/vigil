@@ -317,3 +317,57 @@ func (c *Client) DockerLogsWebSocket(id, tail, since string) (*websocket.Conn, e
 	}
 	return conn, nil
 }
+
+// DockerComposeDeploy deploys a compose project.
+func (c *Client) DockerComposeDeploy(req docker.ComposeDeployRequest) (*docker.ComposeProjectStatus, error) {
+	resp, err := c.doRequest("POST", "/api/docker/compose", req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var status docker.ComposeProjectStatus
+	if err := c.getJSONResponse(resp, &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
+// DockerComposeGet returns the status of a compose project.
+func (c *Client) DockerComposeGet(project string) (*docker.ComposeProjectStatus, error) {
+	resp, err := c.doRequest("GET", fmt.Sprintf("/api/docker/compose/%s", project), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var status docker.ComposeProjectStatus
+	if err := c.getJSONResponse(resp, &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
+// DockerComposeRemove removes a compose project.
+func (c *Client) DockerComposeRemove(project string, force bool) error {
+	path := fmt.Sprintf("/api/docker/compose/%s", project)
+	if force {
+		path += "?force=true"
+	}
+	resp, err := c.doRequest("DELETE", path, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.errorFromResponse(resp)
+	}
+	return nil
+}

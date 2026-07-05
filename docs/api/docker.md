@@ -18,6 +18,9 @@ Authorization: Basic base64(username:password)
 
 | 接口路径 | 请求方法 | 功能描述 |
 |---------|----------|----------|
+| /api/docker/compose | POST | 部署 compose 项目 |
+| /api/docker/compose/{project} | GET | 查看 compose 项目状态 |
+| /api/docker/compose/{project} | DELETE | 删除 compose 项目 |
 | /api/docker/ping | GET | 探测 Docker Daemon 连通性 |
 | /api/docker/containers | GET | 列出容器 |
 | /api/docker/containers | POST | 创建容器 |
@@ -409,6 +412,150 @@ curl -u <username>:<password> \
 1. 客户端通过 WebSocket 协议连接此端点；
 2. 服务端持续以文本消息推送日志；
 3. 客户端关闭连接或发送任意消息即可停止。
+
+---
+
+## Docker Compose 部署
+
+vigil 提供无状态的 Docker Compose 部署能力：上传 `docker-compose.yml` 内容后，服务端解析并按项目创建容器、网络和卷。项目归属通过容器标签 `com.docker.compose.project` 和 `com.docker.compose.service` 实时查询，不做额外持久化。
+
+### 支持的 Compose 字段
+
+| 字段 | 说明 |
+|------|------|
+| `services` | 服务定义（必填） |
+| `services.<name>.image` | 镜像（必填） |
+| `services.<name>.command` | 启动命令，支持字符串或列表 |
+| `services.<name>.environment` | 环境变量，支持 map 或 `KEY=VALUE` 列表 |
+| `services.<name>.ports` | 端口映射，如 `"8080:80"` |
+| `services.<name>.volumes` | 卷挂载，支持短语法或对象 |
+| `services.<name>.networks` | 所属网络，支持列表或 map |
+| `services.<name>.restart` | 重启策略：`no`、`always`、`unless-stopped`、`on-failure[:N]` |
+| `services.<name>.labels` | 标签，支持 map 或列表 |
+| `services.<name>.replicas` / `services.<name>.deploy.replicas` | 副本数 |
+| `networks` | 顶层网络定义 |
+| `volumes` | 顶层卷定义 |
+
+暂不支持 `build`、`extends`、`profiles`、`secrets`、`configs`、健康检查等高级特性。
+
+---
+
+## POST /api/docker/compose
+
+**功能描述**：基于 docker-compose.yml 内容部署一个项目。
+
+**请求体**：`ComposeDeployRequest`
+
+| 字段 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| name | string | 是 | 项目名称，只能包含小写字母、数字、下划线和连字符 |
+| content | string | 是 | compose YAML 内容 |
+| start | boolean | 否 | 是否自动启动容器，默认 `true` |
+
+**请求示例**：
+
+```json
+{
+  "name": "demo",
+  "content": "services:\n  web:\n    image: nginx:alpine\n    ports:\n      - \"8080:80\"\n"
+}
+```
+
+**响应格式**：`ComposeProjectStatus`
+
+```json
+{
+  "name": "demo",
+  "services": [
+    {
+      "name": "web",
+      "image": "nginx:alpine",
+      "replicas": 1,
+      "containers": [
+        {
+          "id": "a1b2c3d4e5f6...",
+          "names": ["/demo_web_1"],
+          "image": "nginx:alpine",
+          "status": "Up 2 seconds",
+          "state": "running",
+          "ports": [{"ip": "0.0.0.0", "private_port": 80, "public_port": 8080, "type": "tcp"}],
+          "labels": {
+            "com.docker.compose.project": "demo",
+            "com.docker.compose.service": "web"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"name":"demo","content":"services:\n  web:\n    image: nginx:alpine\n    ports:\n      - \"8080:80\"\n"}' \
+  http://localhost:57575/api/docker/compose
+```
+
+**错误码**：
+
+- `409 Conflict`：项目已存在（已有同名项目容器）。
+
+---
+
+## GET /api/docker/compose/{project}
+
+**功能描述**：查看指定 compose 项目的容器状态。
+
+**路径参数**：
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| project | string | 项目名称 |
+
+**响应格式**：`ComposeProjectStatus`
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> \
+  http://localhost:57575/api/docker/compose/demo
+```
+
+---
+
+## DELETE /api/docker/compose/{project}
+
+**功能描述**：停止并删除项目下的所有容器、项目创建的网络和卷。
+
+**路径参数**：
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| project | string | 项目名称 |
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| force | boolean | 否 | 是否强制删除运行中容器，默认 `false` |
+
+**响应格式**：
+
+```json
+{
+  "status": "removed"
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> -X DELETE \
+  "http://localhost:57575/api/docker/compose/demo?force=true"
+```
 
 ---
 

@@ -22,7 +22,9 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/volume"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -46,5 +48,12 @@ type Client interface {
 	ContainerLogs(ctx context.Context, container string, options container.LogsOptions) (io.ReadCloser, error)
 	ContainerStats(ctx context.Context, container string, stream bool) (container.StatsResponseReader, error)
 	Ping(ctx context.Context) (types.Ping, error)
+	ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error)
+	NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error)
+	NetworkList(ctx context.Context, options network.ListOptions) ([]network.Summary, error)
+	NetworkRemove(ctx context.Context, networkID string) error
+	VolumeCreate(ctx context.Context, options volume.CreateOptions) (volume.Volume, error)
+	VolumeList(ctx context.Context, options volume.ListOptions) (volume.ListResponse, error)
+	VolumeRemove(ctx context.Context, volumeID string, force bool) error
 	Close() error
 }
