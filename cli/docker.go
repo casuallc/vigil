@@ -326,23 +326,24 @@ func (c *CLI) setupDockerContainerUnpauseCommand() *cobra.Command {
 // setupDockerContainerExecCommand 设置 docker container exec 命令
 func (c *CLI) setupDockerContainerExecCommand() *cobra.Command {
 	var command string
-	var tty bool
+	var tty, interactive bool
 
 	cmd := &cobra.Command{
 		Use:   "exec [id]",
 		Short: "Execute a command in a container",
-		Long:  "Run a one-shot command inside a Docker container and print the output.",
+		Long:  "Run a command inside a Docker container. Use -i/-t for an interactive session (e.g. bash).",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if command == "" {
 				return fmt.Errorf("command is required")
 			}
-			return c.handleDockerContainerExec(args[0], command, tty)
+			return c.handleDockerContainerExec(args[0], command, tty, interactive)
 		},
 	}
 
 	cmd.Flags().StringVarP(&command, "command", "c", "", "Command to execute")
 	cmd.Flags().BoolVarP(&tty, "tty", "t", false, "Allocate a pseudo-TTY")
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Keep STDIN open for interactive commands")
 	cmd.MarkFlagRequired("command")
 
 	return cmd
@@ -411,7 +412,7 @@ func (c *CLI) setupDockerContainerExecWSCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&command, "command", "c", "", "Command to execute interactively")
 	cmd.Flags().BoolVarP(&tty, "tty", "t", true, "Allocate a pseudo-TTY")
 	cmd.Flags().IntVarP(&width, "width", "W", 120, "Terminal width")
-	cmd.Flags().IntVarP(&height, "height", "H", 40, "Terminal height")
+	cmd.Flags().IntVar(&height, "height", 40, "Terminal height")
 	cmd.MarkFlagRequired("command")
 
 	return cmd
@@ -647,7 +648,25 @@ func (c *CLI) handleDockerContainerUnpause(id string) error {
 }
 
 // handleDockerContainerExec 处理 docker container exec 命令
-func (c *CLI) handleDockerContainerExec(id, command string, tty bool) error {
+func (c *CLI) handleDockerContainerExec(id, command string, tty, interactive bool) error {
+	if interactive || tty {
+		// Interactive commands need a bidirectional stream. Fall back to the
+		// WebSocket exec path so stdin/stdout are forwarded in real time.
+		if interactive {
+			tty = true
+		}
+		width, height := 120, 40
+		if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+			width, height = w, h
+		}
+		conn, err := c.client.DockerExecWebSocket(id, command, tty, width, height)
+		if err != nil {
+			return fmt.Errorf("failed to open interactive exec: %v", err)
+		}
+		defer conn.Close()
+		return dockerWebSocketInteractive(conn)
+	}
+
 	output, err := c.client.DockerExecContainer(id, command, tty)
 	if err != nil {
 		return fmt.Errorf("failed to exec command: %v", err)
@@ -828,9 +847,16 @@ func dockerWebSocketInteractive(conn *websocket.Conn) error {
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
 	var (
-		connClosed bool
-		mu         sync.Mutex
+		connClosed   bool
+		mu           sync.Mutex
+		lastW, lastH int
 	)
+
+	// 发送初始窗口大小
+	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+		lastW, lastH = w, h
+		_ = sendDockerResize(conn, &connClosed, &mu, w, h)
+	}
 
 	// 窗口大小变化时发送 resize 消息
 	go func() {
@@ -844,11 +870,15 @@ func dockerWebSocketInteractive(conn *websocket.Conn) error {
 
 			w, h, err := term.GetSize(int(os.Stdout.Fd()))
 			if err != nil {
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
-			resizeMsg := map[string]int{"cols": w, "rows": h}
-			resizeJSON, _ := json.Marshal(resizeMsg)
-			if err := writeWebSocketMessage(conn, &connClosed, &mu, websocket.TextMessage, []byte("resize:"+string(resizeJSON))); err != nil {
+			if w == lastW && h == lastH {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			lastW, lastH = w, h
+			if err := sendDockerResize(conn, &connClosed, &mu, w, h); err != nil {
 				return
 			}
 			time.Sleep(100 * time.Millisecond)
@@ -890,4 +920,11 @@ func dockerWebSocketInteractive(conn *websocket.Conn) error {
 			}
 		}
 	}
+}
+
+// sendDockerResize 发送终端 resize 消息
+func sendDockerResize(conn *websocket.Conn, connClosed *bool, mu *sync.Mutex, w, h int) error {
+	resizeMsg := map[string]int{"cols": w, "rows": h}
+	resizeJSON, _ := json.Marshal(resizeMsg)
+	return writeWebSocketMessage(conn, connClosed, mu, websocket.TextMessage, []byte("resize:"+string(resizeJSON)))
 }
