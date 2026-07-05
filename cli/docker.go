@@ -435,9 +435,9 @@ func (c *CLI) handleDockerPing() error {
 		return fmt.Errorf("failed to ping docker daemon: %v", err)
 	}
 	fmt.Printf("Docker daemon is reachable\n")
-	fmt.Printf("  API Version:   %s\n", ping.APIVersion)
-	fmt.Printf("  Daemon Version: %s\n", ping.Version)
-	fmt.Printf("  Experimental:  %v\n", ping.Experimental)
+	fmt.Printf("  API Version:  %s\n", ping.APIVersion)
+	fmt.Printf("  OS Type:      %s\n", ping.OSType)
+	fmt.Printf("  Experimental: %v\n", ping.Experimental)
 	return nil
 }
 
