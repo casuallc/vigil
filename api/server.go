@@ -75,6 +75,8 @@ type Server struct {
 	dockerManager *docker.Manager
 	// Compose management sub-feature (nil when docker is unavailable)
 	composeManager *docker.ComposeManager
+	// In-memory task store for asynchronous docker image loads.
+	loadImageTasks *loadImageTaskStore
 	// Docker Registry HTTP API V2 sub-feature (nil when disabled)
 	dockerRegistryManager *dockerregistry.Manager
 }
@@ -224,6 +226,7 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
 			} else {
 				server.dockerManager = dockerMgr
 				server.composeManager = docker.NewComposeManager(dockerMgr)
+				server.loadImageTasks = newLoadImageTaskStore()
 				log.Printf("Docker manager initialized")
 			}
 			cancel()
@@ -414,6 +417,17 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 			switch {
 			case path == "/api/docker/ping":
 				action = audit.ActionDockerContainerPing
+			case strings.HasPrefix(path, "/api/docker/images/load"):
+				resource = strings.TrimPrefix(path, "/api/docker/images/load/")
+				if resource == path {
+					resource = ""
+				}
+				switch r.Method {
+				case http.MethodPost:
+					action = audit.ActionDockerImageLoad
+				case http.MethodGet:
+					action = audit.ActionDockerImageLoad
+				}
 			case strings.HasPrefix(path, "/api/docker/compose"):
 				resource = strings.TrimPrefix(path, "/api/docker/compose/")
 				if resource == path {

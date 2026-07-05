@@ -18,9 +18,14 @@ package docker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -356,6 +361,156 @@ func (m *Manager) PullImage(ctx context.Context, imageRef string) error {
 			}
 			return err
 		}
+	}
+	return nil
+}
+
+// LoadImage streams a tar archive into the Docker daemon and returns the image
+// references reported by the daemon.
+func (m *Manager) LoadImage(ctx context.Context, r io.Reader) ([]string, error) {
+	resp, err := m.cli.ImageLoad(ctx, r, false)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var images []string
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var msg map[string]interface{}
+		if err := dec.Decode(&msg); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return images, err
+		}
+
+		if stream, ok := msg["stream"].(string); ok {
+			// Typical success lines:
+			// "Loaded image: foo:bar\n"
+			// "Loaded image ID: sha256:...\n"
+			const loadedImagePrefix = "Loaded image:"
+			const loadedIDPrefix = "Loaded image ID:"
+			for _, line := range strings.Split(stream, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, loadedImagePrefix) {
+					images = append(images, strings.TrimSpace(strings.TrimPrefix(line, loadedImagePrefix)))
+				} else if strings.HasPrefix(line, loadedIDPrefix) {
+					images = append(images, strings.TrimSpace(strings.TrimPrefix(line, loadedIDPrefix)))
+				}
+			}
+		}
+
+		if errMsg := msg["error"]; errMsg != nil {
+			return images, fmt.Errorf("docker load error: %v", errMsg)
+		}
+		if detail, ok := msg["errorDetail"].(map[string]interface{}); ok {
+			message, _ := detail["message"].(string)
+			return images, fmt.Errorf("docker load error: %s", message)
+		}
+	}
+
+	return images, nil
+}
+
+// LoadImageFromURL downloads a docker tar archive from url and loads it into
+// the local docker daemon. Optional metadata may be used for validation and
+// tagging.
+func (m *Manager) LoadImageFromURL(ctx context.Context, downloadURL string, meta ImageMetadata) ([]string, error) {
+	if downloadURL == "" {
+		return nil, fmt.Errorf("download URL is required")
+	}
+	u, err := url.Parse(downloadURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid download URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("unsupported URL scheme %q", u.Scheme)
+	}
+
+	tmpFile, err := os.CreateTemp("", "docker-load-*.tar")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		tmpFile.Close()
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		tmpFile.Close()
+		return nil, fmt.Errorf("failed to download tar: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		tmpFile.Close()
+		return nil, fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+	}
+
+	written, copyErr := io.Copy(tmpFile, resp.Body)
+	if closeErr := tmpFile.Close(); closeErr != nil {
+		return nil, fmt.Errorf("failed to close temp file: %w", closeErr)
+	}
+	if copyErr != nil {
+		return nil, fmt.Errorf("failed to download tar: %w", copyErr)
+	}
+
+	if meta.Size > 0 && written != meta.Size {
+		return nil, fmt.Errorf("size mismatch: expected %d, got %d", meta.Size, written)
+	}
+
+	if meta.SHA256 != "" {
+		if err := verifyFileSHA256(tmpPath, meta.SHA256); err != nil {
+			return nil, err
+		}
+	}
+
+	f, err := os.Open(tmpPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open temp file: %w", err)
+	}
+	defer f.Close()
+
+	images, err := m.LoadImage(ctx, f)
+	if err != nil {
+		return images, err
+	}
+
+	// Apply optional tag override.
+	if meta.Name != "" && meta.Tag != "" && len(images) > 0 {
+		target := meta.Name + ":" + meta.Tag
+		if err := m.cli.ImageTag(ctx, images[0], target); err != nil {
+			return images, fmt.Errorf("failed to tag image %q as %q: %w", images[0], target, err)
+		}
+		images = append(images, target)
+	}
+
+	return images, nil
+}
+
+func verifyFileSHA256(path, expected string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file for checksum: %w", err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("failed to compute checksum: %w", err)
+	}
+	actual := hex.EncodeToString(h.Sum(nil))
+	if strings.HasPrefix(expected, "sha256:") {
+		expected = strings.TrimPrefix(expected, "sha256:")
+	}
+	if actual != strings.ToLower(expected) {
+		return fmt.Errorf("sha256 mismatch: expected %s, got %s", expected, actual)
 	}
 	return nil
 }

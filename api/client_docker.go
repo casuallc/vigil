@@ -389,3 +389,40 @@ func (c *Client) DockerComposeRemove(project string, force bool) error {
 	}
 	return nil
 }
+
+// DockerLoadImage submits an asynchronous request to download and load a docker
+// tar image archive.
+func (c *Client) DockerLoadImage(req docker.LoadImageRequest) (*docker.LoadImageResponse, error) {
+	resp, err := c.doRequest("POST", "/api/docker/images/load", req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusAccepted {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var result docker.LoadImageResponse
+	if err := c.getJSONResponse(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DockerLoadImageStatus queries the status of an asynchronous image load task.
+func (c *Client) DockerLoadImageStatus(taskID string) (*docker.LoadImageTask, error) {
+	resp, err := c.doRequest("GET", fmt.Sprintf("/api/docker/images/load/%s/status", taskID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var task docker.LoadImageTask
+	if err := c.getJSONResponse(resp, &task); err != nil {
+		return nil, err
+	}
+	return &task, nil
+}

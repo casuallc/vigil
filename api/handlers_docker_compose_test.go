@@ -123,6 +123,14 @@ func (f *composeFakeClient) ImagePull(ctx context.Context, ref string, options i
 	return io.NopCloser(strings.NewReader("")), nil
 }
 
+func (f *composeFakeClient) ImageLoad(ctx context.Context, input io.Reader, quiet bool) (image.LoadResponse, error) {
+	return image.LoadResponse{Body: io.NopCloser(strings.NewReader(""))}, nil
+}
+
+func (f *composeFakeClient) ImageTag(ctx context.Context, source, target string) error {
+	return nil
+}
+
 func (f *composeFakeClient) NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error) {
 	f.networksCreated = append(f.networksCreated, name)
 	return network.CreateResponse{ID: name + "-id"}, nil
@@ -158,6 +166,7 @@ func newComposeTestServer(fc *composeFakeClient) *Server {
 	return &Server{
 		dockerManager:  mgr,
 		composeManager: docker.NewComposeManager(mgr),
+		loadImageTasks: newLoadImageTaskStore(),
 	}
 }
 

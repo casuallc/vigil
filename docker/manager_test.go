@@ -19,6 +19,8 @@ package docker
 import (
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -62,6 +64,11 @@ type FakeClient struct {
 	volumeCreateErr  error
 	volumeListErr    error
 	volumeRemoveErr  error
+	// Image load/tag fake state
+	loadRespBody  io.ReadCloser
+	loadErr       error
+	taggedImages  []string // list of "source->target"
+	tagErr        error
 }
 
 func (f *FakeClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
@@ -70,6 +77,25 @@ func (f *FakeClient) ImagePull(ctx context.Context, ref string, options image.Pu
 	}
 	f.imagesPulled = append(f.imagesPulled, ref)
 	return io.NopCloser(strings.NewReader("")), nil
+}
+
+func (f *FakeClient) ImageLoad(ctx context.Context, input io.Reader, quiet bool) (image.LoadResponse, error) {
+	if f.loadErr != nil {
+		return image.LoadResponse{}, f.loadErr
+	}
+	body := f.loadRespBody
+	if body == nil {
+		body = io.NopCloser(strings.NewReader(""))
+	}
+	return image.LoadResponse{Body: body}, nil
+}
+
+func (f *FakeClient) ImageTag(ctx context.Context, source, target string) error {
+	if f.tagErr != nil {
+		return f.tagErr
+	}
+	f.taggedImages = append(f.taggedImages, source+"->"+target)
+	return nil
 }
 
 func (f *FakeClient) NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error) {
@@ -272,5 +298,91 @@ func TestParseTimeout(t *testing.T) {
 	}
 	if v := ParseTimeout("abc"); v != nil {
 		t.Fatalf("expected nil for invalid, got %v", v)
+	}
+}
+
+func TestManager_LoadImage(t *testing.T) {
+	body := `{"stream":"Loaded image: myrepo/myimage:v1.0\n"}` + "\n" +
+		`{"stream":"Loaded image ID: sha256:abc123\n"}` + "\n"
+	fc := &FakeClient{
+		loadRespBody: io.NopCloser(strings.NewReader(body)),
+	}
+	m := NewManagerWithClient(fc)
+
+	images, err := m.LoadImage(context.Background(), strings.NewReader("tar content"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(images) != 2 {
+		t.Fatalf("expected 2 images, got %d: %v", len(images), images)
+	}
+	if images[0] != "myrepo/myimage:v1.0" {
+		t.Fatalf("unexpected image[0]: %s", images[0])
+	}
+	if images[1] != "sha256:abc123" {
+		t.Fatalf("unexpected image[1]: %s", images[1])
+	}
+}
+
+func TestManager_LoadImage_Error(t *testing.T) {
+	body := `{"errorDetail":{"message":"archive contains invalid tar"}}` + "\n"
+	fc := &FakeClient{
+		loadRespBody: io.NopCloser(strings.NewReader(body)),
+	}
+	m := NewManagerWithClient(fc)
+
+	_, err := m.LoadImage(context.Background(), strings.NewReader("tar content"))
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(err.Error(), "archive contains invalid tar") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestManager_LoadImageFromURL_TagOverride(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("fake tar body"))
+	}))
+	defer ts.Close()
+
+	body := `{"stream":"Loaded image: origin:latest\n"}` + "\n"
+	fc := &FakeClient{
+		loadRespBody: io.NopCloser(strings.NewReader(body)),
+	}
+	m := NewManagerWithClient(fc)
+
+	images, err := m.LoadImageFromURL(context.Background(), ts.URL, ImageMetadata{
+		Name: "myrepo",
+		Tag:  "v1.0",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(images) != 2 || images[1] != "myrepo:v1.0" {
+		t.Fatalf("expected tag override image, got %v", images)
+	}
+	if len(fc.taggedImages) != 1 || fc.taggedImages[0] != "origin:latest->myrepo:v1.0" {
+		t.Fatalf("expected tag call, got %v", fc.taggedImages)
+	}
+}
+
+func TestManager_LoadImageFromURL_SizeMismatch(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("12345"))
+	}))
+	defer ts.Close()
+
+	fc := &FakeClient{}
+	m := NewManagerWithClient(fc)
+
+	_, err := m.LoadImageFromURL(context.Background(), ts.URL, ImageMetadata{Size: 100})
+	if err == nil {
+		t.Fatalf("expected size mismatch error")
+	}
+	if !strings.Contains(err.Error(), "size mismatch") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

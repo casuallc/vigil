@@ -396,3 +396,74 @@ func (s *Server) handleDockerPing(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, ping)
 }
+
+// handleDockerLoadImage POST /api/docker/images/load
+func (s *Server) handleDockerLoadImage(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	var req docker.LoadImageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.URL == "" {
+		writeError(w, http.StatusBadRequest, "url is required")
+		return
+	}
+
+	task := &docker.LoadImageTask{
+		URL:      req.URL,
+		Metadata: req.Metadata,
+		State:    taskStatePending,
+	}
+	taskID := s.loadImageTasks.create(task)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		s.loadImageTasks.update(taskID, func(t *docker.LoadImageTask) {
+			t.State = taskStateDownloading
+		})
+
+		// LoadImageFromURL downloads and loads the image in one call.
+		s.loadImageTasks.update(taskID, func(t *docker.LoadImageTask) {
+			t.State = taskStateLoading
+		})
+
+		images, err := s.dockerManager.LoadImageFromURL(ctx, req.URL, req.Metadata)
+		if err != nil {
+			s.loadImageTasks.update(taskID, func(t *docker.LoadImageTask) {
+				t.State = taskStateFailed
+				t.ErrorMsg = err.Error()
+			})
+			return
+		}
+
+		s.loadImageTasks.update(taskID, func(t *docker.LoadImageTask) {
+			t.State = taskStateSuccess
+			t.Images = images
+		})
+	}()
+
+	writeJSON(w, http.StatusAccepted, docker.LoadImageResponse{TaskID: taskID})
+}
+
+// handleDockerLoadImageStatus GET /api/docker/images/load/{id}/status
+func (s *Server) handleDockerLoadImageStatus(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	id := mux.Vars(r)["id"]
+	task, ok := s.loadImageTasks.get(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, task)
+}

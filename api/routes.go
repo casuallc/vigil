@@ -204,6 +204,8 @@ func (s *Server) Router() *mux.Router {
 		r.HandleFunc("/api/docker/compose/{project}", s.handleDockerComposeGet).Methods("GET")
 		r.HandleFunc("/api/docker/compose/{project}", s.handleDockerComposeRemove).Methods("DELETE")
 		r.HandleFunc("/api/docker/ping", s.handleDockerPing).Methods("GET")
+		r.HandleFunc("/api/docker/images/load", s.handleDockerLoadImage).Methods("POST")
+		r.HandleFunc("/api/docker/images/load/{id}/status", s.handleDockerLoadImageStatus).Methods("GET")
 		r.HandleFunc("/api/docker/containers", s.handleDockerListContainers).Methods("GET")
 		r.HandleFunc("/api/docker/containers", s.handleDockerCreateContainer).Methods("POST")
 		r.HandleFunc("/api/docker/containers/{id}", s.handleDockerInspectContainer).Methods("GET")

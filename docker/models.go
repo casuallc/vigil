@@ -16,6 +16,8 @@ limitations under the License.
 
 package docker
 
+import "time"
+
 // CreateContainerRequest is the body for POST /api/docker/containers.
 type CreateContainerRequest struct {
 	Name  string            `json:"name"`
@@ -86,4 +88,37 @@ type ComposeServiceStatus struct {
 type ComposeProjectStatus struct {
 	Name     string                 `json:"name"`
 	Services []ComposeServiceStatus `json:"services"`
+}
+
+// ImageMetadata is the metadata supplied by the client for the tar being loaded.
+type ImageMetadata struct {
+	Name     string            `json:"name,omitempty"`     // optional target repository
+	Tag      string            `json:"tag,omitempty"`      // optional target tag
+	Platform string            `json:"platform,omitempty"` // optional platform, e.g. linux/amd64
+	Size     int64             `json:"size,omitempty"`     // optional expected size in bytes
+	SHA256   string            `json:"sha256,omitempty"`   // optional sha256 checksum
+	Labels   map[string]string `json:"labels,omitempty"`   // optional labels
+}
+
+// LoadImageRequest is the body for POST /api/docker/images/load.
+type LoadImageRequest struct {
+	URL      string        `json:"url"`
+	Metadata ImageMetadata `json:"metadata"`
+}
+
+// LoadImageResponse is returned on a successful load request.
+type LoadImageResponse struct {
+	TaskID string `json:"task_id"`
+}
+
+// LoadImageTask represents the state of an asynchronous image load operation.
+type LoadImageTask struct {
+	ID        string        `json:"id"`
+	URL       string        `json:"url"`
+	Metadata  ImageMetadata `json:"metadata"`
+	State     string        `json:"state"`               // pending/downloading/loading/success/failed
+	Images    []string      `json:"images,omitempty"`    // loaded/renamed image refs
+	ErrorMsg  string        `json:"error_msg,omitempty"` // set when state is failed
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
 }

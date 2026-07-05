@@ -72,6 +72,8 @@ const (
 	ActionDockerComposeGet    ActionType = "docker_compose_get"
 	ActionDockerComposeRemove ActionType = "docker_compose_remove"
 
+	ActionDockerImageLoad ActionType = "docker_image_load"
+
 	ActionDockerRegistryCatalogList    ActionType = "docker_registry_catalog_list"
 	ActionDockerRegistryTagsList       ActionType = "docker_registry_tags_list"
 	ActionDockerRegistryManifestGet    ActionType = "docker_registry_manifest_get"

@@ -41,10 +41,91 @@ func (c *CLI) setupDockerCommands() *cobra.Command {
 	}
 
 	dockerCmd.AddCommand(c.setupDockerPingCommand())
+	dockerCmd.AddCommand(c.setupDockerImageCommands())
 	dockerCmd.AddCommand(c.setupDockerContainerCommands())
 	dockerCmd.AddCommand(c.setupDockerComposeCommands())
 
 	return dockerCmd
+}
+
+// setupDockerImageCommands 设置 docker image 命令组
+func (c *CLI) setupDockerImageCommands() *cobra.Command {
+	imageCmd := &cobra.Command{
+		Use:   "image",
+		Short: "Docker image operations",
+		Long:  "Download, load, and manage Docker images through the vigil server.",
+	}
+
+	imageCmd.AddCommand(c.setupDockerImageLoadCommand())
+
+	return imageCmd
+}
+
+// setupDockerImageLoadCommand 设置 docker image load 命令
+func (c *CLI) setupDockerImageLoadCommand() *cobra.Command {
+	var url, metadataJSON string
+
+	cmd := &cobra.Command{
+		Use:   "load",
+		Short: "Load a docker image from a remote tar archive",
+		Long:  "Download a docker tar archive from a URL and load it into the local docker daemon.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if url == "" {
+				return fmt.Errorf("--url is required")
+			}
+
+			var metadata docker.ImageMetadata
+			if metadataJSON != "" {
+				if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+					return fmt.Errorf("invalid metadata JSON: %v", err)
+				}
+			}
+
+			return c.handleDockerImageLoad(url, metadata)
+		},
+	}
+
+	cmd.Flags().StringVarP(&url, "url", "u", "", "URL of the docker tar archive")
+	cmd.Flags().StringVarP(&metadataJSON, "metadata", "m", "", "Image metadata as JSON string")
+	cmd.MarkFlagRequired("url")
+
+	return cmd
+}
+
+// handleDockerImageLoad 处理 docker image load 命令
+func (c *CLI) handleDockerImageLoad(url string, metadata docker.ImageMetadata) error {
+	resp, err := c.client.DockerLoadImage(docker.LoadImageRequest{
+		URL:      url,
+		Metadata: metadata,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to submit load request: %v", err)
+	}
+
+	fmt.Printf("Task created: %s\n", resp.TaskID)
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			task, err := c.client.DockerLoadImageStatus(resp.TaskID)
+			if err != nil {
+				return fmt.Errorf("failed to query task status: %v", err)
+			}
+
+			switch task.State {
+			case "success":
+				fmt.Printf("Load successful. Images: %v\n", task.Images)
+				return nil
+			case "failed":
+				return fmt.Errorf("load failed: %s", task.ErrorMsg)
+			default:
+				fmt.Printf("Task state: %s\n", task.State)
+			}
+		}
+	}
 }
 
 // setupDockerPingCommand 设置 docker ping 命令

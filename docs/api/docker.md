@@ -22,6 +22,8 @@ Authorization: Basic base64(username:password)
 | /api/docker/compose/{project} | GET | 查看 compose 项目状态 |
 | /api/docker/compose/{project} | DELETE | 删除 compose 项目 |
 | /api/docker/ping | GET | 探测 Docker Daemon 连通性 |
+| /api/docker/images/load | POST | 异步下载并加载 Docker tar 镜像包 |
+| /api/docker/images/load/{id}/status | GET | 查询镜像加载任务状态 |
 | /api/docker/containers | GET | 列出容器 |
 | /api/docker/containers | POST | 创建容器 |
 | /api/docker/containers/{id} | GET | 查看容器详情 |
@@ -61,6 +63,126 @@ Authorization: Basic base64(username:password)
 curl -u <username>:<password> \
   http://localhost:57575/api/docker/ping
 ```
+
+---
+
+## POST /api/docker/images/load
+
+**功能描述**：从指定 URL 下载 Docker tar 镜像包，并异步加载到本地 Docker daemon。若请求中提供了 `metadata.name` 与 `metadata.tag`，加载成功后还会调用 `docker tag` 将第一个加载的镜像重命名为该名称。
+
+**请求体**：`LoadImageRequest`
+
+| 字段 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| url | string | 是 | Docker tar 包下载地址，仅支持 `http`/`https` |
+| metadata.name | string | 否 | 镜像名称，与 `tag` 同时提供时会覆盖 tar 包内第一个镜像的标签 |
+| metadata.tag | string | 否 | 镜像标签，与 `name` 同时提供时会覆盖 tar 包内第一个镜像的标签 |
+| metadata.platform | string | 否 | 平台，如 `linux/amd64`（当前仅记录） |
+| metadata.size | int64 | 否 | 期望文件大小（字节），非零时校验下载大小 |
+| metadata.sha256 | string | 否 | 期望 SHA256 校验和，非空时校验文件 |
+| metadata.labels | map[string]string | 否 | 附加标签（当前仅记录） |
+
+**请求示例**：
+
+```json
+{
+  "url": "https://example.com/app-v1.0.tar",
+  "metadata": {
+    "name": "myapp",
+    "tag": "v1.0",
+    "sha256": "abc123..."
+  }
+}
+```
+
+**响应格式**：
+
+```json
+{
+  "task_id": "task_1751270400000000000"
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/app-v1.0.tar","metadata":{"name":"myapp","tag":"v1.0"}}' \
+  http://localhost:57575/api/docker/images/load
+```
+
+**状态码**：
+
+- `202 Accepted`：任务已创建
+- `400 Bad Request`：请求体非法或 `url` 为空
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## GET /api/docker/images/load/{id}/status
+
+**功能描述**：查询镜像加载任务的当前状态。
+
+**路径参数**：
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| id | string | 任务 ID，即 `task_id` |
+
+**响应格式**：`LoadImageTask`
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| id | string | 任务 ID |
+| url | string | 下载 URL |
+| metadata | ImageMetadata | 提交时的元数据 |
+| state | string | `pending` / `downloading` / `loading` / `success` / `failed` |
+| images | string[] | 成功加载或重命名后的镜像引用 |
+| error_msg | string | `failed` 状态下的错误信息 |
+| created_at | string | 创建时间（RFC3339） |
+| updated_at | string | 最后更新时间（RFC3339） |
+
+**响应示例（进行中）**：
+
+```json
+{
+  "id": "task_1751270400000000000",
+  "url": "https://example.com/app-v1.0.tar",
+  "metadata": {"name":"myapp","tag":"v1.0"},
+  "state": "downloading",
+  "images": [],
+  "created_at": "2025-07-05T10:00:00Z",
+  "updated_at": "2025-07-05T10:00:01Z"
+}
+```
+
+**响应示例（成功）**：
+
+```json
+{
+  "id": "task_1751270400000000000",
+  "url": "https://example.com/app-v1.0.tar",
+  "metadata": {"name":"myapp","tag":"v1.0"},
+  "state": "success",
+  "images": ["origin:latest", "myapp:v1.0"],
+  "created_at": "2025-07-05T10:00:00Z",
+  "updated_at": "2025-07-05T10:00:05Z"
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> \
+  http://localhost:57575/api/docker/images/load/task_1751270400000000000/status
+```
+
+**状态码**：
+
+- `200 OK`：任务存在
+- `404 Not Found`：任务不存在
+- `503 Service Unavailable`：Docker manager 未初始化
 
 ---
 
@@ -574,9 +696,9 @@ Docker 客户端初始化遵循标准环境变量：`DOCKER_HOST`、`DOCKER_TLS_
 
 ## 权限说明
 
-v1 仅暴露容器生命周期与执行相关操作，不暴露以下敏感能力：
+v1 仅暴露容器生命周期、执行以及通过 tar 包加载镜像等操作，不暴露以下敏感能力：
 
-- 镜像构建/推送/拉取
+- 镜像构建/推送/直接拉取
 - 卷/网络管理
 - Daemon 配置修改
 - 特权容器创建
