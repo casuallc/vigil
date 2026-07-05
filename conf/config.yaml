@@ -44,3 +44,10 @@ filetransfer:
 docker:
   enabled: true
   host: ""                              # optional Docker daemon host override
+
+# Embedded Docker Registry HTTP API V2 server configuration.
+# Allows docker login / tag / push / pull against this server.
+# Enabled by default. Storage path defaults to ./data/docker/registry if empty.
+docker_registry:
+  enabled: true
+  storage_path: ./data/docker/registry

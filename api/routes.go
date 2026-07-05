@@ -180,6 +180,24 @@ func (s *Server) Router() *mux.Router {
 		s.filetransfer.RegisterRoutes(r)
 	}
 
+	// Docker Registry HTTP API V2 endpoints (registered when enabled)
+	if s.dockerRegistryManager != nil {
+		r.HandleFunc("/v2/", s.handleDockerRegistryVersionCheck).Methods("GET")
+		r.HandleFunc("/v2/_catalog", s.handleDockerRegistryCatalog).Methods("GET")
+		r.HandleFunc("/v2/{name:.*}/tags/list", s.handleDockerRegistryTagsList).Methods("GET")
+		r.HandleFunc("/v2/{name:.*}/manifests/{reference}", s.handleDockerRegistryManifestHead).Methods("HEAD")
+		r.HandleFunc("/v2/{name:.*}/manifests/{reference}", s.handleDockerRegistryManifestGet).Methods("GET")
+		r.HandleFunc("/v2/{name:.*}/manifests/{reference}", s.handleDockerRegistryManifestPut).Methods("PUT")
+		r.HandleFunc("/v2/{name:.*}/manifests/{reference}", s.handleDockerRegistryManifestDelete).Methods("DELETE")
+		r.HandleFunc("/v2/{name:.*}/blobs/uploads/", s.handleDockerRegistryBlobUploadInit).Methods("POST")
+		r.HandleFunc("/v2/{name:.*}/blobs/uploads/{uuid}", s.handleDockerRegistryBlobUploadPatch).Methods("PATCH")
+		r.HandleFunc("/v2/{name:.*}/blobs/uploads/{uuid}", s.handleDockerRegistryBlobUploadPut).Methods("PUT")
+		r.HandleFunc("/v2/{name:.*}/blobs/uploads/{uuid}", s.handleDockerRegistryBlobUploadDelete).Methods("DELETE")
+		r.HandleFunc("/v2/{name:.*}/blobs/{digest}", s.handleDockerRegistryBlobHead).Methods("HEAD")
+		r.HandleFunc("/v2/{name:.*}/blobs/{digest}", s.handleDockerRegistryBlobGet).Methods("GET")
+		r.HandleFunc("/v2/{name:.*}/blobs/{digest}", s.handleDockerRegistryBlobDelete).Methods("DELETE")
+	}
+
 	// Docker management endpoints (registered when daemon is available)
 	if s.dockerManager != nil {
 		r.HandleFunc("/api/docker/compose", s.handleDockerComposeDeploy).Methods("POST")

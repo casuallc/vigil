@@ -37,6 +37,7 @@ import (
 	"github.com/casuallc/vigil/audit"
 	"github.com/casuallc/vigil/config"
 	"github.com/casuallc/vigil/docker"
+	"github.com/casuallc/vigil/dockerregistry"
 	"github.com/casuallc/vigil/exporter"
 	"github.com/casuallc/vigil/filetransfer"
 	"github.com/casuallc/vigil/models"
@@ -74,6 +75,8 @@ type Server struct {
 	dockerManager *docker.Manager
 	// Compose management sub-feature (nil when docker is unavailable)
 	composeManager *docker.ComposeManager
+	// Docker Registry HTTP API V2 sub-feature (nil when disabled)
+	dockerRegistryManager *dockerregistry.Manager
 }
 
 // SSHConnectionInfo represents an active SSH connection
@@ -227,6 +230,21 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
 		}
 	}
 
+	// Initialize Docker Registry HTTP API V2 server when enabled (default true when unset).
+	if config.DockerRegistry.Enabled == nil || *config.DockerRegistry.Enabled {
+		registryRoot := config.DockerRegistry.StoragePath
+		if registryRoot == "" {
+			registryRoot = "./data/docker/registry"
+		}
+		registryMgr, err := dockerregistry.NewManager(registryRoot)
+		if err != nil {
+			log.Printf("Warning: failed to initialize Docker registry manager: %v", err)
+		} else {
+			server.dockerRegistryManager = registryMgr
+			log.Printf("Docker registry manager initialized at %s", registryRoot)
+		}
+	}
+
 	return server
 }
 
@@ -278,9 +296,9 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 		// 记录请求开始时间
 		startTime := time.Now()
 
-		// 读取并记录请求体
+		// 读取并记录请求体（Registry V2 大二进制路由不读取，避免 OOM）
 		var requestBody []byte
-		if r.Body != nil {
+		if r.Body != nil && !isDockerRegistryRoute(r.URL.Path) {
 			requestBody, _ = io.ReadAll(r.Body)
 			// 重新设置请求体，以便后续处理可以读取
 			r.Body = io.NopCloser(bytes.NewBuffer(requestBody))
@@ -443,6 +461,8 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 					action = audit.ActionDockerContainerRemove
 				}
 			}
+		case strings.HasPrefix(path, "/v2/"):
+			action, resource = registryActionAndResource(path, r.Method)
 		}
 
 		// 确定操作状态
@@ -546,6 +566,65 @@ func dockerContainerResource(path string) string {
 		return rest[:idx]
 	}
 	return rest
+}
+
+// isDockerRegistryRoute reports whether path belongs to the Docker Registry V2 API.
+func isDockerRegistryRoute(path string) bool {
+	return strings.HasPrefix(path, "/v2/")
+}
+
+// registryActionAndResource maps a Registry V2 path/method to an audit action and resource.
+func registryActionAndResource(path, method string) (audit.ActionType, string) {
+	resource := ""
+	if idx := strings.Index(path, "/manifests/"); idx >= 0 {
+		resource = path[idx+len("/manifests/"):]
+		path = path[:idx+len("/manifests/")]
+	} else if idx := strings.Index(path, "/blobs/uploads/"); idx >= 0 {
+		resource = path[idx+len("/blobs/uploads/"):]
+		path = path[:idx+len("/blobs/uploads/")]
+	} else if idx := strings.Index(path, "/blobs/"); idx >= 0 {
+		resource = path[idx+len("/blobs/"):]
+		path = path[:idx+len("/blobs/")]
+	}
+
+	switch {
+	case path == "/v2/_catalog":
+		return audit.ActionDockerRegistryCatalogList, resource
+	case strings.HasSuffix(path, "/tags/list"):
+		return audit.ActionDockerRegistryTagsList, resource
+	case strings.HasSuffix(path, "/manifests/"):
+		switch method {
+		case http.MethodHead:
+			return audit.ActionDockerRegistryManifestGet, resource
+		case http.MethodGet:
+			return audit.ActionDockerRegistryManifestGet, resource
+		case http.MethodPut:
+			return audit.ActionDockerRegistryManifestPut, resource
+		case http.MethodDelete:
+			return audit.ActionDockerRegistryManifestDelete, resource
+		}
+	case strings.HasSuffix(path, "/blobs/uploads/"):
+		switch method {
+		case http.MethodPost:
+			return audit.ActionDockerRegistryUploadInit, resource
+		case http.MethodPatch:
+			return audit.ActionDockerRegistryUploadChunk, resource
+		case http.MethodPut:
+			return audit.ActionDockerRegistryUploadComplete, resource
+		case http.MethodDelete:
+			return audit.ActionDockerRegistryUploadComplete, resource
+		}
+	case strings.HasSuffix(path, "/blobs/"):
+		switch method {
+		case http.MethodHead:
+			return audit.ActionDockerRegistryBlobGet, resource
+		case http.MethodGet:
+			return audit.ActionDockerRegistryBlobGet, resource
+		case http.MethodDelete:
+			return audit.ActionDockerRegistryBlobDelete, resource
+		}
+	}
+	return audit.ActionType("docker_registry_unknown"), resource
 }
 
 // getConnectionUser extracts the authenticated user from the request context
@@ -718,6 +797,11 @@ func (s *Server) Stop() {
 	// Close Docker manager connection.
 	if s.dockerManager != nil {
 		s.dockerManager.Close()
+	}
+
+	// Close Docker registry manager.
+	if s.dockerRegistryManager != nil {
+		s.dockerRegistryManager.Close()
 	}
 }
 

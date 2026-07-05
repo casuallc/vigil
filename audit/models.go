@@ -71,6 +71,18 @@ const (
 	ActionDockerComposeDeploy ActionType = "docker_compose_deploy"
 	ActionDockerComposeGet    ActionType = "docker_compose_get"
 	ActionDockerComposeRemove ActionType = "docker_compose_remove"
+
+	ActionDockerRegistryCatalogList    ActionType = "docker_registry_catalog_list"
+	ActionDockerRegistryTagsList       ActionType = "docker_registry_tags_list"
+	ActionDockerRegistryManifestGet    ActionType = "docker_registry_manifest_get"
+	ActionDockerRegistryManifestPut    ActionType = "docker_registry_manifest_put"
+	ActionDockerRegistryManifestDelete ActionType = "docker_registry_manifest_delete"
+	ActionDockerRegistryBlobGet        ActionType = "docker_registry_blob_get"
+	ActionDockerRegistryBlobPut        ActionType = "docker_registry_blob_put"
+	ActionDockerRegistryBlobDelete     ActionType = "docker_registry_blob_delete"
+	ActionDockerRegistryUploadInit     ActionType = "docker_registry_upload_init"
+	ActionDockerRegistryUploadChunk    ActionType = "docker_registry_upload_chunk"
+	ActionDockerRegistryUploadComplete ActionType = "docker_registry_upload_complete"
 )
 
 // StatusType 审计操作状态

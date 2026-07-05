@@ -41,6 +41,7 @@ type Config struct {
   VM           VMConfig           `yaml:"vm"`
   Filetransfer FiletransferConfig `yaml:"filetransfer"`
   Docker       DockerConfig       `yaml:"docker"`
+  DockerRegistry DockerRegistryConfig `yaml:"docker_registry"`
 }
 
 type BasicAuth struct {
@@ -105,6 +106,12 @@ type FiletransferConfig struct {
 type DockerConfig struct {
   Enabled *bool  `yaml:"enabled"` // nil or true = enabled; false = disabled
   Host    string `yaml:"host"`    // optional override for DOCKER_HOST
+}
+
+// DockerRegistryConfig configures the embedded Docker Registry HTTP API V2 server.
+type DockerRegistryConfig struct {
+  Enabled     *bool  `yaml:"enabled"`      // nil or true = enabled; false = disabled
+  StoragePath string `yaml:"storage_path"` // default ./data/docker/registry
 }
 
 // generateRandomKey generates a random key for encryption
