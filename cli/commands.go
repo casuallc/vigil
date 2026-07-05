@@ -99,6 +99,10 @@ OS/Arch:   %s/%s
   transferCmd := c.setupTransferCommands()
   rootCmd.AddCommand(transferCmd)
 
+  // Add Docker commands
+  dockerCmd := c.setupDockerCommands()
+  rootCmd.AddCommand(dockerCmd)
+
   // Global flags
   rootCmd.PersistentFlags().StringVarP(&apiHost, "host", "H", "http://127.0.0.1:57575", "API server host address")
   rootCmd.PersistentFlags().BoolVar(&insecureSkipVerify, "insecure", false, "Skip TLS certificate verification")
@@ -118,7 +122,8 @@ OS/Arch:   %s/%s
         currentCmd == licenseCmd ||
         currentCmd == logCmd ||
         currentCmd == networkCmd ||
-        currentCmd == transferCmd {
+        currentCmd == transferCmd ||
+        currentCmd == dockerCmd {
         c.client = api.NewClient(apiHost, insecureSkipVerify)
         break
       }

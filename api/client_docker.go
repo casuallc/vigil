@@ -30,6 +30,24 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// DockerPing pings the Docker daemon.
+func (c *Client) DockerPing() (types.Ping, error) {
+	var ping types.Ping
+	resp, err := c.doRequest("GET", "/api/docker/ping", nil)
+	if err != nil {
+		return ping, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return ping, c.errorFromResponse(resp)
+	}
+
+	if err := c.getJSONResponse(resp, &ping); err != nil {
+		return ping, err
+	}
+	return ping, nil
+}
+
 // DockerListContainers lists all Docker containers.
 func (c *Client) DockerListContainers(all bool) ([]docker.ContainerSummary, error) {
 	path := "/api/docker/containers?all=" + strconv.FormatBool(all)
