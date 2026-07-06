@@ -57,6 +57,12 @@ func (c *CLI) setupDockerImageCommands() *cobra.Command {
 	}
 
 	imageCmd.AddCommand(c.setupDockerImageLoadCommand())
+	imageCmd.AddCommand(c.setupDockerImageListCommand())
+	imageCmd.AddCommand(c.setupDockerImageInspectCommand())
+	imageCmd.AddCommand(c.setupDockerImagePullCommand())
+	imageCmd.AddCommand(c.setupDockerImageRemoveCommand())
+	imageCmd.AddCommand(c.setupDockerImageTagCommand())
+	imageCmd.AddCommand(c.setupDockerImageHistoryCommand())
 
 	return imageCmd
 }
@@ -126,6 +132,215 @@ func (c *CLI) handleDockerImageLoad(url string, metadata docker.ImageMetadata) e
 			}
 		}
 	}
+}
+
+// setupDockerImageListCommand 设置 docker image list 命令
+func (c *CLI) setupDockerImageListCommand() *cobra.Command {
+	var all, dangling bool
+	var labels []string
+	var filter string
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List Docker images",
+		Long:  "List Docker images in the local daemon.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImageList(all, dangling, labels, filter)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "Include intermediate images")
+	cmd.Flags().BoolVar(&dangling, "dangling", false, "Filter dangling images")
+	cmd.Flags().StringArrayVar(&labels, "filter-label", []string{}, "Filter by label (key=value), can be used multiple times")
+	cmd.Flags().StringVar(&filter, "filter", "", "Raw JSON filter string")
+
+	return cmd
+}
+
+// handleDockerImageList 处理 docker image list 命令
+func (c *CLI) handleDockerImageList(all, dangling bool, labels []string, filter string) error {
+	images, err := c.client.DockerListImages(all, dangling, labels, filter)
+	if err != nil {
+		return fmt.Errorf("failed to list images: %v", err)
+	}
+
+	if len(images) == 0 {
+		fmt.Println("No images found.")
+		return nil
+	}
+
+	fmt.Printf("%-14s %-30s %-20s %s\n", "ID", "REPOSITORY:TAG", "CREATED", "SIZE")
+	fmt.Println(strings.Repeat("-", 120))
+	for _, img := range images {
+		tag := "<none>:<none>"
+		if len(img.RepoTags) > 0 {
+			tag = img.RepoTags[0]
+		}
+		created := time.Unix(img.Created, 0).Format("2006-01-02 15:04:05")
+		fmt.Printf("%-14s %-30s %-20s %d\n",
+			truncateString(img.ID, 14),
+			truncateString(tag, 30),
+			created,
+			img.Size,
+		)
+	}
+	return nil
+}
+
+// setupDockerImageInspectCommand 设置 docker image inspect 命令
+func (c *CLI) setupDockerImageInspectCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "inspect [id]",
+		Short: "Inspect a Docker image",
+		Long:  "Return detailed information about a Docker image.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImageInspect(args[0])
+		},
+	}
+}
+
+// handleDockerImageInspect 处理 docker image inspect 命令
+func (c *CLI) handleDockerImageInspect(id string) error {
+	info, err := c.client.DockerInspectImage(id)
+	if err != nil {
+		return fmt.Errorf("failed to inspect image: %v", err)
+	}
+	data, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal image info: %v", err)
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
+// setupDockerImagePullCommand 设置 docker image pull 命令
+func (c *CLI) setupDockerImagePullCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pull <image>",
+		Short: "Pull a Docker image",
+		Long:  "Pull a Docker image from a registry.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImagePull(args[0])
+		},
+	}
+}
+
+// handleDockerImagePull 处理 docker image pull 命令
+func (c *CLI) handleDockerImagePull(image string) error {
+	if err := c.client.DockerPullImage(image); err != nil {
+		return fmt.Errorf("failed to pull image: %v", err)
+	}
+	fmt.Printf("Image %s pulled\n", image)
+	return nil
+}
+
+// setupDockerImageRemoveCommand 设置 docker image rm 命令
+func (c *CLI) setupDockerImageRemoveCommand() *cobra.Command {
+	var force, noPrune bool
+
+	cmd := &cobra.Command{
+		Use:   "rm [id]",
+		Short: "Remove a Docker image",
+		Long:  "Remove a Docker image from the local daemon.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImageRemove(args[0], force, noPrune)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force removal")
+	cmd.Flags().BoolVar(&noPrune, "no-prune", false, "Do not delete untagged parent images")
+
+	return cmd
+}
+
+// handleDockerImageRemove 处理 docker image rm 命令
+func (c *CLI) handleDockerImageRemove(id string, force, noPrune bool) error {
+	resp, err := c.client.DockerRemoveImage(id, force, noPrune)
+	if err != nil {
+		return fmt.Errorf("failed to remove image: %v", err)
+	}
+	for _, item := range resp.Deleted {
+		if item.Deleted != "" {
+			fmt.Printf("Deleted: %s\n", item.Deleted)
+		}
+		if item.Untagged != "" {
+			fmt.Printf("Untagged: %s\n", item.Untagged)
+		}
+	}
+	fmt.Printf("Image %s removed\n", id)
+	return nil
+}
+
+// setupDockerImageTagCommand 设置 docker image tag 命令
+func (c *CLI) setupDockerImageTagCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "tag <source> <target>",
+		Short: "Tag a Docker image",
+		Long:  "Create a new tag for an existing Docker image.",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImageTag(args[0], args[1])
+		},
+	}
+}
+
+// handleDockerImageTag 处理 docker image tag 命令
+func (c *CLI) handleDockerImageTag(source, target string) error {
+	if err := c.client.DockerTagImage(source, target); err != nil {
+		return fmt.Errorf("failed to tag image: %v", err)
+	}
+	fmt.Printf("Tagged %s as %s\n", source, target)
+	return nil
+}
+
+// setupDockerImageHistoryCommand 设置 docker image history 命令
+func (c *CLI) setupDockerImageHistoryCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "history [id]",
+		Short: "Show image history",
+		Long:  "Show the history of a Docker image.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImageHistory(args[0])
+		},
+	}
+}
+
+// handleDockerImageHistory 处理 docker image history 命令
+func (c *CLI) handleDockerImageHistory(id string) error {
+	history, err := c.client.DockerImageHistory(id)
+	if err != nil {
+		return fmt.Errorf("failed to get image history: %v", err)
+	}
+
+	if len(history) == 0 {
+		fmt.Println("No history found.")
+		return nil
+	}
+
+	fmt.Printf("%-14s %-20s %-50s %s\n", "IMAGE", "CREATED", "CREATED BY", "SIZE")
+	fmt.Println(strings.Repeat("-", 120))
+	for _, h := range history {
+		created := time.Unix(h.Created, 0).Format("2006-01-02 15:04:05")
+		createdBy := h.CreatedBy
+		if len(createdBy) > 47 {
+			createdBy = createdBy[:44] + "..."
+		}
+		imageID := h.ID
+		if imageID == "" {
+			imageID = "<missing>"
+		}
+		fmt.Printf("%-14s %-20s %-50s %d\n",
+			truncateString(imageID, 14),
+			created,
+			createdBy,
+			h.Size,
+		)
+	}
+	return nil
 }
 
 // setupDockerPingCommand 设置 docker ping 命令
