@@ -18,6 +18,7 @@ package docker
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/docker/docker/api/types"
@@ -161,5 +162,128 @@ networks:
 	})
 	if err == nil {
 		t.Fatalf("expected external network not found error")
+	}
+}
+
+func TestComposeManager_DeployProjectFromDir(t *testing.T) {
+	fc := &FakeClient{createdID: "cid1"}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	dir := t.TempDir()
+	composePath := dir + "/docker-compose.yml"
+	content := "services:\n  web:\n    image: nginx:alpine\n"
+	if err := os.WriteFile(composePath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	status, err := cm.DeployProjectFromDir(context.Background(), ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.Name != "demo" {
+		t.Fatalf("unexpected project name: %s", status.Name)
+	}
+	if len(status.Services) != 1 || status.Services[0].Name != "web" {
+		t.Fatalf("unexpected services: %+v", status.Services)
+	}
+}
+
+func TestComposeManager_DeployProjectFromDir_NameFromDir(t *testing.T) {
+	fc := &FakeClient{createdID: "cid1"}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	parent := t.TempDir()
+	dir := parent + "/myproject"
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  web:\n    image: nginx:alpine\n"), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	status, err := cm.DeployProjectFromDir(context.Background(), ComposeDeployFromDirRequest{
+		Dir: dir,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.Name != "myproject" {
+		t.Fatalf("expected project name myproject, got %s", status.Name)
+	}
+}
+
+func TestComposeManager_DeployProjectFromDir_MissingDir(t *testing.T) {
+	fc := &FakeClient{createdID: "cid1"}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	_, err := cm.DeployProjectFromDir(context.Background(), ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  "/nonexistent/path",
+	})
+	if err == nil {
+		t.Fatalf("expected error for missing dir")
+	}
+}
+
+func TestComposeManager_DeployProjectFromDir_NotADirectory(t *testing.T) {
+	fc := &FakeClient{createdID: "cid1"}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	f, err := os.CreateTemp("", "compose-*.yml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	f.Close()
+
+	_, err = cm.DeployProjectFromDir(context.Background(), ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  f.Name(),
+	})
+	if err == nil {
+		t.Fatalf("expected error for file path")
+	}
+}
+
+func TestComposeManager_DeployProjectFromDir_MissingComposeFile(t *testing.T) {
+	fc := &FakeClient{createdID: "cid1"}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	dir := t.TempDir()
+	_, err := cm.DeployProjectFromDir(context.Background(), ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  dir,
+	})
+	if err == nil {
+		t.Fatalf("expected error for missing compose file")
+	}
+}
+
+func TestComposeManager_DeployProjectFromDir_InvalidProjectName(t *testing.T) {
+	fc := &FakeClient{createdID: "cid1"}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	parent := t.TempDir()
+	dir := parent + "/my project!"
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  web:\n    image: nginx:alpine\n"), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	_, err := cm.DeployProjectFromDir(context.Background(), ComposeDeployFromDirRequest{
+		Dir: dir,
+	})
+	if err == nil {
+		t.Fatalf("expected error for invalid project name")
 	}
 }

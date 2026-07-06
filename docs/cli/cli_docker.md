@@ -729,6 +729,7 @@ bbx-cli docker compose [command]
 | 命令 | 描述 |
 |------|------|
 | `up` | 部署 Compose 项目 |
+| `up-dir` | 从服务器本地目录部署 Compose 项目 |
 | `status` | 查看 Compose 项目状态 |
 | `down` | 移除 Compose 项目 |
 
@@ -761,6 +762,45 @@ bbx-cli docker compose up [flags]
 
 # 只创建不启动
 ./bbx-cli docker compose up -n myapp --start=false
+```
+
+#### docker compose up-dir
+
+从 vigil server 本地的目录中读取 `docker-compose.yml` 并部署 Compose 项目。
+
+**语法：**
+
+```
+bbx-cli docker compose up-dir [flags]
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--dir` | `-d` | 服务器本地目录路径，需包含 `docker-compose.yml` | 是 | - |
+| `--name` | `-n` | 项目名称；为空时使用目录 basename | 否 | - |
+| `--start` | - | 创建后是否启动容器 | 否 | true |
+
+**示例：**
+
+```bash
+# 按目录部署，项目名使用目录 basename
+./bbx-cli docker compose up-dir -d /opt/stacks/myapp
+
+# 指定项目名
+./bbx-cli docker compose up-dir -d /opt/stacks/myapp -n myapp
+
+# 只创建不启动
+./bbx-cli docker compose up-dir -d /opt/stacks/myapp --start=false
+```
+
+**输出示例：**
+
+```
+Project myapp deployed
+  Service: web (image: nginx:alpine, replicas: 1)
+    abc123def456   nginx:alpine         running      Up 2 seconds
 ```
 
 #### docker compose status

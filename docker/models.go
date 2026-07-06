@@ -75,6 +75,13 @@ type ComposeDeployRequest struct {
 	Start   *bool  `json:"start,omitempty"`
 }
 
+// ComposeDeployFromDirRequest is the body for POST /api/docker/compose/dir.
+type ComposeDeployFromDirRequest struct {
+	Name  string `json:"name"`
+	Dir   string `json:"dir"`
+	Start *bool  `json:"start,omitempty"`
+}
+
 // ComposeServiceStatus represents one service in a compose project response.
 type ComposeServiceStatus struct {
 	Name       string             `json:"name"`

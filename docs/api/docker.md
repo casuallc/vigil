@@ -19,6 +19,7 @@ Authorization: Basic base64(username:password)
 | 接口路径 | 请求方法 | 功能描述 |
 |---------|----------|----------|
 | /api/docker/compose | POST | 部署 compose 项目 |
+| /api/docker/compose/dir | POST | 从服务器本地目录部署 compose 项目 |
 | /api/docker/compose/{project} | GET | 查看 compose 项目状态 |
 | /api/docker/compose/{project} | DELETE | 删除 compose 项目 |
 | /api/docker/compose-version | GET | 获取 docker-compose 版本信息 |
@@ -941,6 +942,48 @@ curl -u <username>:<password> -X POST \
 **错误码**：
 
 - `409 Conflict`：项目已存在（已有同名项目容器）。
+
+---
+
+## POST /api/docker/compose/dir
+
+**功能描述**：从 vigil server 本地的目录中读取 `docker-compose.yml` 并部署项目。目录必须位于 server 所在主机，且其中必须包含 `docker-compose.yml`。
+
+**请求体**：`ComposeDeployFromDirRequest`
+
+| 字段 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| name | string | 否 | 项目名称，只能包含小写字母、数字、下划线和连字符；为空时使用目录 basename |
+| dir | string | 是 | 服务器本地目录路径，该目录下需存在 `docker-compose.yml` |
+| start | boolean | 否 | 是否自动启动容器，默认 `true` |
+
+**请求示例**：
+
+```json
+{
+  "name": "demo",
+  "dir": "/opt/stacks/demo",
+  "start": true
+}
+```
+
+**响应格式**：`ComposeProjectStatus`，与 `POST /api/docker/compose` 相同。
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"name":"demo","dir":"/opt/stacks/demo"}' \
+  http://localhost:57575/api/docker/compose/dir
+```
+
+**状态码**：
+
+- `201 Created`：部署成功
+- `400 Bad Request`：`dir` 为空、目录不存在、路径不是目录、目录中缺少 `docker-compose.yml`，或推导的项目名非法
+- `409 Conflict`：项目已存在
+- `503 Service Unavailable`：Docker compose manager 未初始化
 
 ---
 

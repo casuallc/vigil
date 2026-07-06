@@ -748,6 +748,7 @@ func (c *CLI) setupDockerComposeCommands() *cobra.Command {
 	}
 
 	composeCmd.AddCommand(c.setupDockerComposeUpCommand())
+	composeCmd.AddCommand(c.setupDockerComposeUpDirCommand())
 	composeCmd.AddCommand(c.setupDockerComposeStatusCommand())
 	composeCmd.AddCommand(c.setupDockerComposeDownCommand())
 
@@ -773,6 +774,29 @@ func (c *CLI) setupDockerComposeUpCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&start, "start", true, "Start containers after creation")
 
 	cmd.MarkFlagRequired("name")
+
+	return cmd
+}
+
+// setupDockerComposeUpDirCommand 设置 docker compose up-dir 命令
+func (c *CLI) setupDockerComposeUpDirCommand() *cobra.Command {
+	var dir, name string
+	var start bool
+
+	cmd := &cobra.Command{
+		Use:   "up-dir",
+		Short: "Deploy a compose project from a server-side directory",
+		Long:  "Deploy a Docker Compose project by reading docker-compose.yml from a directory on the vigil server.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerComposeUpDir(dir, name, start)
+		},
+	}
+
+	cmd.Flags().StringVarP(&dir, "dir", "d", "", "Server-side directory containing docker-compose.yml")
+	cmd.Flags().StringVarP(&name, "name", "n", "", "Project name (defaults to directory basename)")
+	cmd.Flags().BoolVar(&start, "start", true, "Start containers after creation")
+
+	cmd.MarkFlagRequired("dir")
 
 	return cmd
 }
@@ -1159,6 +1183,22 @@ func (c *CLI) handleDockerComposeUp(file, name string, start bool) error {
 	})
 	if err != nil {
 		return fmt.Errorf("failed to deploy compose project: %v", err)
+	}
+
+	fmt.Printf("Project %s deployed\n", status.Name)
+	printComposeProjectStatus(status)
+	return nil
+}
+
+// handleDockerComposeUpDir 处理 docker compose up-dir 命令
+func (c *CLI) handleDockerComposeUpDir(dir, name string, start bool) error {
+	status, err := c.client.DockerComposeDeployFromDir(docker.ComposeDeployFromDirRequest{
+		Name:  name,
+		Dir:   dir,
+		Start: &start,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to deploy compose project from dir: %v", err)
 	}
 
 	fmt.Printf("Project %s deployed\n", status.Name)

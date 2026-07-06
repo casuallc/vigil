@@ -342,6 +342,47 @@ func (s *Server) handleDockerComposeDeploy(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusCreated, status)
 }
 
+// handleDockerComposeDeployFromDir POST /api/docker/compose/dir
+func (s *Server) handleDockerComposeDeployFromDir(w http.ResponseWriter, r *http.Request) {
+	if s.composeManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker compose manager not initialized")
+		return
+	}
+
+	var req docker.ComposeDeployFromDirRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Dir == "" {
+		writeError(w, http.StatusBadRequest, "dir is required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+
+	status, err := s.composeManager.DeployProjectFromDir(ctx, req)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "already exists") {
+			writeError(w, http.StatusConflict, msg)
+			return
+		}
+		if strings.Contains(msg, "dir is required") ||
+			strings.Contains(msg, "does not exist") ||
+			strings.Contains(msg, "is not a directory") ||
+			strings.Contains(msg, "docker-compose.yml not found") ||
+			strings.Contains(msg, "project name") {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, msg)
+		return
+	}
+	writeJSON(w, http.StatusCreated, status)
+}
+
 // handleDockerComposeGet GET /api/docker/compose/{project}
 func (s *Server) handleDockerComposeGet(w http.ResponseWriter, r *http.Request) {
 	if s.composeManager == nil {

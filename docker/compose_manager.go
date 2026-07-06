@@ -19,7 +19,9 @@ package docker
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -65,6 +67,44 @@ func (cm *ComposeManager) runComposeVersion(ctx context.Context, args ...string)
 		return "", err
 	}
 	return string(out), nil
+}
+
+// DeployProjectFromDir deploys a compose project by reading docker-compose.yml from a local directory.
+func (cm *ComposeManager) DeployProjectFromDir(ctx context.Context, req ComposeDeployFromDirRequest) (*ComposeProjectStatus, error) {
+	if req.Dir == "" {
+		return nil, fmt.Errorf("dir is required")
+	}
+	info, err := os.Stat(req.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("dir %q does not exist: %w", req.Dir, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("dir %q is not a directory", req.Dir)
+	}
+
+	project := req.Name
+	if project == "" {
+		project = filepath.Base(req.Dir)
+	}
+	project, err = NormalizeProjectName(project)
+	if err != nil {
+		return nil, err
+	}
+
+	composePath := filepath.Join(req.Dir, "docker-compose.yml")
+	content, err := os.ReadFile(composePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("docker-compose.yml not found in %q", req.Dir)
+		}
+		return nil, fmt.Errorf("failed to read compose file: %w", err)
+	}
+
+	return cm.DeployProject(ctx, ComposeDeployRequest{
+		Name:    project,
+		Content: string(content),
+		Start:   req.Start,
+	})
 }
 
 // DeployProject deploys a compose project from YAML.

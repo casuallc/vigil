@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -321,5 +322,204 @@ func TestHandleDockerComposeVersion(t *testing.T) {
 	}
 	if resp.Version == "" {
 		t.Fatalf("expected non-empty compose version")
+	}
+}
+
+func TestHandleDockerComposeDeployFromDir(t *testing.T) {
+	fc := &composeFakeClient{createdID: "cid1"}
+	server := newComposeTestServer(fc)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  web:\n    image: nginx:alpine\n"), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  dir,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/compose/dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeDeployFromDir(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var status docker.ComposeProjectStatus
+	if err := json.Unmarshal(rr.Body.Bytes(), &status); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if status.Name != "demo" {
+		t.Fatalf("unexpected project name: %s", status.Name)
+	}
+}
+
+func TestHandleDockerComposeDeployFromDir_NameFromDir(t *testing.T) {
+	fc := &composeFakeClient{createdID: "cid1"}
+	server := newComposeTestServer(fc)
+
+	parent := t.TempDir()
+	dir := parent + "/myproject"
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  web:\n    image: nginx:alpine\n"), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
+		Dir: dir,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/compose/dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeDeployFromDir(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var status docker.ComposeProjectStatus
+	if err := json.Unmarshal(rr.Body.Bytes(), &status); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if status.Name != "myproject" {
+		t.Fatalf("expected project name myproject, got %s", status.Name)
+	}
+}
+
+func TestHandleDockerComposeDeployFromDir_MissingDir(t *testing.T) {
+	fc := &composeFakeClient{createdID: "cid1"}
+	server := newComposeTestServer(fc)
+
+	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  "/nonexistent/path",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/compose/dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeDeployFromDir(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestHandleDockerComposeDeployFromDir_NotADirectory(t *testing.T) {
+	fc := &composeFakeClient{createdID: "cid1"}
+	server := newComposeTestServer(fc)
+
+	f, err := os.CreateTemp("", "compose-*.yml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	f.Close()
+
+	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  f.Name(),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/compose/dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeDeployFromDir(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestHandleDockerComposeDeployFromDir_MissingComposeFile(t *testing.T) {
+	fc := &composeFakeClient{createdID: "cid1"}
+	server := newComposeTestServer(fc)
+
+	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  t.TempDir(),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/compose/dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeDeployFromDir(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestHandleDockerComposeDeployFromDir_InvalidProjectName(t *testing.T) {
+	fc := &composeFakeClient{createdID: "cid1"}
+	server := newComposeTestServer(fc)
+
+	parent := t.TempDir()
+	dir := parent + "/my project!"
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  web:\n    image: nginx:alpine\n"), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
+		Dir: dir,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/compose/dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeDeployFromDir(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestHandleDockerComposeDeployFromDir_Conflict(t *testing.T) {
+	fc := &composeFakeClient{
+		containers: []types.Container{
+			{ID: "old", Labels: map[string]string{docker.ComposeProjectLabel: "demo", docker.ComposeServiceLabel: "web"}},
+		},
+	}
+	server := newComposeTestServer(fc)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  web:\n    image: nginx:alpine\n"), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  dir,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/compose/dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeDeployFromDir(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", rr.Code)
+	}
+}
+
+func TestHandleDockerComposeDeployFromDir_InvalidYAML(t *testing.T) {
+	fc := &composeFakeClient{createdID: "cid1"}
+	server := newComposeTestServer(fc)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("not: valid: yaml: ["), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  dir,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/compose/dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeDeployFromDir(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr.Code)
 	}
 }

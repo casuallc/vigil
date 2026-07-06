@@ -373,6 +373,24 @@ func (c *Client) DockerComposeDeploy(req docker.ComposeDeployRequest) (*docker.C
 	return &status, nil
 }
 
+// DockerComposeDeployFromDir deploys a compose project from a server-side directory.
+func (c *Client) DockerComposeDeployFromDir(req docker.ComposeDeployFromDirRequest) (*docker.ComposeProjectStatus, error) {
+	resp, err := c.doRequest("POST", "/api/docker/compose/dir", req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var status docker.ComposeProjectStatus
+	if err := c.getJSONResponse(resp, &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
 // DockerComposeGet returns the status of a compose project.
 func (c *Client) DockerComposeGet(project string) (*docker.ComposeProjectStatus, error) {
 	resp, err := c.doRequest("GET", fmt.Sprintf("/api/docker/compose/%s", project), nil)
