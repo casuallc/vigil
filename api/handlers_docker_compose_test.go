@@ -131,6 +131,22 @@ func (f *composeFakeClient) ImageTag(ctx context.Context, source, target string)
 	return nil
 }
 
+func (f *composeFakeClient) ImageList(ctx context.Context, options image.ListOptions) ([]image.Summary, error) {
+	return nil, nil
+}
+
+func (f *composeFakeClient) ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error) {
+	return types.ImageInspect{}, nil, nil
+}
+
+func (f *composeFakeClient) ImageRemove(ctx context.Context, imageID string, options image.RemoveOptions) ([]image.DeleteResponse, error) {
+	return nil, nil
+}
+
+func (f *composeFakeClient) ImageHistory(ctx context.Context, imageID string) ([]image.HistoryResponseItem, error) {
+	return nil, nil
+}
+
 func (f *composeFakeClient) NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error) {
 	f.networksCreated = append(f.networksCreated, name)
 	return network.CreateResponse{ID: name + "-id"}, nil

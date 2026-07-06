@@ -97,6 +97,18 @@ func (f *loadImageFakeClient) ImageLoad(ctx context.Context, input io.Reader, qu
 	return image.LoadResponse{Body: body}, nil
 }
 func (f *loadImageFakeClient) ImageTag(ctx context.Context, source, target string) error { return nil }
+func (f *loadImageFakeClient) ImageList(ctx context.Context, options image.ListOptions) ([]image.Summary, error) {
+	return nil, nil
+}
+func (f *loadImageFakeClient) ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error) {
+	return types.ImageInspect{}, nil, nil
+}
+func (f *loadImageFakeClient) ImageRemove(ctx context.Context, imageID string, options image.RemoveOptions) ([]image.DeleteResponse, error) {
+	return nil, nil
+}
+func (f *loadImageFakeClient) ImageHistory(ctx context.Context, imageID string) ([]image.HistoryResponseItem, error) {
+	return nil, nil
+}
 func (f *loadImageFakeClient) NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error) {
 	return network.CreateResponse{}, nil
 }
@@ -201,5 +213,255 @@ func TestHandleDockerLoadImage_MissingURL(t *testing.T) {
 	server.handleDockerLoadImage(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// imageHandlerFakeClient implements docker.Client for image handler tests.
+type imageHandlerFakeClient struct {
+	loadRespBody io.ReadCloser
+	images       []image.Summary
+	inspect      types.ImageInspect
+	removed      []image.DeleteResponse
+	history      []image.HistoryResponseItem
+	pullErr      error
+	removeErr    error
+	tagErr       error
+	inspectErr   error
+	historyErr   error
+}
+
+func (f *imageHandlerFakeClient) ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
+	return nil, nil
+}
+func (f *imageHandlerFakeClient) ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) {
+	return types.ContainerJSON{}, nil
+}
+func (f *imageHandlerFakeClient) ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error {
+	return nil
+}
+func (f *imageHandlerFakeClient) ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error {
+	return nil
+}
+func (f *imageHandlerFakeClient) ContainerRestart(ctx context.Context, containerID string, options container.StopOptions) error {
+	return nil
+}
+func (f *imageHandlerFakeClient) ContainerPause(ctx context.Context, containerID string) error { return nil }
+func (f *imageHandlerFakeClient) ContainerUnpause(ctx context.Context, containerID string) error {
+	return nil
+}
+func (f *imageHandlerFakeClient) ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error {
+	return nil
+}
+func (f *imageHandlerFakeClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *specs.Platform, containerName string) (container.CreateResponse, error) {
+	return container.CreateResponse{}, nil
+}
+func (f *imageHandlerFakeClient) ContainerExecCreate(ctx context.Context, container string, options container.ExecOptions) (types.IDResponse, error) {
+	return types.IDResponse{}, nil
+}
+func (f *imageHandlerFakeClient) ContainerExecAttach(ctx context.Context, execID string, options container.ExecAttachOptions) (types.HijackedResponse, error) {
+	return types.HijackedResponse{}, nil
+}
+func (f *imageHandlerFakeClient) ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error) {
+	return container.ExecInspect{}, nil
+}
+func (f *imageHandlerFakeClient) ContainerExecResize(ctx context.Context, execID string, options container.ResizeOptions) error {
+	return nil
+}
+func (f *imageHandlerFakeClient) ContainerLogs(ctx context.Context, container string, options container.LogsOptions) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (f *imageHandlerFakeClient) ContainerStats(ctx context.Context, containerID string, stream bool) (container.StatsResponseReader, error) {
+	return container.StatsResponseReader{Body: io.NopCloser(strings.NewReader(""))}, nil
+}
+func (f *imageHandlerFakeClient) Ping(ctx context.Context) (types.Ping, error) { return types.Ping{}, nil }
+func (f *imageHandlerFakeClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
+	if f.pullErr != nil {
+		return nil, f.pullErr
+	}
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (f *imageHandlerFakeClient) ImageLoad(ctx context.Context, input io.Reader, quiet bool) (image.LoadResponse, error) {
+	body := f.loadRespBody
+	if body == nil {
+		body = io.NopCloser(strings.NewReader(""))
+	}
+	return image.LoadResponse{Body: body}, nil
+}
+func (f *imageHandlerFakeClient) ImageTag(ctx context.Context, source, target string) error { return f.tagErr }
+func (f *imageHandlerFakeClient) ImageList(ctx context.Context, options image.ListOptions) ([]image.Summary, error) {
+	return f.images, nil
+}
+func (f *imageHandlerFakeClient) ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error) {
+	return f.inspect, nil, f.inspectErr
+}
+func (f *imageHandlerFakeClient) ImageRemove(ctx context.Context, imageID string, options image.RemoveOptions) ([]image.DeleteResponse, error) {
+	if f.removeErr != nil {
+		return nil, f.removeErr
+	}
+	return f.removed, nil
+}
+func (f *imageHandlerFakeClient) ImageHistory(ctx context.Context, imageID string) ([]image.HistoryResponseItem, error) {
+	return f.history, f.historyErr
+}
+func (f *imageHandlerFakeClient) NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error) {
+	return network.CreateResponse{}, nil
+}
+func (f *imageHandlerFakeClient) NetworkList(ctx context.Context, options network.ListOptions) ([]network.Summary, error) {
+	return nil, nil
+}
+func (f *imageHandlerFakeClient) NetworkRemove(ctx context.Context, networkID string) error { return nil }
+func (f *imageHandlerFakeClient) VolumeCreate(ctx context.Context, options volume.CreateOptions) (volume.Volume, error) {
+	return volume.Volume{}, nil
+}
+func (f *imageHandlerFakeClient) VolumeList(ctx context.Context, options volume.ListOptions) (volume.ListResponse, error) {
+	return volume.ListResponse{}, nil
+}
+func (f *imageHandlerFakeClient) VolumeRemove(ctx context.Context, volumeID string, force bool) error { return nil }
+func (f *imageHandlerFakeClient) Close() error { return nil }
+
+func newImageHandlerTestServer(fc *imageHandlerFakeClient) *Server {
+	return &Server{dockerManager: docker.NewManagerWithClient(fc)}
+}
+
+func TestHandleDockerListImages(t *testing.T) {
+	fc := &imageHandlerFakeClient{
+		images: []image.Summary{{ID: "sha256:abc", RepoTags: []string{"alpine:latest"}, Size: 1024}},
+	}
+	server := newImageHandlerTestServer(fc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/docker/images", nil)
+	rr := httptest.NewRecorder()
+
+	server.handleDockerListImages(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var out []docker.ImageSummary
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if len(out) != 1 || out[0].ID != "sha256:abc" {
+		t.Fatalf("unexpected result: %+v", out)
+	}
+}
+
+func TestHandleDockerInspectImage(t *testing.T) {
+	fc := &imageHandlerFakeClient{inspect: types.ImageInspect{ID: "sha256:abc", Size: 2048}}
+	server := newImageHandlerTestServer(fc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/docker/images/alpine:latest", nil)
+	req = muxSetURLVars(req, map[string]string{"id": "alpine:latest"})
+	rr := httptest.NewRecorder()
+
+	server.handleDockerInspectImage(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var out types.ImageInspect
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if out.ID != "sha256:abc" {
+		t.Fatalf("unexpected id: %s", out.ID)
+	}
+}
+
+func TestHandleDockerPullImage(t *testing.T) {
+	fc := &imageHandlerFakeClient{}
+	server := newImageHandlerTestServer(fc)
+
+	reqBody, _ := json.Marshal(docker.PullImageRequest{Image: "alpine:latest"})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/images/pull", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerPullImage(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandleDockerPullImage_MissingImage(t *testing.T) {
+	fc := &imageHandlerFakeClient{}
+	server := newImageHandlerTestServer(fc)
+
+	reqBody, _ := json.Marshal(docker.PullImageRequest{})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/images/pull", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerPullImage(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandleDockerRemoveImage(t *testing.T) {
+	fc := &imageHandlerFakeClient{
+		removed: []image.DeleteResponse{{Untagged: "alpine:latest"}, {Deleted: "sha256:abc"}},
+	}
+	server := newImageHandlerTestServer(fc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/docker/images/alpine:latest?force=true", nil)
+	req = muxSetURLVars(req, map[string]string{"id": "alpine:latest"})
+	rr := httptest.NewRecorder()
+
+	server.handleDockerRemoveImage(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var out docker.ImageRemoveResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if len(out.Deleted) != 2 {
+		t.Fatalf("expected 2 deleted items, got %d", len(out.Deleted))
+	}
+}
+
+func TestHandleDockerTagImage(t *testing.T) {
+	fc := &imageHandlerFakeClient{}
+	server := newImageHandlerTestServer(fc)
+
+	reqBody, _ := json.Marshal(docker.TagImageRequest{Source: "alpine:latest", Target: "myrepo:v1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/images/tag", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerTagImage(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandleDockerTagImage_MissingSource(t *testing.T) {
+	fc := &imageHandlerFakeClient{}
+	server := newImageHandlerTestServer(fc)
+
+	reqBody, _ := json.Marshal(docker.TagImageRequest{Target: "myrepo:v1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/docker/images/tag", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	server.handleDockerTagImage(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandleDockerImageHistory(t *testing.T) {
+	fc := &imageHandlerFakeClient{
+		history: []image.HistoryResponseItem{{ID: "sha256:abc", CreatedBy: "/bin/sh"}},
+	}
+	server := newImageHandlerTestServer(fc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/docker/images/alpine:latest/history", nil)
+	req = muxSetURLVars(req, map[string]string{"id": "alpine:latest"})
+	rr := httptest.NewRecorder()
+
+	server.handleDockerImageHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 }

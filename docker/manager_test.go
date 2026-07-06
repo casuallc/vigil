@@ -69,6 +69,15 @@ type FakeClient struct {
 	loadErr       error
 	taggedImages  []string // list of "source->target"
 	tagErr        error
+	// Image management fake state
+	imagesListed    []image.Summary
+	imageInspect    types.ImageInspect
+	imageHistory    []image.HistoryResponseItem
+	imageRemoved    []image.DeleteResponse
+	imageListErr    error
+	imageInspectErr error
+	imageRemoveErr  error
+	imageHistoryErr error
 }
 
 func (f *FakeClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
@@ -96,6 +105,31 @@ func (f *FakeClient) ImageTag(ctx context.Context, source, target string) error 
 	}
 	f.taggedImages = append(f.taggedImages, source+"->"+target)
 	return nil
+}
+
+func (f *FakeClient) ImageList(ctx context.Context, options image.ListOptions) ([]image.Summary, error) {
+	if f.imageListErr != nil {
+		return nil, f.imageListErr
+	}
+	return f.imagesListed, nil
+}
+
+func (f *FakeClient) ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error) {
+	return f.imageInspect, nil, f.imageInspectErr
+}
+
+func (f *FakeClient) ImageRemove(ctx context.Context, imageID string, options image.RemoveOptions) ([]image.DeleteResponse, error) {
+	if f.imageRemoveErr != nil {
+		return nil, f.imageRemoveErr
+	}
+	return f.imageRemoved, nil
+}
+
+func (f *FakeClient) ImageHistory(ctx context.Context, imageID string) ([]image.HistoryResponseItem, error) {
+	if f.imageHistoryErr != nil {
+		return nil, f.imageHistoryErr
+	}
+	return f.imageHistory, nil
 }
 
 func (f *FakeClient) NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error) {
@@ -384,5 +418,92 @@ func TestManager_LoadImageFromURL_SizeMismatch(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "size mismatch") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestManager_ListImages(t *testing.T) {
+	fc := &FakeClient{
+		imagesListed: []image.Summary{
+			{ID: "sha256:abc", RepoTags: []string{"alpine:latest"}, Size: 1024},
+		},
+	}
+	m := NewManagerWithClient(fc)
+
+	got, err := m.ListImages(context.Background(), image.ListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "sha256:abc" {
+		t.Fatalf("unexpected result: %+v", got)
+	}
+}
+
+func TestManager_InspectImage(t *testing.T) {
+	fc := &FakeClient{
+		imageInspect: types.ImageInspect{ID: "sha256:abc", Size: 2048},
+	}
+	m := NewManagerWithClient(fc)
+
+	info, err := m.InspectImage(context.Background(), "alpine:latest")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.ID != "sha256:abc" {
+		t.Fatalf("unexpected image id: %s", info.ID)
+	}
+}
+
+func TestManager_RemoveImage(t *testing.T) {
+	fc := &FakeClient{
+		imageRemoved: []image.DeleteResponse{{Untagged: "alpine:latest"}, {Deleted: "sha256:abc"}},
+	}
+	m := NewManagerWithClient(fc)
+
+	got, err := m.RemoveImage(context.Background(), "alpine:latest", false, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 delete responses, got %d", len(got))
+	}
+}
+
+func TestManager_TagImage(t *testing.T) {
+	fc := &FakeClient{}
+	m := NewManagerWithClient(fc)
+
+	if err := m.TagImage(context.Background(), "alpine:latest", "myrepo:v1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fc.taggedImages) != 1 || fc.taggedImages[0] != "alpine:latest->myrepo:v1" {
+		t.Fatalf("unexpected tag call: %v", fc.taggedImages)
+	}
+}
+
+func TestManager_ImageHistory(t *testing.T) {
+	fc := &FakeClient{
+		imageHistory: []image.HistoryResponseItem{{ID: "sha256:abc", CreatedBy: "/bin/sh"}},
+	}
+	m := NewManagerWithClient(fc)
+
+	history, err := m.ImageHistory(context.Background(), "alpine:latest")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(history) != 1 || history[0].ID != "sha256:abc" {
+		t.Fatalf("unexpected history: %+v", history)
+	}
+}
+
+func TestToImageSummaries(t *testing.T) {
+	images := []image.Summary{
+		{ID: "sha256:abc", RepoTags: []string{"alpine:latest"}, Size: 1024},
+	}
+	sums := ToImageSummaries(images)
+	if len(sums) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(sums))
+	}
+	if sums[0].ID != "sha256:abc" || sums[0].Size != 1024 {
+		t.Fatalf("unexpected summary: %+v", sums[0])
 	}
 }
