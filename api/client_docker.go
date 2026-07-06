@@ -49,6 +49,24 @@ func (c *Client) DockerPing() (types.Ping, error) {
 	return ping, nil
 }
 
+// DockerVersion returns version information about the Docker daemon.
+func (c *Client) DockerVersion() (types.Version, error) {
+	var version types.Version
+	resp, err := c.doRequest("GET", "/api/docker/version", nil)
+	if err != nil {
+		return version, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return version, c.errorFromResponse(resp)
+	}
+
+	if err := c.getJSONResponse(resp, &version); err != nil {
+		return version, err
+	}
+	return version, nil
+}
+
 // DockerListContainers lists all Docker containers.
 func (c *Client) DockerListContainers(all bool) ([]docker.ContainerSummary, error) {
 	path := "/api/docker/containers?all=" + strconv.FormatBool(all)

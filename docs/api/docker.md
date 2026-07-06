@@ -22,6 +22,7 @@ Authorization: Basic base64(username:password)
 | /api/docker/compose/{project} | GET | 查看 compose 项目状态 |
 | /api/docker/compose/{project} | DELETE | 删除 compose 项目 |
 | /api/docker/ping | GET | 探测 Docker Daemon 连通性 |
+| /api/docker/version | GET | 获取 Docker Daemon 版本信息 |
 | /api/docker/images/load | POST | 异步下载并加载 Docker tar 镜像包 |
 | /api/docker/images/load/{id}/status | GET | 查询镜像加载任务状态 |
 | /api/docker/images | GET | 列出本地镜像 |
@@ -74,6 +75,40 @@ Authorization: Basic base64(username:password)
 curl -u <username>:<password> \
   http://localhost:57575/api/docker/ping
 ```
+
+---
+
+## GET /api/docker/version
+
+**功能描述**：获取 Docker Daemon 的版本信息。
+
+**响应格式**：Docker SDK 的 `Version`，包含 `Version`、`APIVersion`、`MinAPIVersion`、`GitCommit`、`GoVersion`、`Os`、`Arch`、`KernelVersion`、`BuildTime` 等字段。
+
+```json
+{
+  "Version": "24.0.7",
+  "APIVersion": "1.43",
+  "MinAPIVersion": "1.12",
+  "GitCommit": "afdd53b",
+  "GoVersion": "go1.20.7",
+  "Os": "linux",
+  "Arch": "amd64",
+  "KernelVersion": "5.15.0",
+  "BuildTime": "2023-10-26T09:44:52.000000000+00:00"
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> \
+  http://localhost:57575/api/docker/version
+```
+
+**状态码**：
+
+- `200 OK`：成功
+- `503 Service Unavailable`：Docker manager 未初始化
 
 ---
 

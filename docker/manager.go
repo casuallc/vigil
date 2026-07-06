@@ -79,6 +79,11 @@ func (m *Manager) Ping(ctx context.Context) (types.Ping, error) {
 	return m.cli.Ping(ctx)
 }
 
+// Version returns version information about the Docker daemon.
+func (m *Manager) Version(ctx context.Context) (types.Version, error) {
+	return m.cli.ServerVersion(ctx)
+}
+
 // ListContainers returns containers from the Docker daemon.
 func (m *Manager) ListContainers(ctx context.Context, all bool) ([]types.Container, error) {
 	return m.cli.ContainerList(ctx, container.ListOptions{All: all})

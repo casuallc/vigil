@@ -42,6 +42,7 @@ func (c *CLI) setupDockerCommands() *cobra.Command {
 	}
 
 	dockerCmd.AddCommand(c.setupDockerPingCommand())
+	dockerCmd.AddCommand(c.setupDockerVersionCommand())
 	dockerCmd.AddCommand(c.setupDockerImageCommands())
 	dockerCmd.AddCommand(c.setupDockerContainerCommands())
 	dockerCmd.AddCommand(c.setupDockerComposeCommands())
@@ -820,6 +821,36 @@ func (c *CLI) handleDockerPing() error {
 	fmt.Printf("  API Version:  %s\n", ping.APIVersion)
 	fmt.Printf("  OS Type:      %s\n", ping.OSType)
 	fmt.Printf("  Experimental: %v\n", ping.Experimental)
+	return nil
+}
+
+// setupDockerVersionCommand 设置 docker version 命令
+func (c *CLI) setupDockerVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Show Docker daemon version",
+		Long:  "Return version information about the Docker daemon through the vigil server.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerVersion()
+		},
+	}
+}
+
+// handleDockerVersion 处理 docker version 命令
+func (c *CLI) handleDockerVersion() error {
+	version, err := c.client.DockerVersion()
+	if err != nil {
+		return fmt.Errorf("failed to get docker daemon version: %v", err)
+	}
+	fmt.Printf("Docker daemon version\n")
+	fmt.Printf("  Version:       %s\n", version.Version)
+	fmt.Printf("  API Version:   %s\n", version.APIVersion)
+	fmt.Printf("  Min API Ver.:  %s\n", version.MinAPIVersion)
+	fmt.Printf("  Git Commit:    %s\n", version.GitCommit)
+	fmt.Printf("  Go Version:    %s\n", version.GoVersion)
+	fmt.Printf("  OS/Arch:       %s/%s\n", version.Os, version.Arch)
+	fmt.Printf("  Kernel:        %s\n", version.KernelVersion)
+	fmt.Printf("  Build Time:    %s\n", version.BuildTime)
 	return nil
 }
 

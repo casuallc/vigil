@@ -86,6 +86,7 @@ func (f *loadImageFakeClient) ContainerStats(ctx context.Context, containerID st
 	return container.StatsResponseReader{Body: io.NopCloser(strings.NewReader(""))}, nil
 }
 func (f *loadImageFakeClient) Ping(ctx context.Context) (types.Ping, error) { return types.Ping{}, nil }
+func (f *loadImageFakeClient) ServerVersion(ctx context.Context) (types.Version, error) { return types.Version{}, nil }
 func (f *loadImageFakeClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
 }
@@ -274,6 +275,7 @@ func (f *imageHandlerFakeClient) ContainerStats(ctx context.Context, containerID
 	return container.StatsResponseReader{Body: io.NopCloser(strings.NewReader(""))}, nil
 }
 func (f *imageHandlerFakeClient) Ping(ctx context.Context) (types.Ping, error) { return types.Ping{}, nil }
+func (f *imageHandlerFakeClient) ServerVersion(ctx context.Context) (types.Version, error) { return types.Version{}, nil }
 func (f *imageHandlerFakeClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
 	if f.pullErr != nil {
 		return nil, f.pullErr

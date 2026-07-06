@@ -15,6 +15,7 @@ bbx-cli docker [command]
 | 命令 | 描述 |
 |------|------|
 | `ping` | 检查 Docker daemon 连通性 |
+| `version` | 查看 Docker daemon 版本信息 |
 | `image` | Docker 镜像操作 |
 | `container` | Docker 容器操作 |
 | `compose` | Docker Compose 操作 |
@@ -49,6 +50,43 @@ Docker daemon is reachable
   API Version:  1.45
   OS Type:      linux
   Experimental: false
+```
+
+---
+
+### docker version
+
+查看 vigil server 所连接 Docker daemon 的版本信息。
+
+**语法：**
+
+```
+bbx-cli docker version
+```
+
+**参数：**
+
+无
+
+**示例：**
+
+```bash
+# 查看 Docker daemon 版本
+./bbx-cli docker version
+```
+
+**输出示例：**
+
+```
+Docker daemon version
+  Version:       24.0.7
+  API Version:   1.43
+  Min API Ver.:  1.12
+  Git Commit:    afdd53b
+  Go Version:    go1.20.7
+  OS/Arch:       linux/amd64
+  Kernel:        5.15.0
+  Build Time:    2023-10-26T09:44:52.000000000+00:00
 ```
 
 ---

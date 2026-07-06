@@ -118,6 +118,10 @@ func (f *composeFakeClient) Ping(ctx context.Context) (types.Ping, error) {
 	return types.Ping{}, nil
 }
 
+func (f *composeFakeClient) ServerVersion(ctx context.Context) (types.Version, error) {
+	return types.Version{}, nil
+}
+
 func (f *composeFakeClient) ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error) {
 	f.imagesPulled = append(f.imagesPulled, ref)
 	return io.NopCloser(strings.NewReader("")), nil

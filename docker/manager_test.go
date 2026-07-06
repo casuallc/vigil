@@ -39,6 +39,8 @@ type FakeClient struct {
 	createdID          string
 	execID             string
 	hijacked           types.HijackedResponse
+	serverVersion      types.Version
+	versionErr         error
 	timesStopped       int
 	timesStarted       int
 	timesRestarted     int
@@ -239,6 +241,10 @@ func (f *FakeClient) ContainerStats(ctx context.Context, containerID string, str
 
 func (f *FakeClient) Ping(ctx context.Context) (types.Ping, error) {
 	return types.Ping{}, f.pingErr
+}
+
+func (f *FakeClient) ServerVersion(ctx context.Context) (types.Version, error) {
+	return f.serverVersion, f.versionErr
 }
 
 func (f *FakeClient) Close() error {
@@ -505,5 +511,20 @@ func TestToImageSummaries(t *testing.T) {
 	}
 	if sums[0].ID != "sha256:abc" || sums[0].Size != 1024 {
 		t.Fatalf("unexpected summary: %+v", sums[0])
+	}
+}
+
+func TestManager_Version(t *testing.T) {
+	fc := &FakeClient{
+		serverVersion: types.Version{Version: "24.0.7", APIVersion: "1.43", Os: "linux", Arch: "amd64"},
+	}
+	m := NewManagerWithClient(fc)
+
+	version, err := m.Version(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version.Version != "24.0.7" {
+		t.Fatalf("unexpected version: %s", version.Version)
 	}
 }

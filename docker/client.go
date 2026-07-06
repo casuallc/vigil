@@ -48,6 +48,7 @@ type Client interface {
 	ContainerLogs(ctx context.Context, container string, options container.LogsOptions) (io.ReadCloser, error)
 	ContainerStats(ctx context.Context, container string, stream bool) (container.StatsResponseReader, error)
 	Ping(ctx context.Context) (types.Ping, error)
+	ServerVersion(ctx context.Context) (types.Version, error)
 	ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error)
 	ImageLoad(ctx context.Context, input io.Reader, quiet bool) (image.LoadResponse, error)
 	ImageTag(ctx context.Context, source, target string) error

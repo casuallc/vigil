@@ -558,6 +558,24 @@ func (s *Server) handleDockerPing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ping)
 }
 
+// handleDockerVersion GET /api/docker/version
+func (s *Server) handleDockerVersion(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	version, err := s.dockerManager.Version(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, version)
+}
+
 // handleDockerLoadImage POST /api/docker/images/load
 func (s *Server) handleDockerLoadImage(w http.ResponseWriter, r *http.Request) {
 	if s.dockerManager == nil {
