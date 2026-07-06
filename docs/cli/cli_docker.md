@@ -55,13 +55,25 @@ Docker daemon is reachable
 
 ### docker image
 
-Docker 镜像命令组，目前支持从远程 tar 包异步下载并加载镜像。
+Docker 镜像命令组，支持列出、查看、拉取、删除、打标签、查看历史以及从远程 tar 包异步加载镜像。
 
 **语法：**
 
 ```
 bbx-cli docker image [command]
 ```
+
+**子命令：**
+
+| 命令 | 描述 |
+|------|------|
+| `load` | 从远程 tar 包异步下载并加载镜像 |
+| `list` | 列出本地镜像 |
+| `inspect` | 查看镜像详情 |
+| `pull` | 拉取镜像 |
+| `rm` | 删除镜像 |
+| `tag` | 给镜像打标签 |
+| `history` | 查看镜像历史 |
 
 #### docker image load
 
@@ -88,6 +100,177 @@ bbx-cli docker image load --url <url> --metadata <json>
 
 # 加载镜像并附带元数据
 ./bbx-cli docker image load -u https://example.com/images/app.tar.gz -m '{"name":"myapp","tag":"v1.0"}'
+```
+
+#### docker image list
+
+列出本地 Docker 镜像。
+
+**语法：**
+
+```
+bbx-cli docker image list [flags]
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--all` | `-a` | 包含中间层镜像 | 否 | false |
+| `--dangling` | - | 只显示悬空镜像 | 否 | false |
+| `--filter-label` | - | 按标签过滤（如 `app=web`），可多次使用 | 否 | - |
+| `--filter` | - | 原始 JSON 过滤条件 | 否 | - |
+
+**示例：**
+
+```bash
+# 列出所有镜像
+./bbx-cli docker image list
+
+# 包含中间层镜像
+./bbx-cli docker image list -a
+
+# 只显示悬空镜像
+./bbx-cli docker image list --dangling
+
+# 按标签过滤
+./bbx-cli docker image list --filter-label app=web
+```
+
+**输出示例：**
+
+```
+ID             REPOSITORY:TAG                 CREATED              SIZE
+------------------------------------------------------------------------------------------------------------------------
+sha256:abc123  alpine:latest                  2025-07-05 10:00:00  43212800
+sha256:def456  nginx:alpine                   2025-07-04 18:30:00  67890123
+```
+
+#### docker image inspect
+
+查看指定镜像的详细信息。
+
+**语法：**
+
+```
+bbx-cli docker image inspect [id]
+```
+
+**参数：**
+
+| 参数 | 描述 |
+|------|------|
+| `id` | 镜像 ID 或引用（必填） |
+
+**示例：**
+
+```bash
+# 查看镜像详情
+./bbx-cli docker image inspect alpine:latest
+```
+
+#### docker image pull
+
+从镜像仓库拉取镜像。
+
+**语法：**
+
+```
+bbx-cli docker image pull <image>
+```
+
+**参数：**
+
+| 参数 | 描述 |
+|------|------|
+| `image` | 镜像引用（必填） |
+
+**示例：**
+
+```bash
+./bbx-cli docker image pull alpine:latest
+```
+
+#### docker image rm
+
+删除一个本地镜像。
+
+**语法：**
+
+```
+bbx-cli docker image rm [id] [flags]
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `id` | - | 镜像 ID 或引用（必填） | 是 | - |
+| `--force` | `-f` | 强制删除 | 否 | false |
+| `--no-prune` | - | 不删除未标记的父镜像 | 否 | false |
+
+**示例：**
+
+```bash
+# 删除镜像
+./bbx-cli docker image rm alpine:latest
+
+# 强制删除
+./bbx-cli docker image rm alpine:latest -f
+```
+
+#### docker image tag
+
+为已有镜像创建新标签。
+
+**语法：**
+
+```
+bbx-cli docker image tag <source> <target>
+```
+
+**参数：**
+
+| 参数 | 描述 |
+|------|------|
+| `source` | 源镜像引用（必填） |
+| `target` | 目标标签（必填） |
+
+**示例：**
+
+```bash
+./bbx-cli docker image tag alpine:latest myregistry/alpine:v1
+```
+
+#### docker image history
+
+查看镜像的构建历史。
+
+**语法：**
+
+```
+bbx-cli docker image history [id]
+```
+
+**参数：**
+
+| 参数 | 描述 |
+|------|------|
+| `id` | 镜像 ID 或引用（必填） |
+
+**示例：**
+
+```bash
+./bbx-cli docker image history alpine:latest
+```
+
+**输出示例：**
+
+```
+IMAGE          CREATED              CREATED BY                                         SIZE
+------------------------------------------------------------------------------------------------------------------------
+sha256:abc123  2025-07-05 10:00:00  /bin/sh -c #(nop) CMD ["sh"]                       0
+sha256:def456  2025-07-05 09:59:00  /bin/sh -c #(nop) ADD file:... in /                43212800
 ```
 
 ---

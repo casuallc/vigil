@@ -1,6 +1,6 @@
-# Docker 容器管理 API
+# Docker 容器与镜像管理 API
 
-Docker 管理是 `bbx-server` 的子功能，基于官方 Docker SDK 管理本地 Docker Daemon 上的容器，提供 REST 与 WebSocket 接口。
+Docker 管理是 `bbx-server` 的子功能，基于官方 Docker SDK 管理本地 Docker Daemon 上的容器与镜像，提供 REST 与 WebSocket 接口。
 
 > 启用方式：默认启用（`conf/config.yaml` 中 `docker.enabled` 为 `true` 或省略）。若启动时无法连接 Docker Daemon，则相关接口返回 `503 docker manager not initialized`；显式设置 `docker.enabled: false` 可关闭。
 
@@ -24,6 +24,12 @@ Authorization: Basic base64(username:password)
 | /api/docker/ping | GET | 探测 Docker Daemon 连通性 |
 | /api/docker/images/load | POST | 异步下载并加载 Docker tar 镜像包 |
 | /api/docker/images/load/{id}/status | GET | 查询镜像加载任务状态 |
+| /api/docker/images | GET | 列出本地镜像 |
+| /api/docker/images/{id} | GET | 查看镜像详情 |
+| /api/docker/images/{id} | DELETE | 删除镜像 |
+| /api/docker/images/{id}/history | GET | 查看镜像历史 |
+| /api/docker/images/pull | POST | 拉取镜像 |
+| /api/docker/images/tag | POST | 给镜像打标签 |
 | /api/docker/containers | GET | 列出容器 |
 | /api/docker/containers | POST | 创建容器 |
 | /api/docker/containers/{id} | GET | 查看容器详情 |
@@ -182,6 +188,248 @@ curl -u <username>:<password> \
 
 - `200 OK`：任务存在
 - `404 Not Found`：任务不存在
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## GET /api/docker/images
+
+**功能描述**：列出本地镜像。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| all | boolean | 否 | 是否包含中间层镜像，默认 `false` |
+| dangling | boolean | 否 | 只显示悬空镜像，默认 `false` |
+| label | string[] | 否 | 按标签过滤，如 `label=app=web`，可重复 |
+| filter | string | 否 | 原始 JSON 过滤条件，会覆盖 `dangling`/`label` |
+
+**响应格式**：`[]ImageSummary`
+
+```json
+[
+  {
+    "id": "sha256:abc123...",
+    "containers": 2,
+    "created": 1751270400,
+    "labels": {},
+    "parent_id": "sha256:parent...",
+    "repo_digests": ["nginx@sha256:def..."],
+    "repo_tags": ["nginx:alpine"],
+    "shared_size": 0,
+    "size": 43212800,
+    "virtual_size": 43212800
+  }
+]
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> \
+  "http://localhost:57575/api/docker/images?all=true&dangling=true&label=app=web"
+```
+
+**状态码**：
+
+- `200 OK`：成功
+- `400 Bad Request`：`filter` JSON 格式非法
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## GET /api/docker/images/{id}
+
+**功能描述**：查看镜像详情。
+
+**路径参数**：
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| id | string | 镜像 ID 或引用，如 `nginx:alpine` |
+
+**响应格式**：Docker SDK 的 `ImageInspect`，包含 `Config`、`RootFS`、`RepoTags` 等完整字段。
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> \
+  http://localhost:57575/api/docker/images/nginx:alpine
+```
+
+**状态码**：
+
+- `200 OK`：成功
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## POST /api/docker/images/pull
+
+**功能描述**：从镜像仓库拉取镜像到本地 Docker daemon。
+
+**请求体**：`PullImageRequest`
+
+| 字段 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| image | string | 是 | 镜像引用，如 `nginx:alpine` |
+
+**请求示例**：
+
+```json
+{
+  "image": "alpine:latest"
+}
+```
+
+**响应格式**：
+
+```json
+{
+  "status": "pulled"
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"image":"alpine:latest"}' \
+  http://localhost:57575/api/docker/images/pull
+```
+
+**状态码**：
+
+- `200 OK`：拉取成功
+- `400 Bad Request`：请求体非法或 `image` 为空
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## DELETE /api/docker/images/{id}
+
+**功能描述**：删除本地镜像。
+
+**路径参数**：
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| id | string | 镜像 ID 或引用 |
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| force | boolean | 否 | 是否强制删除，默认 `false` |
+| noprune | boolean | 否 | 不删除未标记的父镜像，默认 `false` |
+
+**响应格式**：`ImageRemoveResponse`
+
+```json
+{
+  "deleted": [
+    {"untagged": "nginx:alpine"},
+    {"deleted": "sha256:abc123..."}
+  ]
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> -X DELETE \
+  "http://localhost:57575/api/docker/images/nginx:alpine?force=true"
+```
+
+**状态码**：
+
+- `200 OK`：删除成功
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## POST /api/docker/images/tag
+
+**功能描述**：为已有镜像创建新标签。
+
+**请求体**：`TagImageRequest`
+
+| 字段 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| source | string | 是 | 源镜像引用 |
+| target | string | 是 | 目标标签 |
+
+**请求示例**：
+
+```json
+{
+  "source": "alpine:latest",
+  "target": "myregistry/alpine:v1"
+}
+```
+
+**响应格式**：
+
+```json
+{
+  "status": "tagged"
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"source":"alpine:latest","target":"myregistry/alpine:v1"}' \
+  http://localhost:57575/api/docker/images/tag
+```
+
+**状态码**：
+
+- `200 OK`：打标签成功
+- `400 Bad Request`：`source` 或 `target` 为空
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## GET /api/docker/images/{id}/history
+
+**功能描述**：查看镜像构建历史。
+
+**路径参数**：
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| id | string | 镜像 ID 或引用 |
+
+**响应格式**：`[]HistoryResponseItem`
+
+```json
+[
+  {
+    "Id": "sha256:abc123...",
+    "Created": 1751270400,
+    "CreatedBy": "/bin/sh -c #(nop) CMD [\"nginx\"]",
+    "Size": 0,
+    "Comment": "",
+    "Tags": ["nginx:alpine"]
+  }
+]
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> \
+  http://localhost:57575/api/docker/images/nginx:alpine/history
+```
+
+**状态码**：
+
+- `200 OK`：成功
 - `503 Service Unavailable`：Docker manager 未初始化
 
 ---
@@ -696,9 +944,9 @@ Docker 客户端初始化遵循标准环境变量：`DOCKER_HOST`、`DOCKER_TLS_
 
 ## 权限说明
 
-v1 仅暴露容器生命周期、执行以及通过 tar 包加载镜像等操作，不暴露以下敏感能力：
+v1 暴露容器生命周期、执行、镜像列表/查看/拉取/删除/标签/历史以及通过 tar 包加载镜像等操作，不暴露以下敏感能力：
 
-- 镜像构建/推送/直接拉取
+- 镜像构建/推送
 - 卷/网络管理
 - Daemon 配置修改
 - 特权容器创建
