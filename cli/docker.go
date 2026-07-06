@@ -889,9 +889,9 @@ func (c *CLI) handleDockerContainerList(all bool) error {
 	return nil
 }
 
-// selectDockerContainerInteractively 交互式选择已有容器
+// selectDockerContainerInteractively 交互式选择已有容器（仅运行中的容器，与 list 命令默认行为一致）
 func (c *CLI) selectDockerContainerInteractively(label string) (docker.ContainerSummary, error) {
-	containers, err := c.client.DockerListContainers(true)
+	containers, err := c.client.DockerListContainers(false)
 	if err != nil {
 		return docker.ContainerSummary{}, fmt.Errorf("failed to list containers: %v", err)
 	}
