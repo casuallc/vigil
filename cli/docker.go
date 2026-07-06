@@ -169,19 +169,39 @@ func (c *CLI) handleDockerImageList(all, dangling bool, labels []string, filter 
 		return nil
 	}
 
-	fmt.Printf("%-14s %-30s %-20s %s\n", "ID", "REPOSITORY:TAG", "CREATED", "SIZE")
-	fmt.Println(strings.Repeat("-", 120))
+	type imageRow struct {
+		id, tag, created, size string
+	}
+	rows := make([]imageRow, 0, len(images))
+	idWidth, tagWidth := len("ID"), len("REPOSITORY:TAG")
 	for _, img := range images {
 		tag := "<none>:<none>"
 		if len(img.RepoTags) > 0 {
 			tag = img.RepoTags[0]
 		}
-		created := time.Unix(img.Created, 0).Format("2006-01-02 15:04:05")
-		fmt.Printf("%-14s %-30s %-20s %d\n",
-			truncateString(img.ID, 14),
-			truncateString(tag, 30),
-			created,
-			img.Size,
+		r := imageRow{
+			id:      img.ID,
+			tag:     tag,
+			created: time.Unix(img.Created, 0).Format("2006-01-02 15:04:05"),
+			size:    fmt.Sprintf("%d", img.Size),
+		}
+		rows = append(rows, r)
+		if len(r.id) > idWidth {
+			idWidth = len(r.id)
+		}
+		if len(r.tag) > tagWidth {
+			tagWidth = len(r.tag)
+		}
+	}
+
+	fmt.Printf("%-*s %-*s %-20s %s\n", idWidth, "ID", tagWidth, "REPOSITORY:TAG", "CREATED", "SIZE")
+	fmt.Println(strings.Repeat("-", idWidth+tagWidth+20+len("SIZE")+3))
+	for _, r := range rows {
+		fmt.Printf("%-*s %-*s %-20s %s\n",
+			idWidth, r.id,
+			tagWidth, r.tag,
+			r.created,
+			r.size,
 		)
 	}
 	return nil
@@ -321,23 +341,39 @@ func (c *CLI) handleDockerImageHistory(id string) error {
 		return nil
 	}
 
-	fmt.Printf("%-14s %-20s %-50s %s\n", "IMAGE", "CREATED", "CREATED BY", "SIZE")
-	fmt.Println(strings.Repeat("-", 120))
+	type historyRow struct {
+		imageID, created, createdBy, size string
+	}
+	rows := make([]historyRow, 0, len(history))
+	imageWidth, createdByWidth := len("IMAGE"), len("CREATED BY")
 	for _, h := range history {
-		created := time.Unix(h.Created, 0).Format("2006-01-02 15:04:05")
-		createdBy := h.CreatedBy
-		if len(createdBy) > 47 {
-			createdBy = createdBy[:44] + "..."
-		}
 		imageID := h.ID
 		if imageID == "" {
 			imageID = "<missing>"
 		}
-		fmt.Printf("%-14s %-20s %-50s %d\n",
-			truncateString(imageID, 14),
-			created,
-			createdBy,
-			h.Size,
+		r := historyRow{
+			imageID:   imageID,
+			created:   time.Unix(h.Created, 0).Format("2006-01-02 15:04:05"),
+			createdBy: h.CreatedBy,
+			size:      fmt.Sprintf("%d", h.Size),
+		}
+		rows = append(rows, r)
+		if len(r.imageID) > imageWidth {
+			imageWidth = len(r.imageID)
+		}
+		if len(r.createdBy) > createdByWidth {
+			createdByWidth = len(r.createdBy)
+		}
+	}
+
+	fmt.Printf("%-*s %-20s %-*s %s\n", imageWidth, "IMAGE", "CREATED", createdByWidth, "CREATED BY", "SIZE")
+	fmt.Println(strings.Repeat("-", imageWidth+20+createdByWidth+len("SIZE")+3))
+	for _, r := range rows {
+		fmt.Printf("%-*s %-20s %-*s %s\n",
+			imageWidth, r.imageID,
+			r.created,
+			createdByWidth, r.createdBy,
+			r.size,
 		)
 	}
 	return nil
@@ -750,25 +786,54 @@ func (c *CLI) handleDockerContainerList(all bool) error {
 		return nil
 	}
 
-	fmt.Printf("%-14s %-20s %-25s %-12s %-20s %s\n", "ID", "IMAGE", "NAMES", "STATE", "STATUS", "PORTS")
-	fmt.Println(strings.Repeat("-", 130))
+	type containerRow struct {
+		id, image, names, state, status, ports string
+	}
+	rows := make([]containerRow, 0, len(containers))
+	idWidth, imageWidth, namesWidth, stateWidth, statusWidth := len("ID"), len("IMAGE"), len("NAMES"), len("STATE"), len("STATUS")
 	for _, ct := range containers {
-		names := strings.Join(ct.Names, ", ")
-		if len(names) > 23 {
-			names = names[:20] + "..."
+		r := containerRow{
+			id:      ct.ID,
+			image:   ct.Image,
+			names:   strings.Join(ct.Names, ", "),
+			state:   ct.State,
+			status:  ct.Status,
+			ports:   formatDockerPorts(ct.Ports),
 		}
-		image := ct.Image
-		if len(image) > 23 {
-			image = image[:20] + "..."
+		rows = append(rows, r)
+		if len(r.id) > idWidth {
+			idWidth = len(r.id)
 		}
-		ports := formatDockerPorts(ct.Ports)
-		fmt.Printf("%-14s %-20s %-25s %-12s %-20s %s\n",
-			truncateString(ct.ID, 14),
-			image,
-			names,
-			ct.State,
-			ct.Status,
-			ports,
+		if len(r.image) > imageWidth {
+			imageWidth = len(r.image)
+		}
+		if len(r.names) > namesWidth {
+			namesWidth = len(r.names)
+		}
+		if len(r.state) > stateWidth {
+			stateWidth = len(r.state)
+		}
+		if len(r.status) > statusWidth {
+			statusWidth = len(r.status)
+		}
+	}
+
+	fmt.Printf("%-*s %-*s %-*s %-*s %-*s %s\n",
+		idWidth, "ID",
+		imageWidth, "IMAGE",
+		namesWidth, "NAMES",
+		stateWidth, "STATE",
+		statusWidth, "STATUS",
+		"PORTS")
+	fmt.Println(strings.Repeat("-", idWidth+imageWidth+namesWidth+stateWidth+statusWidth+len("PORTS")+5))
+	for _, r := range rows {
+		fmt.Printf("%-*s %-*s %-*s %-*s %-*s %s\n",
+			idWidth, r.id,
+			imageWidth, r.image,
+			namesWidth, r.names,
+			stateWidth, r.state,
+			statusWidth, r.status,
+			r.ports,
 		)
 	}
 
