@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/casuallc/vigil/common"
 	"github.com/casuallc/vigil/docker"
 	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
@@ -183,7 +184,7 @@ func (c *CLI) handleDockerImageList(all, dangling bool, labels []string, filter 
 			id:      img.ID,
 			tag:     tag,
 			created: time.Unix(img.Created, 0).Format("2006-01-02 15:04:05"),
-			size:    fmt.Sprintf("%d", img.Size),
+			size:    common.FormatFileSize(img.Size),
 		}
 		rows = append(rows, r)
 		if len(r.id) > idWidth {
@@ -355,7 +356,7 @@ func (c *CLI) handleDockerImageHistory(id string) error {
 			imageID:   imageID,
 			created:   time.Unix(h.Created, 0).Format("2006-01-02 15:04:05"),
 			createdBy: h.CreatedBy,
-			size:      fmt.Sprintf("%d", h.Size),
+			size:      common.FormatFileSize(h.Size),
 		}
 		rows = append(rows, r)
 		if len(r.imageID) > imageWidth {
