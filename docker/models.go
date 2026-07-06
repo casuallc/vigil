@@ -90,6 +90,12 @@ type ComposeProjectStatus struct {
 	Services []ComposeServiceStatus `json:"services"`
 }
 
+// ComposeVersionResponse is the response for GET /api/docker/compose/version.
+type ComposeVersionResponse struct {
+	Version   string `json:"version"`
+	RawOutput string `json:"raw_output,omitempty"`
+}
+
 // ImageMetadata is the metadata supplied by the client for the tar being loaded.
 type ImageMetadata struct {
 	Name     string            `json:"name,omitempty"`     // optional target repository

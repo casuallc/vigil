@@ -381,6 +381,24 @@ func (s *Server) handleDockerComposeRemove(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
 }
 
+// handleDockerComposeVersion GET /api/docker/compose-version
+func (s *Server) handleDockerComposeVersion(w http.ResponseWriter, r *http.Request) {
+	if s.composeManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker compose manager not initialized")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	version, err := s.composeManager.Version(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, version)
+}
+
 // handleDockerListImages GET /api/docker/images?all=true&dangling=true&label=...&filter=...
 func (s *Server) handleDockerListImages(w http.ResponseWriter, r *http.Request) {
 	if s.dockerManager == nil {

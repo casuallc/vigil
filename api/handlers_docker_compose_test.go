@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -296,5 +297,29 @@ func TestHandleDockerComposeRemove(t *testing.T) {
 	}
 	if fc.timesRemoved != 1 {
 		t.Fatalf("expected remove once, got %d", fc.timesRemoved)
+	}
+}
+
+func TestHandleDockerComposeVersion(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not available")
+	}
+
+	fc := &composeFakeClient{}
+	server := newComposeTestServer(fc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/docker/compose-version", nil)
+	rr := httptest.NewRecorder()
+
+	server.handleDockerComposeVersion(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp docker.ComposeVersionResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Version == "" {
+		t.Fatalf("expected non-empty compose version")
 	}
 }

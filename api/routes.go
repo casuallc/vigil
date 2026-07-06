@@ -200,9 +200,11 @@ func (s *Server) Router() *mux.Router {
 
 	// Docker management endpoints (registered when daemon is available)
 	if s.dockerManager != nil {
+		// Docker Compose endpoints
 		r.HandleFunc("/api/docker/compose", s.handleDockerComposeDeploy).Methods("POST")
 		r.HandleFunc("/api/docker/compose/{project}", s.handleDockerComposeGet).Methods("GET")
 		r.HandleFunc("/api/docker/compose/{project}", s.handleDockerComposeRemove).Methods("DELETE")
+		r.HandleFunc("/api/docker/compose-version", s.handleDockerComposeVersion).Methods("GET")
 		r.HandleFunc("/api/docker/ping", s.handleDockerPing).Methods("GET")
 		r.HandleFunc("/api/docker/version", s.handleDockerVersion).Methods("GET")
 		r.HandleFunc("/api/docker/images/load", s.handleDockerLoadImage).Methods("POST")

@@ -19,7 +19,9 @@ package docker
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"sort"
+	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/network"
@@ -34,6 +36,35 @@ type ComposeManager struct {
 // NewComposeManager creates a compose manager from a Docker manager.
 func NewComposeManager(mgr *Manager) *ComposeManager {
 	return &ComposeManager{mgr: mgr}
+}
+
+// Version returns the installed Docker Compose version by invoking the CLI.
+// It tries the modern plugin form `docker compose version --short` first,
+// then falls back to the legacy `docker-compose version --short`.
+func (cm *ComposeManager) Version(ctx context.Context) (*ComposeVersionResponse, error) {
+	out, err := cm.runComposeVersion(ctx, "docker", "compose")
+	if err != nil {
+		out, err = cm.runComposeVersion(ctx, "docker-compose")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get docker-compose version: %w", err)
+		}
+	}
+	return &ComposeVersionResponse{
+		Version:   strings.TrimSpace(out),
+		RawOutput: strings.TrimSpace(out),
+	}, nil
+}
+
+func (cm *ComposeManager) runComposeVersion(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, args[0], append(args[1:], "version", "--short")...)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+			return "", fmt.Errorf("%s: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", err
+	}
+	return string(out), nil
 }
 
 // DeployProject deploys a compose project from YAML.

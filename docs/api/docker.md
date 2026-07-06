@@ -21,6 +21,7 @@ Authorization: Basic base64(username:password)
 | /api/docker/compose | POST | 部署 compose 项目 |
 | /api/docker/compose/{project} | GET | 查看 compose 项目状态 |
 | /api/docker/compose/{project} | DELETE | 删除 compose 项目 |
+| /api/docker/compose-version | GET | 获取 docker-compose 版本信息 |
 | /api/docker/ping | GET | 探测 Docker Daemon 连通性 |
 | /api/docker/version | GET | 获取 Docker Daemon 版本信息 |
 | /api/docker/images/load | POST | 异步下载并加载 Docker tar 镜像包 |
@@ -847,6 +848,34 @@ vigil 提供无状态的 Docker Compose 部署能力：上传 `docker-compose.ym
 | `volumes` | 顶层卷定义 |
 
 暂不支持 `build`、`extends`、`profiles`、`secrets`、`configs`、健康检查等高级特性。
+
+---
+
+## GET /api/docker/compose-version
+
+**功能描述**：获取本地安装的 Docker Compose 版本信息。
+
+**响应格式**：`ComposeVersionResponse`
+
+```json
+{
+  "version": "2.27.0",
+  "raw_output": "2.27.0"
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> \
+  http://localhost:57575/api/docker/compose-version
+```
+
+**状态码**：
+
+- `200 OK`：成功
+- `500 Internal Server Error`：无法调用 `docker compose version` 或 `docker-compose version`
+- `503 Service Unavailable`：Docker compose manager 未初始化
 
 ---
 
