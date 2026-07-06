@@ -74,6 +74,13 @@ const (
 
 	ActionDockerImageLoad ActionType = "docker_image_load"
 
+	ActionDockerImageList    ActionType = "docker_image_list"
+	ActionDockerImageInspect ActionType = "docker_image_inspect"
+	ActionDockerImagePull    ActionType = "docker_image_pull"
+	ActionDockerImageRemove  ActionType = "docker_image_remove"
+	ActionDockerImageTag     ActionType = "docker_image_tag"
+	ActionDockerImageHistory ActionType = "docker_image_history"
+
 	ActionDockerRegistryCatalogList    ActionType = "docker_registry_catalog_list"
 	ActionDockerRegistryTagsList       ActionType = "docker_registry_tags_list"
 	ActionDockerRegistryManifestGet    ActionType = "docker_registry_manifest_get"

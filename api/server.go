@@ -413,20 +413,41 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 		case strings.HasPrefix(path, "/api/network/probe"):
 			action = audit.ActionNetworkProbe
 		case strings.HasPrefix(path, "/api/docker"):
-			resource = dockerContainerResource(path)
 			switch {
 			case path == "/api/docker/ping":
 				action = audit.ActionDockerContainerPing
-			case strings.HasPrefix(path, "/api/docker/images/load"):
-				resource = strings.TrimPrefix(path, "/api/docker/images/load/")
-				if resource == path {
-					resource = ""
-				}
-				switch r.Method {
-				case http.MethodPost:
-					action = audit.ActionDockerImageLoad
-				case http.MethodGet:
-					action = audit.ActionDockerImageLoad
+			case strings.HasPrefix(path, "/api/docker/images"):
+				switch {
+				case strings.HasPrefix(path, "/api/docker/images/load"):
+					resource = strings.TrimPrefix(path, "/api/docker/images/load/")
+					if resource == path {
+						resource = ""
+					}
+					switch r.Method {
+					case http.MethodPost:
+						action = audit.ActionDockerImageLoad
+					case http.MethodGet:
+						action = audit.ActionDockerImageLoad
+					}
+				case path == "/api/docker/images":
+					if r.Method == http.MethodGet {
+						action = audit.ActionDockerImageList
+					}
+				case strings.HasSuffix(path, "/pull"):
+					action = audit.ActionDockerImagePull
+				case strings.HasSuffix(path, "/tag"):
+					action = audit.ActionDockerImageTag
+				case strings.HasSuffix(path, "/history"):
+					action = audit.ActionDockerImageHistory
+					resource = dockerImageResource(path)
+				default:
+					resource = dockerImageResource(path)
+					switch r.Method {
+					case http.MethodGet:
+						action = audit.ActionDockerImageInspect
+					case http.MethodDelete:
+						action = audit.ActionDockerImageRemove
+					}
 				}
 			case strings.HasPrefix(path, "/api/docker/compose"):
 				resource = strings.TrimPrefix(path, "/api/docker/compose/")
@@ -442,6 +463,7 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 					action = audit.ActionDockerComposeRemove
 				}
 			case strings.Contains(path, "/containers"):
+				resource = dockerContainerResource(path)
 				switch r.Method {
 				case http.MethodGet:
 					if strings.Contains(path, "/logs") {
@@ -572,6 +594,20 @@ func getNamespace(vars map[string]string) string {
 // for audit resource tagging.
 func dockerContainerResource(path string) string {
 	prefix := "/api/docker/containers/"
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	rest := strings.TrimPrefix(path, prefix)
+	if idx := strings.Index(rest, "/"); idx >= 0 {
+		return rest[:idx]
+	}
+	return rest
+}
+
+// dockerImageResource extracts the image id from /api/docker/images/{id}/...
+// for audit resource tagging.
+func dockerImageResource(path string) string {
+	prefix := "/api/docker/images/"
 	if !strings.HasPrefix(path, prefix) {
 		return ""
 	}
