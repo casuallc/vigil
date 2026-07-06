@@ -27,6 +27,7 @@ import (
 
 	"github.com/casuallc/vigil/docker"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	"github.com/gorilla/websocket"
 )
 
@@ -388,6 +389,121 @@ func (c *Client) DockerComposeRemove(project string, force bool) error {
 		return c.errorFromResponse(resp)
 	}
 	return nil
+}
+
+// DockerListImages lists Docker images.
+func (c *Client) DockerListImages(all, dangling bool, labels []string, filter string) ([]docker.ImageSummary, error) {
+	q := url.Values{}
+	q.Set("all", strconv.FormatBool(all))
+	q.Set("dangling", strconv.FormatBool(dangling))
+	for _, label := range labels {
+		q.Add("label", label)
+	}
+	if filter != "" {
+		q.Set("filter", filter)
+	}
+	resp, err := c.doRequest("GET", "/api/docker/images?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var images []docker.ImageSummary
+	if err := c.getJSONResponse(resp, &images); err != nil {
+		return nil, err
+	}
+	return images, nil
+}
+
+// DockerInspectImage inspects a Docker image.
+func (c *Client) DockerInspectImage(id string) (types.ImageInspect, error) {
+	var info types.ImageInspect
+	resp, err := c.doRequest("GET", fmt.Sprintf("/api/docker/images/%s", id), nil)
+	if err != nil {
+		return info, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return info, c.errorFromResponse(resp)
+	}
+
+	if err := c.getJSONResponse(resp, &info); err != nil {
+		return info, err
+	}
+	return info, nil
+}
+
+// DockerPullImage pulls a Docker image synchronously.
+func (c *Client) DockerPullImage(image string) error {
+	reqBody := docker.PullImageRequest{Image: image}
+	resp, err := c.doRequest("POST", "/api/docker/images/pull", reqBody)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.errorFromResponse(resp)
+	}
+	return nil
+}
+
+// DockerRemoveImage removes a Docker image.
+func (c *Client) DockerRemoveImage(id string, force, noPrune bool) (*docker.ImageRemoveResponse, error) {
+	q := url.Values{}
+	q.Set("force", strconv.FormatBool(force))
+	q.Set("noprune", strconv.FormatBool(noPrune))
+	resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/docker/images/%s?%s", id, q.Encode()), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var result docker.ImageRemoveResponse
+	if err := c.getJSONResponse(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DockerTagImage tags a Docker image.
+func (c *Client) DockerTagImage(source, target string) error {
+	reqBody := docker.TagImageRequest{Source: source, Target: target}
+	resp, err := c.doRequest("POST", "/api/docker/images/tag", reqBody)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.errorFromResponse(resp)
+	}
+	return nil
+}
+
+// DockerImageHistory returns the history of a Docker image.
+func (c *Client) DockerImageHistory(id string) ([]image.HistoryResponseItem, error) {
+	resp, err := c.doRequest("GET", fmt.Sprintf("/api/docker/images/%s/history", id), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var history []image.HistoryResponseItem
+	if err := c.getJSONResponse(resp, &history); err != nil {
+		return nil, err
+	}
+	return history, nil
 }
 
 // DockerLoadImage submits an asynchronous request to download and load a docker

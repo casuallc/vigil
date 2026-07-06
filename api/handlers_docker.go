@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/casuallc/vigil/docker"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/gorilla/mux"
 )
 
@@ -377,6 +379,165 @@ func (s *Server) handleDockerComposeRemove(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
+}
+
+// handleDockerListImages GET /api/docker/images?all=true&dangling=true&label=...&filter=...
+func (s *Server) handleDockerListImages(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	opts := image.ListOptions{All: r.URL.Query().Get("all") == "true"}
+	args := filters.NewArgs()
+
+	if r.URL.Query().Get("dangling") == "true" {
+		args.Add("dangling", "true")
+	}
+	for _, label := range r.URL.Query()["label"] {
+		args.Add("label", label)
+	}
+	if filterJSON := r.URL.Query().Get("filter"); filterJSON != "" {
+		parsed, err := filters.FromJSON(filterJSON)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid filter JSON: "+err.Error())
+			return
+		}
+		args = parsed
+	}
+	opts.Filters = args
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	images, err := s.dockerManager.ListImages(ctx, opts)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, docker.ToImageSummaries(images))
+}
+
+// handleDockerInspectImage GET /api/docker/images/{id}
+func (s *Server) handleDockerInspectImage(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	id := mux.Vars(r)["id"]
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	info, err := s.dockerManager.InspectImage(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// handleDockerPullImage POST /api/docker/images/pull
+func (s *Server) handleDockerPullImage(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	var req docker.PullImageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Image == "" {
+		writeError(w, http.StatusBadRequest, "image is required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+
+	if err := s.dockerManager.PullImage(ctx, req.Image); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "pulled"})
+}
+
+// handleDockerRemoveImage DELETE /api/docker/images/{id}?force=true&noprune=false
+func (s *Server) handleDockerRemoveImage(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	id := mux.Vars(r)["id"]
+	force := r.URL.Query().Get("force") == "true"
+	noPrune := r.URL.Query().Get("noprune") == "true"
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	deleted, err := s.dockerManager.RemoveImage(ctx, id, force, noPrune)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	resp := docker.ImageRemoveResponse{Deleted: make([]docker.ImageDeleteResponseItem, 0, len(deleted))}
+	for _, d := range deleted {
+		resp.Deleted = append(resp.Deleted, docker.ImageDeleteResponseItem{
+			Deleted:  d.Deleted,
+			Untagged: d.Untagged,
+		})
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleDockerTagImage POST /api/docker/images/tag
+func (s *Server) handleDockerTagImage(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	var req docker.TagImageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Source == "" || req.Target == "" {
+		writeError(w, http.StatusBadRequest, "source and target are required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	if err := s.dockerManager.TagImage(ctx, req.Source, req.Target); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "tagged"})
+}
+
+// handleDockerImageHistory GET /api/docker/images/{id}/history
+func (s *Server) handleDockerImageHistory(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	id := mux.Vars(r)["id"]
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	history, err := s.dockerManager.ImageHistory(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, history)
 }
 
 // handleDockerPing GET /api/docker/ping
