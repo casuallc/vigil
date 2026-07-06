@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -335,6 +336,9 @@ func ToContainerSummaries(containers []types.Container) []ContainerSummary {
 			Labels:  c.Labels,
 		})
 	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Created > out[j].Created
+	})
 	return out
 }
 
@@ -355,6 +359,9 @@ func ToImageSummaries(images []image.Summary) []ImageSummary {
 			VirtualSize: img.VirtualSize,
 		})
 	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Created > out[j].Created
+	})
 	return out
 }
 
