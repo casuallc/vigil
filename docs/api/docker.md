@@ -58,7 +58,7 @@ Authorization: Basic base64(username:password)
 ```json
 {
   "api_version": "1.47",
-  "version": "27.5.1",
+  "ostype": "linux",
   "experimental": false
 }
 ```
