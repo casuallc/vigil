@@ -57,9 +57,14 @@ Authorization: Basic base64(username:password)
 
 ```json
 {
-  "api_version": "1.47",
-  "ostype": "linux",
-  "experimental": false
+  "APIVersion": "1.44",
+  "OSType": "linux",
+  "Experimental": true,
+  "BuilderVersion": "2",
+  "SwarmStatus": {
+    "NodeState": "inactive",
+    "ControlAvailable": false
+  }
 }
 ```
 
