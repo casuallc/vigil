@@ -471,10 +471,14 @@ func (c *CLI) setupDockerContainerInspectCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "inspect [id]",
 		Short: "Inspect a container",
-		Long:  "Return detailed information about a Docker container.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Return detailed information about a Docker container. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerInspect(args[0])
+			id, err := c.resolveDockerContainerID(args, "select container to inspect")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerInspect(id)
 		},
 	}
 }
@@ -486,10 +490,14 @@ func (c *CLI) setupDockerContainerRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rm [id]",
 		Short: "Remove a container",
-		Long:  "Remove a Docker container.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Remove a Docker container. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerRemove(args[0], force)
+			id, err := c.resolveDockerContainerID(args, "select container to remove")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerRemove(id, force)
 		},
 	}
 
@@ -503,10 +511,14 @@ func (c *CLI) setupDockerContainerStartCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start [id]",
 		Short: "Start a container",
-		Long:  "Start a Docker container.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Start a Docker container. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerStart(args[0])
+			id, err := c.resolveDockerContainerID(args, "select container to start")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerStart(id)
 		},
 	}
 }
@@ -518,10 +530,14 @@ func (c *CLI) setupDockerContainerStopCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stop [id]",
 		Short: "Stop a container",
-		Long:  "Stop a Docker container with an optional timeout.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Stop a Docker container with an optional timeout. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerStop(args[0], timeout)
+			id, err := c.resolveDockerContainerID(args, "select container to stop")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerStop(id, timeout)
 		},
 	}
 
@@ -537,10 +553,14 @@ func (c *CLI) setupDockerContainerRestartCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "restart [id]",
 		Short: "Restart a container",
-		Long:  "Restart a Docker container with an optional timeout.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Restart a Docker container with an optional timeout. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerRestart(args[0], timeout)
+			id, err := c.resolveDockerContainerID(args, "select container to restart")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerRestart(id, timeout)
 		},
 	}
 
@@ -554,10 +574,14 @@ func (c *CLI) setupDockerContainerPauseCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "pause [id]",
 		Short: "Pause a container",
-		Long:  "Pause all processes in a Docker container.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Pause all processes in a Docker container. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerPause(args[0])
+			id, err := c.resolveDockerContainerID(args, "select container to pause")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerPause(id)
 		},
 	}
 }
@@ -567,10 +591,14 @@ func (c *CLI) setupDockerContainerUnpauseCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "unpause [id]",
 		Short: "Unpause a container",
-		Long:  "Resume all processes in a Docker container.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Resume all processes in a Docker container. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerUnpause(args[0])
+			id, err := c.resolveDockerContainerID(args, "select container to unpause")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerUnpause(id)
 		},
 	}
 }
@@ -583,13 +611,17 @@ func (c *CLI) setupDockerContainerExecCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "exec [id]",
 		Short: "Execute a command in a container",
-		Long:  "Run a command inside a Docker container. Use -i/-t for an interactive session (e.g. bash).",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Run a command inside a Docker container. Use -i/-t for an interactive session (e.g. bash). If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := c.resolveDockerContainerID(args, "select container to exec")
+			if err != nil {
+				return err
+			}
 			if command == "" {
 				return fmt.Errorf("command is required")
 			}
-			return c.handleDockerContainerExec(args[0], command, tty, interactive)
+			return c.handleDockerContainerExec(id, command, tty, interactive)
 		},
 	}
 
@@ -609,10 +641,14 @@ func (c *CLI) setupDockerContainerLogsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs [id]",
 		Short: "Fetch container logs",
-		Long:  "Stream or fetch logs from a Docker container.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Stream or fetch logs from a Docker container. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerLogs(args[0], follow, tail, since)
+			id, err := c.resolveDockerContainerID(args, "select container to fetch logs")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerLogs(id, follow, tail, since)
 		},
 	}
 
@@ -630,10 +666,14 @@ func (c *CLI) setupDockerContainerStatsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stats [id]",
 		Short: "Fetch container stats",
-		Long:  "Stream or fetch resource usage statistics from a Docker container.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Stream or fetch resource usage statistics from a Docker container. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerStats(args[0], stream)
+			id, err := c.resolveDockerContainerID(args, "select container to fetch stats")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerStats(id, stream)
 		},
 	}
 
@@ -651,13 +691,17 @@ func (c *CLI) setupDockerContainerExecWSCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "exec-ws [id]",
 		Short: "Interactive exec via WebSocket",
-		Long:  "Open an interactive exec session inside a Docker container via WebSocket.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Open an interactive exec session inside a Docker container via WebSocket. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := c.resolveDockerContainerID(args, "select container to exec")
+			if err != nil {
+				return err
+			}
 			if command == "" {
 				return fmt.Errorf("command is required")
 			}
-			return c.handleDockerContainerExecWS(args[0], command, tty, width, height)
+			return c.handleDockerContainerExecWS(id, command, tty, width, height)
 		},
 	}
 
@@ -677,10 +721,14 @@ func (c *CLI) setupDockerContainerLogsWSCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs-ws [id]",
 		Short: "Stream container logs via WebSocket",
-		Long:  "Stream logs from a Docker container via WebSocket until interrupted.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Stream logs from a Docker container via WebSocket until interrupted. If no id is provided, an interactive selection will be shown.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.handleDockerContainerLogsWS(args[0], tail, since)
+			id, err := c.resolveDockerContainerID(args, "select container to stream logs")
+			if err != nil {
+				return err
+			}
+			return c.handleDockerContainerLogsWS(id, tail, since)
 		},
 	}
 
@@ -839,6 +887,51 @@ func (c *CLI) handleDockerContainerList(all bool) error {
 	}
 
 	return nil
+}
+
+// selectDockerContainerInteractively 交互式选择已有容器
+func (c *CLI) selectDockerContainerInteractively(label string) (docker.ContainerSummary, error) {
+	containers, err := c.client.DockerListContainers(true)
+	if err != nil {
+		return docker.ContainerSummary{}, fmt.Errorf("failed to list containers: %v", err)
+	}
+
+	if len(containers) == 0 {
+		return docker.ContainerSummary{}, fmt.Errorf("no containers found")
+	}
+
+	options := make([]SelectOption, len(containers))
+	for i, ct := range containers {
+		names := strings.Join(ct.Names, ", ")
+		if names == "" {
+			names = "<none>"
+		}
+		options[i] = SelectOption{
+			Value: ct.ID,
+			Label: fmt.Sprintf("%s (%s, %s, %s)", truncateString(ct.ID, 12), ct.Image, names, ct.Status),
+		}
+	}
+
+	idx, _, err := Select(SelectConfig{
+		Label: label,
+		Items: options,
+	})
+	if err != nil {
+		return docker.ContainerSummary{}, err
+	}
+	return containers[idx], nil
+}
+
+// resolveDockerContainerID 根据命令行参数或交互式选择解析容器 ID
+func (c *CLI) resolveDockerContainerID(args []string, label string) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	ct, err := c.selectDockerContainerInteractively(label)
+	if err != nil {
+		return "", err
+	}
+	return ct.ID, nil
 }
 
 // handleDockerContainerCreate 处理 docker container create 命令
