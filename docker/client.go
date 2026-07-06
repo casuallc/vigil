@@ -51,6 +51,10 @@ type Client interface {
 	ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error)
 	ImageLoad(ctx context.Context, input io.Reader, quiet bool) (image.LoadResponse, error)
 	ImageTag(ctx context.Context, source, target string) error
+	ImageList(ctx context.Context, options image.ListOptions) ([]image.Summary, error)
+	ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error)
+	ImageRemove(ctx context.Context, imageID string, options image.RemoveOptions) ([]image.DeleteResponse, error)
+	ImageHistory(ctx context.Context, imageID string) ([]image.HistoryResponseItem, error)
 	NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error)
 	NetworkList(ctx context.Context, options network.ListOptions) ([]network.Summary, error)
 	NetworkRemove(ctx context.Context, networkID string) error

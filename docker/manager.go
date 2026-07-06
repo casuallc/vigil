@@ -333,6 +333,26 @@ func ToContainerSummaries(containers []types.Container) []ContainerSummary {
 	return out
 }
 
+// ToImageSummaries converts docker image.Summary slices to our summary type.
+func ToImageSummaries(images []image.Summary) []ImageSummary {
+	out := make([]ImageSummary, 0, len(images))
+	for _, img := range images {
+		out = append(out, ImageSummary{
+			ID:          img.ID,
+			Containers:  img.Containers,
+			Created:     img.Created,
+			Labels:      img.Labels,
+			ParentID:    img.ParentID,
+			RepoDigests: img.RepoDigests,
+			RepoTags:    img.RepoTags,
+			SharedSize:  img.SharedSize,
+			Size:        img.Size,
+			VirtualSize: img.VirtualSize,
+		})
+	}
+	return out
+}
+
 // ParseTimeout parses an integer timeout string; returns nil if empty/invalid.
 func ParseTimeout(s string) *int {
 	if s == "" {
@@ -363,6 +383,32 @@ func (m *Manager) PullImage(ctx context.Context, imageRef string) error {
 		}
 	}
 	return nil
+}
+
+// ListImages returns images from the Docker daemon.
+func (m *Manager) ListImages(ctx context.Context, opts image.ListOptions) ([]image.Summary, error) {
+	return m.cli.ImageList(ctx, opts)
+}
+
+// InspectImage returns detailed information about an image.
+func (m *Manager) InspectImage(ctx context.Context, id string) (types.ImageInspect, error) {
+	info, _, err := m.cli.ImageInspectWithRaw(ctx, id)
+	return info, err
+}
+
+// RemoveImage removes an image, optionally forcing removal and controlling child pruning.
+func (m *Manager) RemoveImage(ctx context.Context, id string, force, noPrune bool) ([]image.DeleteResponse, error) {
+	return m.cli.ImageRemove(ctx, id, image.RemoveOptions{Force: force, PruneChildren: !noPrune})
+}
+
+// TagImage tags a source image with a target reference.
+func (m *Manager) TagImage(ctx context.Context, source, target string) error {
+	return m.cli.ImageTag(ctx, source, target)
+}
+
+// ImageHistory returns the history of an image.
+func (m *Manager) ImageHistory(ctx context.Context, id string) ([]image.HistoryResponseItem, error) {
+	return m.cli.ImageHistory(ctx, id)
 }
 
 // LoadImage streams a tar archive into the Docker daemon and returns the image

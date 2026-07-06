@@ -122,3 +122,39 @@ type LoadImageTask struct {
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
 }
+
+// ImageSummary is a simplified image representation for the API.
+type ImageSummary struct {
+	ID          string            `json:"id"`
+	Containers  int64             `json:"containers"`
+	Created     int64             `json:"created"`
+	Labels      map[string]string `json:"labels"`
+	ParentID    string            `json:"parent_id"`
+	RepoDigests []string          `json:"repo_digests"`
+	RepoTags    []string          `json:"repo_tags"`
+	SharedSize  int64             `json:"shared_size"`
+	Size        int64             `json:"size"`
+	VirtualSize int64             `json:"virtual_size,omitempty"`
+}
+
+// PullImageRequest is the body for POST /api/docker/images/pull.
+type PullImageRequest struct {
+	Image string `json:"image"`
+}
+
+// TagImageRequest is the body for POST /api/docker/images/tag.
+type TagImageRequest struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+// ImageDeleteResponseItem mirrors image.DeleteResponse for API responses.
+type ImageDeleteResponseItem struct {
+	Deleted  string `json:"deleted,omitempty"`
+	Untagged string `json:"untagged,omitempty"`
+}
+
+// ImageRemoveResponse is returned by DELETE /api/docker/images/{id}.
+type ImageRemoveResponse struct {
+	Deleted []ImageDeleteResponseItem `json:"deleted"`
+}
