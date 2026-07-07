@@ -19,6 +19,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -269,11 +270,13 @@ func (s *Server) handleDockerStreamLogs(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	if flusher, ok := w.(http.Flusher); ok {
+	flusher, ok := w.(http.Flusher)
+	if ok {
 		flusher.Flush()
 	}
 
-	if err := s.dockerManager.StreamLogs(ctx, id, follow, tail, since, w); err != nil {
+	fw := &flushWriter{w: w, flusher: flusher}
+	if err := s.dockerManager.StreamLogs(ctx, id, follow, tail, since, fw); err != nil {
 		log.Printf("Docker log stream error: %v", err)
 	}
 }
@@ -297,11 +300,13 @@ func (s *Server) handleDockerStreamStats(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.WriteHeader(http.StatusOK)
-	if flusher, ok := w.(http.Flusher); ok {
+	flusher, ok := w.(http.Flusher)
+	if ok {
 		flusher.Flush()
 	}
 
-	if err := s.dockerManager.StreamStats(ctx, id, stream, w); err != nil {
+	fw := &flushWriter{w: w, flusher: flusher}
+	if err := s.dockerManager.StreamStats(ctx, id, stream, fw); err != nil {
 		log.Printf("Docker stats stream error: %v", err)
 	}
 }
@@ -704,4 +709,20 @@ func (s *Server) handleDockerLoadImageStatus(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, task)
+}
+
+// flushWriter wraps an http.ResponseWriter so that every Write is followed by a
+// Flush. This is required for real-time streaming endpoints (logs, stats) where
+// the default ResponseWriter buffers data until its internal buffer is full.
+type flushWriter struct {
+	w       io.Writer
+	flusher http.Flusher
+}
+
+func (fw *flushWriter) Write(p []byte) (int, error) {
+	n, err := fw.w.Write(p)
+	if fw.flusher != nil {
+		fw.flusher.Flush()
+	}
+	return n, err
 }

@@ -1112,11 +1112,19 @@ func (c *CLI) handleDockerContainerLogs(id string, follow bool, tail, since stri
 	}
 	defer reader.Close()
 
-	_, err = io.Copy(os.Stdout, reader)
-	if err != nil {
-		return fmt.Errorf("failed to read logs: %v", err)
+	bufReader := bufio.NewReader(reader)
+	for {
+		line, err := bufReader.ReadString('\n')
+		if len(line) > 0 {
+			fmt.Print(line)
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("failed to read logs: %v", err)
+		}
 	}
-	return nil
 }
 
 // handleDockerContainerStats 处理 docker container stats 命令
