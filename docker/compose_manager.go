@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 
+	composetypes "github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/volume"
@@ -129,17 +130,13 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 		return nil, fmt.Errorf("compose content is required")
 	}
 
-	// Interpolate environment variables using request env, optional .env values,
-	// and the server process environment (highest precedence).
+	// Build the interpolation environment: request env, then process env
+	// (matching docker-compose CLI precedence).
 	env := composeEnvMap(req.Env)
-	content, err := SubstituteEnvVars([]byte(req.Content), env)
-	if err != nil {
-		return nil, fmt.Errorf("failed to interpolate compose variables: %w", err)
-	}
 
-	cf, err := ParseCompose(content)
+	proj, err := LoadCompose(ctx, project, []byte(req.Content), env)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load compose project: %w", err)
 	}
 
 	// Stateless conflict check: reject if the project already has containers.
@@ -154,7 +151,7 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 	// Pull images once per image reference, skipping images already present
 	// locally to match docker-compose up behavior.
 	images := map[string]struct{}{}
-	for _, svc := range cf.Services {
+	for _, svc := range proj.Services {
 		images[svc.Image] = struct{}{}
 	}
 	for img := range images {
@@ -168,17 +165,19 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 
 	// Collect referenced networks and volumes.
 	referencedNetworks := map[string]struct{}{}
-	if len(cf.Services) > 0 {
+	if len(proj.Services) > 0 {
 		referencedNetworks["default"] = struct{}{}
 	}
 	referencedVolumes := map[string]struct{}{}
-	for _, svc := range cf.Services {
-		for _, netName := range svc.Networks {
+	for _, svc := range proj.Services {
+		for netName := range svc.Networks {
 			referencedNetworks[netName] = struct{}{}
 		}
 		for _, vm := range svc.Volumes {
-			if _, ok := cf.Volumes[vm.Source]; ok {
-				referencedVolumes[vm.Source] = struct{}{}
+			if vm.Type == "volume" || vm.Type == "" {
+				if _, ok := proj.Volumes[vm.Source]; ok {
+					referencedVolumes[vm.Source] = struct{}{}
+				}
 			}
 		}
 	}
@@ -195,8 +194,8 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 			createdNetworks[dockerName] = id
 			continue
 		}
-		cfg, ok := cf.Networks[netName]
-		if ok && cfg.External {
+		cfg, ok := proj.Networks[netName]
+		if ok && bool(cfg.External) {
 			// Verify external network exists (best-effort).
 			list, err := cm.mgr.cli.NetworkList(ctx, network.ListOptions{})
 			if err != nil {
@@ -215,7 +214,7 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 			continue
 		}
 		dockerName := ProjectNetworkName(project, netName)
-		id, err := cm.mgr.CreateNetwork(ctx, dockerName, project, cfg)
+		id, err := cm.mgr.CreateNetwork(ctx, dockerName, project, toComposeNetwork(cfg))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create network %q: %w", netName, err)
 		}
@@ -225,8 +224,8 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 	// Create volumes.
 	createdVolumes := map[string]string{}
 	for volName := range referencedVolumes {
-		cfg, ok := cf.Volumes[volName]
-		if ok && cfg.External {
+		cfg, ok := proj.Volumes[volName]
+		if ok && bool(cfg.External) {
 			// Verify external volume exists (best-effort).
 			list, err := cm.mgr.cli.VolumeList(ctx, volume.ListOptions{})
 			if err != nil {
@@ -245,7 +244,7 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 			continue
 		}
 		dockerName := ProjectVolumeName(project, volName)
-		id, err := cm.mgr.CreateVolume(ctx, dockerName, project, cfg)
+		id, err := cm.mgr.CreateVolume(ctx, dockerName, project, toComposeVolume(cfg))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create volume %q: %w", volName, err)
 		}
@@ -254,14 +253,14 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 
 	// Create containers.
 	createdContainers := []types.Container{}
-	for svcName, svc := range cf.Services {
+	for _, svc := range proj.Services {
 		replicas := ServiceReplicas(svc)
 		for i := 1; i <= replicas; i++ {
-			cfg, hostCfg, netCfg, err := ToDockerConfigs(project, svcName, svc, i, cf.Volumes, cf.Networks)
+			cfg, hostCfg, netCfg, err := serviceToDockerConfigs(project, svc.Name, svc, i, proj.Networks)
 			if err != nil {
-				return nil, fmt.Errorf("failed to build config for service %q: %w", svcName, err)
+				return nil, fmt.Errorf("failed to build config for service %q: %w", svc.Name, err)
 			}
-			name := ServiceContainerName(project, svcName, i)
+			name := ServiceContainerName(project, svc.Name, i)
 			resp, err := cm.mgr.cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, nil, name)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create container %q: %w", name, err)
@@ -283,7 +282,11 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 		}
 	}
 
-	status := cm.buildProjectStatus(project, cf.Services, createdContainers)
+	services := make(map[string]composetypes.ServiceConfig, len(proj.Services))
+	for _, svc := range proj.Services {
+		services[svc.Name] = svc
+	}
+	status := cm.buildProjectStatus(project, services, createdContainers)
 	return status, nil
 }
 
@@ -300,10 +303,10 @@ func (cm *ComposeManager) GetProject(ctx context.Context, project string) (*Comp
 	}
 
 	// Build a minimal service map from labels; the original YAML is not stored.
-	services := map[string]ComposeService{}
+	services := map[string]composetypes.ServiceConfig{}
 	for _, c := range containers {
 		svcName := c.Labels[ComposeServiceLabel]
-		services[svcName] = ComposeService{Image: c.Image}
+		services[svcName] = composetypes.ServiceConfig{Name: svcName, Image: c.Image}
 	}
 
 	status := cm.buildProjectStatus(project, services, containers)
@@ -351,7 +354,7 @@ func (cm *ComposeManager) RemoveProject(ctx context.Context, project string, for
 	return nil
 }
 
-func (cm *ComposeManager) buildProjectStatus(project string, services map[string]ComposeService, containers []types.Container) *ComposeProjectStatus {
+func (cm *ComposeManager) buildProjectStatus(project string, services map[string]composetypes.ServiceConfig, containers []types.Container) *ComposeProjectStatus {
 	status := &ComposeProjectStatus{Name: project}
 
 	groups := map[string][]types.Container{}

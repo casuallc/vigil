@@ -17,13 +17,26 @@ limitations under the License.
 package docker
 
 import (
+	"context"
 	"os"
 	"testing"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/docker/api/types/mount"
 )
 
-func TestParseCompose(t *testing.T) {
+func strPtr(s string) *string { return &s }
+
+func serviceByName(project *types.Project, name string) (types.ServiceConfig, bool) {
+	for _, svc := range project.Services {
+		if svc.Name == name {
+			return svc, true
+		}
+	}
+	return types.ServiceConfig{}, false
+}
+
+func TestLoadCompose(t *testing.T) {
 	content := `
 services:
   web:
@@ -35,7 +48,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./data:/data:ro
+      - /host/data:/data:ro
     networks:
       - frontend
     restart: unless-stopped
@@ -55,31 +68,41 @@ volumes:
   data:
     driver: local
 `
-	cf, err := ParseCompose([]byte(content))
+	proj, err := LoadCompose(context.Background(), "demo", []byte(content), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(cf.Services) != 2 {
-		t.Fatalf("expected 2 services, got %d", len(cf.Services))
+	if len(proj.Services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(proj.Services))
 	}
-	web := cf.Services["web"]
+
+	web, ok := serviceByName(proj, "web")
+	if !ok {
+		t.Fatalf("service web not found")
+	}
 	if web.Image != "nginx:alpine" {
 		t.Fatalf("unexpected image: %s", web.Image)
 	}
 	if len(web.Command) != 3 || web.Command[0] != "nginx" {
 		t.Fatalf("unexpected command: %v", web.Command)
 	}
-	if web.Environment["FOO"] != "bar" || web.Environment["EMPTY"] != "" {
-		t.Fatalf("unexpected environment: %v", web.Environment)
+	if web.Environment["FOO"] == nil || *web.Environment["FOO"] != "bar" {
+		t.Fatalf("unexpected environment FOO: %v", web.Environment["FOO"])
 	}
-	if len(web.Ports) != 1 || web.Ports[0] != "8080:80" {
+	if web.Environment["EMPTY"] != nil && *web.Environment["EMPTY"] != "" {
+		t.Fatalf("unexpected environment EMPTY: %v", web.Environment["EMPTY"])
+	}
+	if len(web.Ports) != 1 || web.Ports[0].Target != 80 {
 		t.Fatalf("unexpected ports: %v", web.Ports)
 	}
-	if len(web.Volumes) != 1 || web.Volumes[0].Source != "./data" || web.Volumes[0].Target != "/data" || !web.Volumes[0].ReadOnly {
+	if len(web.Volumes) != 1 || web.Volumes[0].Source != "/host/data" || web.Volumes[0].Target != "/data" || !web.Volumes[0].ReadOnly {
 		t.Fatalf("unexpected volumes: %+v", web.Volumes)
 	}
-	if len(web.Networks) != 1 || web.Networks[0] != "frontend" {
+	if len(web.Networks) != 1 {
 		t.Fatalf("unexpected networks: %v", web.Networks)
+	}
+	if _, ok := web.Networks["frontend"]; !ok {
+		t.Fatalf("expected frontend network")
 	}
 	if web.Restart != "unless-stopped" {
 		t.Fatalf("unexpected restart: %s", web.Restart)
@@ -87,18 +110,23 @@ volumes:
 	if web.Labels["app"] != "web" {
 		t.Fatalf("unexpected labels: %v", web.Labels)
 	}
-	api := cf.Services["api"]
+
+	api, ok := serviceByName(proj, "api")
+	if !ok {
+		t.Fatalf("service api not found")
+	}
 	if len(api.Command) != 2 || api.Command[0] != "node" {
 		t.Fatalf("unexpected api command: %v", api.Command)
 	}
 	if ServiceReplicas(api) != 2 {
 		t.Fatalf("expected 2 replicas, got %d", ServiceReplicas(api))
 	}
-	if cf.Networks["frontend"].Driver != "bridge" {
-		t.Fatalf("unexpected network driver: %s", cf.Networks["frontend"].Driver)
+
+	if proj.Networks["frontend"].Driver != "bridge" {
+		t.Fatalf("unexpected network driver: %s", proj.Networks["frontend"].Driver)
 	}
-	if cf.Volumes["data"].Driver != "local" {
-		t.Fatalf("unexpected volume driver: %s", cf.Volumes["data"].Driver)
+	if proj.Volumes["data"].Driver != "local" {
+		t.Fatalf("unexpected volume driver: %s", proj.Volumes["data"].Driver)
 	}
 }
 
@@ -135,29 +163,31 @@ func TestServiceContainerName(t *testing.T) {
 	}
 }
 
-func TestToDockerConfigs(t *testing.T) {
-	svc := ComposeService{
+func TestServiceToDockerConfigs(t *testing.T) {
+	svc := types.ServiceConfig{
+		Name:    "web",
 		Image:   "nginx:alpine",
-		Command: composeCommand{"nginx", "-g", "daemon off;"},
-		Environment: composeEnvironment{
-			"FOO": "bar",
+		Command: types.ShellCommand{"nginx", "-g", "daemon off;"},
+		Environment: types.MappingWithEquals{
+			"FOO": strPtr("bar"),
 		},
-		Ports: []string{"8080:80"},
-		Volumes: []composeVolumeMount{
-			{Source: "./data", Target: "/data", ReadOnly: true, Mode: "ro"},
+		Ports: []types.ServicePortConfig{
+			{Target: 80, Published: "8080", Protocol: "tcp"},
 		},
-		Networks: composeServiceNetworks{"frontend"},
-		Restart:  "on-failure:3",
-		Labels:   composeLabels{"app": "web"},
+		Volumes: []types.ServiceVolumeConfig{
+			{Type: "bind", Source: "./data", Target: "/data", ReadOnly: true},
+		},
+		Networks: map[string]*types.ServiceNetworkConfig{
+			"frontend": {},
+		},
+		Restart: "on-failure:3",
+		Labels:  types.Labels{"app": "web"},
 	}
-	volumes := map[string]ComposeVolume{
-		"data": {Driver: "local"},
-	}
-	networks := map[string]ComposeNetwork{
+	networks := types.Networks{
 		"frontend": {Driver: "bridge"},
 	}
 
-	cfg, hostCfg, netCfg, err := ToDockerConfigs("demo", "web", svc, 1, volumes, networks)
+	cfg, hostCfg, netCfg, err := serviceToDockerConfigs("demo", "web", svc, 1, networks)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,18 +221,16 @@ func TestToDockerConfigs(t *testing.T) {
 	}
 }
 
-func TestToDockerConfigs_NamedVolume(t *testing.T) {
-	svc := ComposeService{
+func TestServiceToDockerConfigs_NamedVolume(t *testing.T) {
+	svc := types.ServiceConfig{
+		Name:  "app",
 		Image: "app:latest",
-		Volumes: []composeVolumeMount{
-			{Source: "data", Target: "/data", ReadOnly: true},
+		Volumes: []types.ServiceVolumeConfig{
+			{Type: "volume", Source: "data", Target: "/data", ReadOnly: true},
 		},
 	}
-	volumes := map[string]ComposeVolume{
-		"data": {Driver: "local"},
-	}
 
-	_, hostCfg, _, err := ToDockerConfigs("demo", "app", svc, 1, volumes, nil)
+	_, hostCfg, _, err := serviceToDockerConfigs("demo", "app", svc, 1, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -214,15 +242,19 @@ func TestToDockerConfigs_NamedVolume(t *testing.T) {
 	}
 }
 
-func TestToDockerConfigs_ExternalNetwork(t *testing.T) {
-	svc := ComposeService{
-		Image:    "app:latest",
-		Networks: composeServiceNetworks{"public"},
+func TestServiceToDockerConfigs_ExternalNetwork(t *testing.T) {
+	svc := types.ServiceConfig{
+		Name:  "app",
+		Image: "app:latest",
+		Networks: map[string]*types.ServiceNetworkConfig{
+			"public": {},
+		},
 	}
-	networks := map[string]ComposeNetwork{
+	networks := types.Networks{
 		"public": {External: true},
 	}
-	_, _, netCfg, err := ToDockerConfigs("demo", "app", svc, 1, nil, networks)
+
+	_, _, netCfg, err := serviceToDockerConfigs("demo", "app", svc, 1, networks)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -231,82 +263,60 @@ func TestToDockerConfigs_ExternalNetwork(t *testing.T) {
 	}
 }
 
-func TestSubstituteEnvVars(t *testing.T) {
+func TestLoadCompose_EnvInterpolation(t *testing.T) {
+	content := `
+services:
+  web:
+    image: ${IMAGE}
+    environment:
+      PORT: ${PORT:-8080}
+`
 	env := map[string]string{
-		"IMAGE":   "myapp:v1",
-		"EMPTY":   "",
-		"PORT":    "8080",
+		"IMAGE": "myapp:v1",
+	}
+	proj, err := LoadCompose(context.Background(), "demo", []byte(content), env)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	web, ok := serviceByName(proj, "web")
+	if !ok {
+		t.Fatalf("service web not found")
+	}
+	if web.Image != "myapp:v1" {
+		t.Fatalf("unexpected image: %s", web.Image)
+	}
+	if web.Environment["PORT"] == nil || *web.Environment["PORT"] != "8080" {
+		t.Fatalf("unexpected PORT: %v", web.Environment["PORT"])
+	}
+}
+
+func TestLoadComposeFromDir(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+services:
+  web:
+    image: nginx:alpine
+    environment:
+      APP: ${APP}
+`
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+	if err := os.WriteFile(dir+"/.env", []byte("APP=fromenv\n"), 0644); err != nil {
+		t.Fatalf("failed to write .env: %v", err)
 	}
 
-	cases := []struct {
-		name    string
-		input   string
-		want    string
-		wantErr bool
-	}{
-		{
-			name:  "simple variable",
-			input: "image: ${IMAGE}",
-			want:  "image: myapp:v1",
-		},
-		{
-			name:  "default when unset",
-			input: "image: ${MISSING:-nginx:latest}",
-			want:  "image: nginx:latest",
-		},
-		{
-			name:  "default when empty",
-			input: "image: ${EMPTY:-fallback}",
-			want:  "image: fallback",
-		},
-		{
-			name:  "unset-only default",
-			input: "image: ${UNSET-only}",
-			want:  "image: only",
-		},
-		{
-			name:  "unset-only default keeps empty",
-			input: "port: ${EMPTY-9000}",
-			want:  "port: ",
-		},
-		{
-			name:  "escaped dollar",
-			input: "price: $$10",
-			want:  "price: $10",
-		},
-		{
-			name:  "mixed",
-			input: "image: ${IMAGE}:${MISSING_TAG:-latest}",
-			want:  "image: myapp:v1:latest",
-		},
-		{
-			name:    "required missing",
-			input:   "image: ${MISSING:?image is required}",
-			wantErr: true,
-		},
-		{
-			name:    "required empty",
-			input:   "image: ${EMPTY:?image is required}",
-			wantErr: true,
-		},
+	env := map[string]string{"APP": "fromreq"}
+	proj, err := LoadComposeFromDir(context.Background(), "demo", dir, env)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := SubstituteEnvVars([]byte(tc.input), env)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if string(got) != tc.want {
-				t.Fatalf("got %q, want %q", got, tc.want)
-			}
-		})
+	web, ok := serviceByName(proj, "web")
+	if !ok {
+		t.Fatalf("service web not found")
+	}
+	if web.Environment["APP"] == nil || *web.Environment["APP"] != "fromreq" {
+		t.Fatalf("request env should override .env, got: %v", web.Environment["APP"])
 	}
 }
 

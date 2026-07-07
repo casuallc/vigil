@@ -17,17 +17,19 @@ limitations under the License.
 package docker
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/compose-spec/compose-go/v2/loader"
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
-	"github.com/google/shlex"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -36,131 +38,62 @@ const (
 	ComposeOneoffLabel  = "com.docker.compose.oneoff"
 )
 
-// ComposeFile is a minimal in-memory representation of a docker-compose.yml file.
-type ComposeFile struct {
-	Services map[string]ComposeService `yaml:"services"`
-	Networks map[string]ComposeNetwork `yaml:"networks,omitempty"`
-	Volumes  map[string]ComposeVolume  `yaml:"volumes,omitempty"`
-}
-
-// ComposeService describes a single service in a compose file.
-type ComposeService struct {
-	Image       string                 `yaml:"image"`
-	Command     composeCommand         `yaml:"command,omitempty"`
-	Environment composeEnvironment     `yaml:"environment,omitempty"`
-	Ports       []string               `yaml:"ports,omitempty"`
-	Volumes     []composeVolumeMount   `yaml:"volumes,omitempty"`
-	Networks    composeServiceNetworks `yaml:"networks,omitempty"`
-	Restart     string                 `yaml:"restart,omitempty"`
-	Labels      composeLabels          `yaml:"labels,omitempty"`
-	Deploy      ComposeDeploy          `yaml:"deploy,omitempty"`
-	Replicas    *int                   `yaml:"replicas,omitempty"`
-}
-
-// ComposeDeploy holds the deploy block of a service.
-type ComposeDeploy struct {
-	Replicas *int `yaml:"replicas,omitempty"`
-}
-
-// ComposeNetwork describes a top-level network.
+// ComposeNetwork is a minimal adapter for network creation parameters.
 type ComposeNetwork struct {
-	Driver   string        `yaml:"driver,omitempty"`
-	External bool          `yaml:"external,omitempty"`
-	Labels   composeLabels `yaml:"labels,omitempty"`
+	Driver string
+	Labels map[string]string
 }
 
-// ComposeVolume describes a top-level volume.
+// ComposeVolume is a minimal adapter for volume creation parameters.
 type ComposeVolume struct {
-	Driver   string        `yaml:"driver,omitempty"`
-	External bool          `yaml:"external,omitempty"`
-	Labels   composeLabels `yaml:"labels,omitempty"`
+	Driver string
+	Labels map[string]string
 }
 
-// ParseCompose parses a docker-compose.yml content into ComposeFile.
-func ParseCompose(content []byte) (*ComposeFile, error) {
-	var cf ComposeFile
-	if err := yaml.Unmarshal(content, &cf); err != nil {
-		return nil, fmt.Errorf("failed to parse compose yaml: %w", err)
+func toComposeNetwork(cfg types.NetworkConfig) ComposeNetwork {
+	return ComposeNetwork{
+		Driver: cfg.Driver,
+		Labels: cfg.Labels,
 	}
-	if len(cf.Services) == 0 {
-		return nil, fmt.Errorf("compose file must define at least one service")
-	}
-	for name, svc := range cf.Services {
-		if svc.Image == "" {
-			return nil, fmt.Errorf("service %q is missing image", name)
-		}
-	}
-	return &cf, nil
 }
 
-const escapedDollar = "\x00ESCAPED_DOLLAR\x00"
+func toComposeVolume(cfg types.VolumeConfig) ComposeVolume {
+	return ComposeVolume{
+		Driver: cfg.Driver,
+		Labels: cfg.Labels,
+	}
+}
 
-var composeEnvVarRE = regexp.MustCompile(`\$\{([^}]+)\}`)
-
-// SubstituteEnvVars replaces ${VAR} placeholders in a compose file with values
-// from env. It supports the common docker-compose interpolation syntax:
-//   - ${VAR}
-//   - ${VAR:-default}  (use default if unset or empty)
-//   - ${VAR-default}   (use default only if unset)
-//   - ${VAR:?err}      (fail if unset or empty)
-//   - ${VAR?err}       (fail if unset)
-//   - $$               (literal $)
-func SubstituteEnvVars(content []byte, env map[string]string) ([]byte, error) {
-	s := strings.ReplaceAll(string(content), "$$", escapedDollar)
-	var subErr error
-	s = composeEnvVarRE.ReplaceAllStringFunc(s, func(match string) string {
-		if subErr != nil {
-			return match
-		}
-		inner := match[2 : len(match)-1]
-
-		// ${VAR:?error}
-		if idx := strings.Index(inner, ":?"); idx >= 0 {
-			name := inner[:idx]
-			msg := inner[idx+2:]
-			val, ok := env[name]
-			if !ok || val == "" {
-				subErr = fmt.Errorf("required variable %q is missing: %s", name, msg)
-			}
-			return val
-		}
-		// ${VAR?error}
-		if idx := strings.Index(inner, "?"); idx >= 0 {
-			name := inner[:idx]
-			msg := inner[idx+1:]
-			val, ok := env[name]
-			if !ok {
-				subErr = fmt.Errorf("required variable %q is missing: %s", name, msg)
-			}
-			return val
-		}
-		// ${VAR:-default}
-		if idx := strings.Index(inner, ":-"); idx >= 0 {
-			name := inner[:idx]
-			def := inner[idx+2:]
-			val, ok := env[name]
-			if !ok || val == "" {
-				return def
-			}
-			return val
-		}
-		// ${VAR-default}
-		if idx := strings.Index(inner, "-"); idx >= 0 {
-			name := inner[:idx]
-			def := inner[idx+1:]
-			val, ok := env[name]
-			if !ok {
-				return def
-			}
-			return val
-		}
-
-		return env[inner]
+// LoadCompose loads a compose project from in-memory YAML content.
+// Environment variable interpolation uses the provided env map.
+func LoadCompose(_ context.Context, projectName string, content []byte, env map[string]string) (*types.Project, error) {
+	details := types.ConfigDetails{
+		WorkingDir: ".",
+		ConfigFiles: []types.ConfigFile{
+			{Filename: "docker-compose.yml", Content: content},
+		},
+		Environment: env,
+	}
+	return loader.Load(details, func(options *loader.Options) {
+		options.SetProjectName(projectName, true)
+		options.SkipResolveEnvironment = true
 	})
-	if subErr != nil {
-		return nil, subErr
+}
+
+// LoadComposeFromDir loads a compose project from a server-side directory,
+// reading docker-compose.yml and honoring the provided env map.
+func LoadComposeFromDir(_ context.Context, projectName, dir string, env map[string]string) (*types.Project, error) {
+	details := types.ConfigDetails{
+		WorkingDir: dir,
+		ConfigFiles: []types.ConfigFile{
+			{Filename: filepath.Join(dir, "docker-compose.yml")},
+		},
+		Environment: env,
 	}
-	return []byte(strings.ReplaceAll(s, escapedDollar, "$")), nil
+	return loader.Load(details, func(options *loader.Options) {
+		options.SetProjectName(projectName, true)
+		options.SkipResolveEnvironment = true
+	})
 }
 
 // NormalizeProjectName validates and normalizes a compose project name.
@@ -181,19 +114,19 @@ func ServiceContainerName(project, service string, index int) string {
 	return fmt.Sprintf("%s_%s_%d", project, service, index)
 }
 
-// ServiceReplicas returns the effective replica count for a service.
-func ServiceReplicas(svc ComposeService) int {
-	if svc.Deploy.Replicas != nil && *svc.Deploy.Replicas > 0 {
+// ServiceReplicas returns the effective replica count for a compose service.
+func ServiceReplicas(svc types.ServiceConfig) int {
+	if svc.Deploy != nil && svc.Deploy.Replicas != nil && *svc.Deploy.Replicas > 0 {
 		return *svc.Deploy.Replicas
 	}
-	if svc.Replicas != nil && *svc.Replicas > 0 {
-		return *svc.Replicas
+	if svc.Scale != nil && *svc.Scale > 0 {
+		return *svc.Scale
 	}
 	return 1
 }
 
-// ToDockerConfigs converts a compose service to Docker SDK configs for a single replica.
-func ToDockerConfigs(project, service string, svc ComposeService, index int, volumes map[string]ComposeVolume, networks map[string]ComposeNetwork) (*container.Config, *container.HostConfig, *network.NetworkingConfig, error) {
+// serviceToDockerConfigs converts a compose service to Docker SDK configs for a single replica.
+func serviceToDockerConfigs(project, service string, svc types.ServiceConfig, index int, networks types.Networks) (*container.Config, *container.HostConfig, *network.NetworkingConfig, error) {
 	labels := map[string]string{
 		ComposeProjectLabel: project,
 		ComposeServiceLabel: service,
@@ -206,7 +139,6 @@ func ToDockerConfigs(project, service string, svc ComposeService, index int, vol
 	cfg := &container.Config{
 		Image:      svc.Image,
 		Cmd:        []string(svc.Command),
-		Env:        svc.Environment.ToSlice(),
 		Labels:     labels,
 		Hostname:   service,
 		Domainname: project,
@@ -215,12 +147,20 @@ func ToDockerConfigs(project, service string, svc ComposeService, index int, vol
 		cfg.Cmd = nil
 	}
 
+	for k, v := range svc.Environment {
+		if v == nil {
+			cfg.Env = append(cfg.Env, fmt.Sprintf("%s=", k))
+		} else {
+			cfg.Env = append(cfg.Env, fmt.Sprintf("%s=%s", k, *v))
+		}
+	}
+
 	hostCfg := &container.HostConfig{
 		RestartPolicy: toRestartPolicy(svc.Restart),
 	}
 
 	if len(svc.Ports) > 0 {
-		exposed, bindings, err := nat.ParsePortSpecs(svc.Ports)
+		exposed, bindings, err := toPortBindings(svc.Ports)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("invalid port spec for service %q: %w", service, err)
 		}
@@ -229,7 +169,7 @@ func ToDockerConfigs(project, service string, svc ComposeService, index int, vol
 	}
 
 	for _, vm := range svc.Volumes {
-		if err := applyVolumeMount(hostCfg, vm, volumes, project); err != nil {
+		if err := applyVolumeMount(hostCfg, vm, project); err != nil {
 			return nil, nil, nil, fmt.Errorf("invalid volume mount for service %q: %w", service, err)
 		}
 	}
@@ -244,184 +184,78 @@ func ToDockerConfigs(project, service string, svc ComposeService, index int, vol
 	return cfg, hostCfg, netCfg, nil
 }
 
-// composeServiceNetworks handles both list and map forms of service networks.
-type composeServiceNetworks []string
+func toPortBindings(ports []types.ServicePortConfig) (nat.PortSet, nat.PortMap, error) {
+	exposed := nat.PortSet{}
+	bindings := nat.PortMap{}
 
-func (n *composeServiceNetworks) UnmarshalYAML(value *yaml.Node) error {
-	switch value.Kind {
-	case yaml.SequenceNode:
-		var list []string
-		if err := value.Decode(&list); err != nil {
-			return err
+	for _, p := range ports {
+		protocol := strings.ToLower(p.Protocol)
+		if protocol == "" {
+			protocol = "tcp"
 		}
-		*n = list
-		return nil
-	case yaml.MappingNode:
-		list := make([]string, 0, len(value.Content)/2)
-		for i := 0; i < len(value.Content); i += 2 {
-			list = append(list, value.Content[i].Value)
-		}
-		*n = list
-		return nil
-	case yaml.ScalarNode:
-		*n = []string{value.Value}
-		return nil
-	default:
-		return fmt.Errorf("networks must be a string, list or map")
-	}
-}
+		port := nat.Port(fmt.Sprintf("%d/%s", p.Target, protocol))
+		exposed[port] = struct{}{}
 
-// composeCommand handles command as either a string or a list.
-type composeCommand []string
-
-func (c *composeCommand) UnmarshalYAML(value *yaml.Node) error {
-	if value.Kind == yaml.ScalarNode {
-		parts, err := shlex.Split(value.Value)
-		if err != nil {
-			return fmt.Errorf("invalid command shell string: %w", err)
-		}
-		*c = parts
-		return nil
-	}
-	var parts []string
-	if err := value.Decode(&parts); err != nil {
-		return err
-	}
-	*c = parts
-	return nil
-}
-
-// composeEnvironment handles environment as either a map or a list of KEY=VALUE.
-type composeEnvironment map[string]string
-
-func (e *composeEnvironment) UnmarshalYAML(value *yaml.Node) error {
-	m := make(map[string]string)
-	switch value.Kind {
-	case yaml.MappingNode:
-		for i := 0; i < len(value.Content); i += 2 {
-			key := value.Content[i].Value
-			valNode := value.Content[i+1]
-			if valNode.Tag == "!!null" {
-				m[key] = ""
-			} else {
-				m[key] = valNode.Value
+		var pb []nat.PortBinding
+		if p.Published != "" {
+			hostIP := p.HostIP
+			if hostIP == "" {
+				hostIP = "0.0.0.0"
 			}
+			pb = append(pb, nat.PortBinding{HostIP: hostIP, HostPort: p.Published})
 		}
-	case yaml.SequenceNode:
-		for _, item := range value.Content {
-			s := item.Value
-			if idx := strings.Index(s, "="); idx >= 0 {
-				m[s[:idx]] = s[idx+1:]
-			} else {
-				m[s] = ""
-			}
-		}
-	default:
-		return fmt.Errorf("environment must be a map or a list")
+		bindings[port] = pb
 	}
-	*e = m
-	return nil
+
+	return exposed, bindings, nil
 }
 
-func (e composeEnvironment) ToSlice() []string {
-	out := make([]string, 0, len(e))
-	for k, v := range e {
-		out = append(out, fmt.Sprintf("%s=%s", k, v))
-	}
-	return out
-}
-
-// composeLabels handles labels as either a map or a list of key=value.
-type composeLabels map[string]string
-
-func (l *composeLabels) UnmarshalYAML(value *yaml.Node) error {
-	m := make(map[string]string)
-	switch value.Kind {
-	case yaml.MappingNode:
-		for i := 0; i < len(value.Content); i += 2 {
-			m[value.Content[i].Value] = value.Content[i+1].Value
-		}
-	case yaml.SequenceNode:
-		for _, item := range value.Content {
-			s := item.Value
-			if idx := strings.Index(s, "="); idx >= 0 {
-				m[s[:idx]] = s[idx+1:]
-			} else {
-				m[s] = ""
-			}
-		}
-	default:
-		return fmt.Errorf("labels must be a map or a list")
-	}
-	*l = m
-	return nil
-}
-
-// composeVolumeMount handles volume mounts in short string or object form.
-type composeVolumeMount struct {
-	Type     string `yaml:"type,omitempty"`
-	Source   string `yaml:"source,omitempty"`
-	Target   string `yaml:"target,omitempty"`
-	ReadOnly bool   `yaml:"read_only,omitempty"`
-	Mode     string `yaml:"-"`
-}
-
-func (v *composeVolumeMount) UnmarshalYAML(value *yaml.Node) error {
-	if value.Kind == yaml.ScalarNode {
-		parts := strings.Split(value.Value, ":")
-		v.Source = parts[0]
-		if len(parts) > 1 {
-			v.Target = parts[1]
-		}
-		if len(parts) > 2 {
-			v.Mode = parts[2]
-			v.ReadOnly = v.Mode == "ro" || v.Mode == "readonly"
-		}
-		return nil
-	}
-	type raw composeVolumeMount
-	var r raw
-	if err := value.Decode(&r); err != nil {
-		return err
-	}
-	*v = composeVolumeMount(r)
-	return nil
-}
-
-func applyVolumeMount(hostCfg *container.HostConfig, vm composeVolumeMount, volumes map[string]ComposeVolume, project string) error {
+func applyVolumeMount(hostCfg *container.HostConfig, vm types.ServiceVolumeConfig, project string) error {
 	if vm.Target == "" {
 		return fmt.Errorf("volume mount target is required")
 	}
-	_, isNamedVolume := volumes[vm.Source]
-	isPath := vm.Source == "" || strings.HasPrefix(vm.Source, "/") || strings.HasPrefix(vm.Source, "./") || strings.HasPrefix(vm.Source, "~/")
 
-	if isNamedVolume && !isPath {
-		// Named volume.
-		if hostCfg.Mounts == nil {
-			hostCfg.Mounts = []mount.Mount{}
+	switch vm.Type {
+	case "volume", "":
+		// Named volume or anonymous volume.
+		source := vm.Source
+		if source != "" {
+			source = ProjectVolumeName(project, source)
 		}
 		hostCfg.Mounts = append(hostCfg.Mounts, mount.Mount{
 			Type:     mount.TypeVolume,
-			Source:   ProjectResourceName(project, vm.Source),
+			Source:   source,
 			Target:   vm.Target,
 			ReadOnly: vm.ReadOnly,
 		})
-		return nil
+	case "bind":
+		bind := fmt.Sprintf("%s:%s", vm.Source, vm.Target)
+		if vm.ReadOnly {
+			bind = fmt.Sprintf("%s:ro", bind)
+		} else if vm.Bind != nil && vm.Bind.SELinux != "" {
+			bind = fmt.Sprintf("%s:%s", bind, vm.Bind.SELinux)
+		}
+		hostCfg.Binds = append(hostCfg.Binds, bind)
+	case "tmpfs":
+		hostCfg.Mounts = append(hostCfg.Mounts, mount.Mount{
+			Type:     mount.TypeTmpfs,
+			Target:   vm.Target,
+			ReadOnly: vm.ReadOnly,
+		})
+	default:
+		return fmt.Errorf("unsupported volume type %q", vm.Type)
 	}
 
-	// Bind mount.
-	bind := fmt.Sprintf("%s:%s", vm.Source, vm.Target)
-	if vm.Mode != "" {
-		bind = fmt.Sprintf("%s:%s", bind, vm.Mode)
-	}
-	hostCfg.Binds = append(hostCfg.Binds, bind)
 	return nil
 }
 
-func toNetworkConfig(project, service string, svcNetworks composeServiceNetworks, networks map[string]ComposeNetwork) *network.NetworkingConfig {
+func toNetworkConfig(project, service string, svcNetworks map[string]*types.ServiceNetworkConfig, networks types.Networks) *network.NetworkingConfig {
 	cfg := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{}}
 
-	networkNames := svcNetworks
+	networkNames := make([]string, 0, len(svcNetworks))
+	for name := range svcNetworks {
+		networkNames = append(networkNames, name)
+	}
 	if len(networkNames) == 0 {
 		networkNames = []string{"default"}
 	}
@@ -429,7 +263,7 @@ func toNetworkConfig(project, service string, svcNetworks composeServiceNetworks
 	for _, netName := range networkNames {
 		dockerNetName := ProjectNetworkName(project, netName)
 		if netName != "default" {
-			if n, ok := networks[netName]; ok && n.External {
+			if n, ok := networks[netName]; ok && bool(n.External) {
 				dockerNetName = netName
 			}
 		}

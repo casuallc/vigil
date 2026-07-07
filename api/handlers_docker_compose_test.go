@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -142,7 +143,7 @@ func (f *composeFakeClient) ImageList(ctx context.Context, options image.ListOpt
 }
 
 func (f *composeFakeClient) ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error) {
-	return types.ImageInspect{}, nil, nil
+	return types.ImageInspect{}, nil, fmt.Errorf("image not found")
 }
 
 func (f *composeFakeClient) ImageRemove(ctx context.Context, imageID string, options image.RemoveOptions) ([]image.DeleteResponse, error) {
