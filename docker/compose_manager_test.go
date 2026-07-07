@@ -24,6 +24,39 @@ import (
 	"github.com/docker/docker/api/types"
 )
 
+func TestComposeManager_DeployProject_ImageExists(t *testing.T) {
+	fc := &FakeClient{
+		createdID:      "cid1",
+		existingImages: map[string]struct{}{"nginx:alpine": {}},
+	}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	content := `
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+`
+	status, err := cm.DeployProject(context.Background(), ComposeDeployRequest{
+		Name:    "demo",
+		Content: content,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.Name != "demo" {
+		t.Fatalf("unexpected project name: %s", status.Name)
+	}
+	if len(fc.imagesPulled) != 0 {
+		t.Fatalf("expected no pulls when image exists locally, got %v", fc.imagesPulled)
+	}
+	if fc.timesStarted != 1 {
+		t.Fatalf("expected container started once, got %d", fc.timesStarted)
+	}
+}
+
 func TestComposeManager_DeployProject(t *testing.T) {
 	fc := &FakeClient{createdID: "cid1"}
 	mgr := NewManagerWithClient(fc)

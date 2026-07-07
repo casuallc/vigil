@@ -376,6 +376,12 @@ func ParseTimeout(s string) *int {
 	return nil
 }
 
+// ImageExists reports whether the image reference is already present locally.
+func (m *Manager) ImageExists(ctx context.Context, imageRef string) bool {
+	_, _, err := m.cli.ImageInspectWithRaw(ctx, imageRef)
+	return err == nil
+}
+
 // PullImage pulls an image and waits for the operation to complete.
 func (m *Manager) PullImage(ctx context.Context, imageRef string) error {
 	rc, err := m.cli.ImagePull(ctx, imageRef, image.PullOptions{})

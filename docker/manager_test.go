@@ -18,6 +18,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -76,6 +77,7 @@ type FakeClient struct {
 	imageInspect    types.ImageInspect
 	imageHistory    []image.HistoryResponseItem
 	imageRemoved    []image.DeleteResponse
+	existingImages  map[string]struct{}
 	imageListErr    error
 	imageInspectErr error
 	imageRemoveErr  error
@@ -117,7 +119,13 @@ func (f *FakeClient) ImageList(ctx context.Context, options image.ListOptions) (
 }
 
 func (f *FakeClient) ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error) {
-	return f.imageInspect, nil, f.imageInspectErr
+	if f.imageInspectErr != nil {
+		return f.imageInspect, nil, f.imageInspectErr
+	}
+	if _, ok := f.existingImages[imageID]; ok {
+		return f.imageInspect, nil, nil
+	}
+	return types.ImageInspect{}, nil, errors.New("image not found")
 }
 
 func (f *FakeClient) ImageRemove(ctx context.Context, imageID string, options image.RemoveOptions) ([]image.DeleteResponse, error) {
@@ -446,7 +454,8 @@ func TestManager_ListImages(t *testing.T) {
 
 func TestManager_InspectImage(t *testing.T) {
 	fc := &FakeClient{
-		imageInspect: types.ImageInspect{ID: "sha256:abc", Size: 2048},
+		imageInspect:   types.ImageInspect{ID: "sha256:abc", Size: 2048},
+		existingImages: map[string]struct{}{"alpine:latest": {}},
 	}
 	m := NewManagerWithClient(fc)
 

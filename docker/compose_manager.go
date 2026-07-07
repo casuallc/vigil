@@ -151,12 +151,16 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 		return nil, fmt.Errorf("project %q already exists", project)
 	}
 
-	// Pull images once per image reference.
+	// Pull images once per image reference, skipping images already present
+	// locally to match docker-compose up behavior.
 	images := map[string]struct{}{}
 	for _, svc := range cf.Services {
 		images[svc.Image] = struct{}{}
 	}
 	for img := range images {
+		if cm.mgr.ImageExists(ctx, img) {
+			continue
+		}
 		if err := cm.mgr.PullImage(ctx, img); err != nil {
 			return nil, fmt.Errorf("failed to pull image %q: %w", img, err)
 		}
