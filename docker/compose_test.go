@@ -17,6 +17,7 @@ limitations under the License.
 package docker
 
 import (
+	"os"
 	"testing"
 
 	"github.com/docker/docker/api/types/mount"
@@ -227,5 +228,129 @@ func TestToDockerConfigs_ExternalNetwork(t *testing.T) {
 	}
 	if _, ok := netCfg.EndpointsConfig["public"]; !ok {
 		t.Fatalf("expected external network name 'public', got %v", netCfg.EndpointsConfig)
+	}
+}
+
+func TestSubstituteEnvVars(t *testing.T) {
+	env := map[string]string{
+		"IMAGE":   "myapp:v1",
+		"EMPTY":   "",
+		"PORT":    "8080",
+	}
+
+	cases := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:  "simple variable",
+			input: "image: ${IMAGE}",
+			want:  "image: myapp:v1",
+		},
+		{
+			name:  "default when unset",
+			input: "image: ${MISSING:-nginx:latest}",
+			want:  "image: nginx:latest",
+		},
+		{
+			name:  "default when empty",
+			input: "image: ${EMPTY:-fallback}",
+			want:  "image: fallback",
+		},
+		{
+			name:  "unset-only default",
+			input: "image: ${UNSET-only}",
+			want:  "image: only",
+		},
+		{
+			name:  "unset-only default keeps empty",
+			input: "port: ${EMPTY-9000}",
+			want:  "port: ",
+		},
+		{
+			name:  "escaped dollar",
+			input: "price: $$10",
+			want:  "price: $10",
+		},
+		{
+			name:  "mixed",
+			input: "image: ${IMAGE}:${MISSING_TAG:-latest}",
+			want:  "image: myapp:v1:latest",
+		},
+		{
+			name:    "required missing",
+			input:   "image: ${MISSING:?image is required}",
+			wantErr: true,
+		},
+		{
+			name:    "required empty",
+			input:   "image: ${EMPTY:?image is required}",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := SubstituteEnvVars([]byte(tc.input), env)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadEnvFile(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/.env"
+	content := `# comment
+IMAGE=myimage:v2
+
+QUOTED="double"
+SINGLE='single'
+NO_VALUE=
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write .env: %v", err)
+	}
+
+	env, err := LoadEnvFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if env["IMAGE"] != "myimage:v2" {
+		t.Fatalf("unexpected IMAGE: %q", env["IMAGE"])
+	}
+	if env["QUOTED"] != "double" {
+		t.Fatalf("unexpected QUOTED: %q", env["QUOTED"])
+	}
+	if env["SINGLE"] != "single" {
+		t.Fatalf("unexpected SINGLE: %q", env["SINGLE"])
+	}
+	if v, ok := env["NO_VALUE"]; !ok || v != "" {
+		t.Fatalf("unexpected NO_VALUE: %q", v)
+	}
+	if _, ok := env["# comment"]; ok {
+		t.Fatalf("comment should not be parsed")
+	}
+}
+
+func TestLoadEnvFile_Missing(t *testing.T) {
+	env, err := LoadEnvFile("/nonexistent/path/.env")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(env) != 0 {
+		t.Fatalf("expected empty env, got %v", env)
 	}
 }

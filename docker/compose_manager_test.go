@@ -287,3 +287,52 @@ func TestComposeManager_DeployProjectFromDir_InvalidProjectName(t *testing.T) {
 		t.Fatalf("expected error for invalid project name")
 	}
 }
+
+func TestComposeManager_DeployProject_EnvInterpolation(t *testing.T) {
+	fc := &FakeClient{createdID: "cid1"}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	content := `
+services:
+  web:
+    image: ${TEST_COMPOSE_IMAGE:-nginx:alpine}
+`
+	_, err := cm.DeployProject(context.Background(), ComposeDeployRequest{
+		Name:    "demo",
+		Content: content,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fc.imagesPulled) != 1 || fc.imagesPulled[0] != "nginx:alpine" {
+		t.Fatalf("unexpected pulled images: %v", fc.imagesPulled)
+	}
+}
+
+func TestComposeManager_DeployProjectFromDir_EnvFile(t *testing.T) {
+	fc := &FakeClient{createdID: "cid1"}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	dir := t.TempDir()
+	composeContent := "services:\n  web:\n    image: ${APP_IMAGE}\n"
+	envContent := "APP_IMAGE=fromenv:v1\n"
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+	if err := os.WriteFile(dir+"/.env", []byte(envContent), 0644); err != nil {
+		t.Fatalf("failed to write .env file: %v", err)
+	}
+
+	_, err := cm.DeployProjectFromDir(context.Background(), ComposeDeployFromDirRequest{
+		Name: "demo",
+		Dir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fc.imagesPulled) != 1 || fc.imagesPulled[0] != "fromenv:v1" {
+		t.Fatalf("unexpected pulled images: %v", fc.imagesPulled)
+	}
+}

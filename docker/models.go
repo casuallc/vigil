@@ -70,16 +70,18 @@ type PortMapping struct {
 
 // ComposeDeployRequest is the body for POST /api/docker/compose.
 type ComposeDeployRequest struct {
-	Name    string `json:"name"`
-	Content string `json:"content"`
-	Start   *bool  `json:"start,omitempty"`
+	Name    string            `json:"name"`
+	Content string            `json:"content"`
+	Start   *bool             `json:"start,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 // ComposeDeployFromDirRequest is the body for POST /api/docker/compose/dir.
 type ComposeDeployFromDirRequest struct {
-	Name  string `json:"name"`
-	Dir   string `json:"dir"`
-	Start *bool  `json:"start,omitempty"`
+	Name string            `json:"name"`
+	Dir  string            `json:"dir"`
+	Start *bool            `json:"start,omitempty"`
+	Env  map[string]string `json:"env,omitempty"`
 }
 
 // ComposeServiceStatus represents one service in a compose project response.

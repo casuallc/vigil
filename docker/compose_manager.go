@@ -100,10 +100,22 @@ func (cm *ComposeManager) DeployProjectFromDir(ctx context.Context, req ComposeD
 		return nil, fmt.Errorf("failed to read compose file: %w", err)
 	}
 
+	// Load an optional .env file from the same directory. Explicit env values
+	// from the request take precedence over .env, and the server process
+	// environment takes precedence over both (matching docker-compose CLI).
+	env, err := LoadEnvFile(filepath.Join(req.Dir, ".env"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load .env file: %w", err)
+	}
+	for k, v := range req.Env {
+		env[k] = v
+	}
+
 	return cm.DeployProject(ctx, ComposeDeployRequest{
 		Name:    project,
 		Content: string(content),
 		Start:   req.Start,
+		Env:     env,
 	})
 }
 
@@ -117,7 +129,15 @@ func (cm *ComposeManager) DeployProject(ctx context.Context, req ComposeDeployRe
 		return nil, fmt.Errorf("compose content is required")
 	}
 
-	cf, err := ParseCompose([]byte(req.Content))
+	// Interpolate environment variables using request env, optional .env values,
+	// and the server process environment (highest precedence).
+	env := composeEnvMap(req.Env)
+	content, err := SubstituteEnvVars([]byte(req.Content), env)
+	if err != nil {
+		return nil, fmt.Errorf("failed to interpolate compose variables: %w", err)
+	}
+
+	cf, err := ParseCompose(content)
 	if err != nil {
 		return nil, err
 	}
@@ -359,4 +379,58 @@ func (cm *ComposeManager) buildProjectStatus(project string, services map[string
 	}
 
 	return status
+}
+
+// LoadEnvFile reads KEY=VALUE pairs from a .env style file.
+// It returns an empty map and no error if the file does not exist.
+func LoadEnvFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]string{}, nil
+		}
+		return nil, err
+	}
+
+	env := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.Index(line, "=")
+		if idx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		if len(val) >= 2 {
+			switch {
+			case val[0] == '"' && val[len(val)-1] == '"':
+				val = val[1 : len(val)-1]
+			case val[0] == '\'' && val[len(val)-1] == '\'':
+				val = val[1 : len(val)-1]
+			}
+		}
+		if key != "" {
+			env[key] = val
+		}
+	}
+	return env, nil
+}
+
+// composeEnvMap builds an env map from reqEnv, then overlays the process
+// environment so that shell variables take precedence (matching docker-compose).
+func composeEnvMap(reqEnv map[string]string) map[string]string {
+	env := map[string]string{}
+	for k, v := range reqEnv {
+		env[k] = v
+	}
+	for _, e := range os.Environ() {
+		idx := strings.Index(e, "=")
+		if idx >= 0 {
+			env[e[:idx]] = e[idx+1:]
+		}
+	}
+	return env
 }

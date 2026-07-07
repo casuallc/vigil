@@ -889,8 +889,16 @@ curl -u <username>:<password> \
 | 字段 | 类型 | 必填 | 描述 |
 |------|------|------|------|
 | name | string | 是 | 项目名称，只能包含小写字母、数字、下划线和连字符 |
-| content | string | 是 | compose YAML 内容 |
+| content | string | 是 | compose YAML 内容，支持 `${VAR}` 形式的环境变量插值 |
 | start | boolean | 否 | 是否自动启动容器，默认 `true` |
+| env | object | 否 | 环境变量键值对，用于替换 `content` 中的 `${VAR}` 占位符；服务器进程环境变量优先级更高 |
+
+**环境变量插值**：`content` 支持 docker-compose 风格的变量替换语法：
+- `${VAR}`：替换为 `env` 或服务器环境变量中的值，未设置则为空字符串。
+- `${VAR:-default}`：未设置或为空时使用 `default`。
+- `${VAR-default}`：仅未设置时使用 `default`。
+- `${VAR:?error}` / `${VAR?error}`：未设置（或为空）时返回错误。
+- `$$`：表示字面量 `$`。
 
 **请求示例**：
 
@@ -956,6 +964,9 @@ curl -u <username>:<password> -X POST \
 | name | string | 否 | 项目名称，只能包含小写字母、数字、下划线和连字符；为空时使用目录 basename |
 | dir | string | 是 | 服务器本地目录路径，该目录下需存在 `docker-compose.yml` |
 | start | boolean | 否 | 是否自动启动容器，默认 `true` |
+| env | object | 否 | 额外环境变量键值对；目录下的 `.env` 文件会被自动加载，服务器进程环境变量优先级最高 |
+
+**环境变量插值**：与 `POST /api/docker/compose` 相同。`docker-compose.yml` 中的 `${VAR}` 占位符会按以下优先级替换：服务器进程环境变量 > 请求体 `env` > 目录下 `.env` 文件。
 
 **请求示例**：
 

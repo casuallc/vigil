@@ -93,6 +93,76 @@ func ParseCompose(content []byte) (*ComposeFile, error) {
 	return &cf, nil
 }
 
+const escapedDollar = "\x00ESCAPED_DOLLAR\x00"
+
+var composeEnvVarRE = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+// SubstituteEnvVars replaces ${VAR} placeholders in a compose file with values
+// from env. It supports the common docker-compose interpolation syntax:
+//   - ${VAR}
+//   - ${VAR:-default}  (use default if unset or empty)
+//   - ${VAR-default}   (use default only if unset)
+//   - ${VAR:?err}      (fail if unset or empty)
+//   - ${VAR?err}       (fail if unset)
+//   - $$               (literal $)
+func SubstituteEnvVars(content []byte, env map[string]string) ([]byte, error) {
+	s := strings.ReplaceAll(string(content), "$$", escapedDollar)
+	var subErr error
+	s = composeEnvVarRE.ReplaceAllStringFunc(s, func(match string) string {
+		if subErr != nil {
+			return match
+		}
+		inner := match[2 : len(match)-1]
+
+		// ${VAR:?error}
+		if idx := strings.Index(inner, ":?"); idx >= 0 {
+			name := inner[:idx]
+			msg := inner[idx+2:]
+			val, ok := env[name]
+			if !ok || val == "" {
+				subErr = fmt.Errorf("required variable %q is missing: %s", name, msg)
+			}
+			return val
+		}
+		// ${VAR?error}
+		if idx := strings.Index(inner, "?"); idx >= 0 {
+			name := inner[:idx]
+			msg := inner[idx+1:]
+			val, ok := env[name]
+			if !ok {
+				subErr = fmt.Errorf("required variable %q is missing: %s", name, msg)
+			}
+			return val
+		}
+		// ${VAR:-default}
+		if idx := strings.Index(inner, ":-"); idx >= 0 {
+			name := inner[:idx]
+			def := inner[idx+2:]
+			val, ok := env[name]
+			if !ok || val == "" {
+				return def
+			}
+			return val
+		}
+		// ${VAR-default}
+		if idx := strings.Index(inner, "-"); idx >= 0 {
+			name := inner[:idx]
+			def := inner[idx+1:]
+			val, ok := env[name]
+			if !ok {
+				return def
+			}
+			return val
+		}
+
+		return env[inner]
+	})
+	if subErr != nil {
+		return nil, subErr
+	}
+	return []byte(strings.ReplaceAll(s, escapedDollar, "$")), nil
+}
+
 // NormalizeProjectName validates and normalizes a compose project name.
 func NormalizeProjectName(name string) (string, error) {
 	name = strings.TrimSpace(name)
