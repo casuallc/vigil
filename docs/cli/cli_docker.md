@@ -106,6 +106,7 @@ bbx-cli docker image [command]
 | 命令 | 描述 |
 |------|------|
 | `load` | 从远程 tar 包异步下载并加载镜像 |
+| `load-task` | 管理异步镜像加载任务（提交、列表、状态） |
 | `list` | 列出本地镜像 |
 | `inspect` | 查看镜像详情 |
 | `pull` | 拉取镜像 |
@@ -138,6 +139,124 @@ bbx-cli docker image load --url <url> --metadata <json>
 
 # 加载镜像并附带元数据
 ./bbx-cli docker image load -u https://example.com/images/app.tar.gz -m '{"name":"myapp","tag":"v1.0"}'
+```
+
+#### docker image load-task
+
+管理异步镜像加载任务。任务会持久化到 vigil server 的本地文件（`./data/docker_load_tasks.json`），server 重启后仍可查询。
+
+**语法：**
+
+```
+bbx-cli docker image load-task [command]
+```
+
+**子命令：**
+
+| 命令 | 描述 |
+|------|------|
+| `submit` | 提交一个镜像加载任务（与 `docker image load` 等价） |
+| `list` | 列出镜像加载任务 |
+| `status` | 查看单个镜像加载任务详情 |
+
+##### docker image load-task submit
+
+提交一个异步镜像加载任务。参数与 `docker image load` 完全一致。
+
+**语法：**
+
+```
+bbx-cli docker image load-task submit --url <url> --metadata <json>
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--url` | `-u` | Docker tar 包下载地址 | 是 | - |
+| `--metadata` | `-m` | 镜像元数据 JSON 字符串 | 否 | - |
+
+**示例：**
+
+```bash
+./bbx-cli docker image load-task submit -u https://example.com/images/app.tar.gz -m '{"name":"myapp","tag":"v1.0"}'
+```
+
+##### docker image load-task list
+
+列出所有异步镜像加载任务，支持按状态过滤。
+
+**语法：**
+
+```
+bbx-cli docker image load-task list [flags]
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `--state` | `-s` | 按任务状态过滤（`pending`、`downloading`、`loading`、`success`、`failed`） | 否 | - |
+| `--limit` | `-n` | 最多显示的任务数量 | 否 | 1000 |
+| `--offset` | - | 跳过的任务数量 | 否 | 0 |
+
+**示例：**
+
+```bash
+# 列出所有任务
+./bbx-cli docker image load-task list
+
+# 只列出失败的任务
+./bbx-cli docker image load-task list -s failed
+
+# 只显示最近 10 条
+./bbx-cli docker image load-task list -n 10
+```
+
+**输出示例：**
+
+```
+ID                   STATE    URL                                              CREATED              UPDATED              ERROR
+---------------------------------------------------------------------------------------------------------------------------------------------------
+task_1751270400000   success  https://example.com/images/nginx.tar.gz          2026-07-08 10:00:00  2026-07-08 10:00:05
+```
+
+##### docker image load-task status
+
+查看单个镜像加载任务的详细信息。
+
+**语法：**
+
+```
+bbx-cli docker image load-task status [id] [flags]
+```
+
+**参数：**
+
+| 参数 | 缩写 | 描述 | 必填 | 默认值 |
+|------|------|------|------|--------|
+| `id` | - | 任务 ID（必填） | 是 | - |
+| `--json` | `-j` | 以 JSON 格式输出 | 否 | false |
+
+**示例：**
+
+```bash
+# 查看任务详情
+./bbx-cli docker image load-task status task_1751270400000
+
+# 以 JSON 输出
+./bbx-cli docker image load-task status task_1751270400000 --json
+```
+
+**输出示例：**
+
+```
+Task:        task_1751270400000
+State:       success
+URL:         https://example.com/images/nginx.tar.gz
+Created:     2026-07-08 10:00:00
+Updated:     2026-07-08 10:00:05
+Images:      nginx:latest
 ```
 
 #### docker image list
@@ -871,7 +990,7 @@ bbx-cli docker compose down [project] [flags]
    - `containerPort:hostPort`：绑定到所有接口
    - `containerPort:hostIP:hostPort`：绑定到指定 IP
 
-3. **异步镜像加载**：`docker image load` 会创建一个后台任务，CLI 会自动轮询任务状态直到完成或失败。
+3. **异步镜像加载**：`docker image load` 会创建一个后台任务，CLI 会自动轮询任务状态直到完成或失败。任务会持久化到 server 的 `./data/docker_load_tasks.json`，server 重启后可通过 `docker image load-task list` 和 `docker image load-task status` 继续查询。
 
 4. **交互式会话**：`docker container exec-ws` 会将本地终端切换到 raw 模式，使用 `Ctrl+C` 或关闭连接即可退出。
 
