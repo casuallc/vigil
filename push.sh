@@ -24,10 +24,13 @@ cd "$(dirname "$0")"
 PKG_FILES=(
     "release/bbx-${VERSION}-linux-amd64.tar.gz"
     "release/bbx-${VERSION}-linux-arm64.tar.gz"
+    "release/bbx-${VERSION}-linux-loong64.tar.gz"
     "release/bbx-${VERSION}.x86_64.rpm"
     "release/bbx-${VERSION}.aarch64.rpm"
+    "release/bbx-${VERSION}.loongarch64.rpm"
     "release/bbx-${VERSION}.amd64.deb"
     "release/bbx-${VERSION}.arm64.deb"
+    "release/bbx-${VERSION}.loong64.deb"
 )
 
 uploaded=0

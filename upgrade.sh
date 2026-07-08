@@ -33,6 +33,9 @@ case "$(uname -m)" in
     aarch64|arm64)
         ARCH="arm64"
         ;;
+    loongarch64|loong64)
+        ARCH="loong64"
+        ;;
     *)
         echo "❌ 不支持的 CPU 架构: $(uname -m)"
         exit 1

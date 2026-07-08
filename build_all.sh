@@ -116,8 +116,9 @@ main() {
     TARGETS=(
         # "windows amd64 1"
         # "windows arm64 1"
-        "linux   amd64 0"
-        "linux   arm64 0"
+        "linux   amd64   0"
+        "linux   arm64   0"
+        "linux   loong64 0"
         # "darwin  amd64 0"
         # "darwin  arm64 0"
     )
@@ -159,8 +160,8 @@ main() {
             fi
             success "✔ $BINARY_NAME"
 
-            # UPX Compression (skip for darwin)
-            if [ $UPX_AVAILABLE -eq 1 ] && [ "$GOOS" != "darwin" ]; then
+            # UPX Compression (skip for darwin and loong64)
+            if [ $UPX_AVAILABLE -eq 1 ] && [ "$GOOS" != "darwin" ] && [ "$GOARCH" != "loong64" ]; then
                 upx --best --quiet "$OUTPUT_PATH"
                 COMPRESSED=$(upx -q -l "$OUTPUT_PATH" | tail -1 | awk '{print $6}')
                 success "⚡ Compressed: $COMPRESSED"

@@ -5,7 +5,7 @@ set -e  # 出错立即退出
 VERSION="${VERSION:-$(git describe --tags --exact-match 2>/dev/null || echo '1.0.0')}"
 
 # 检查必要目录是否存在
-for dir in conf scripts/appctl.sh release/linux-amd64 release/linux-arm64; do
+for dir in conf scripts/appctl.sh release/linux-amd64 release/linux-arm64 release/linux-loong64; do
     if [ ! -e "$dir" ]; then
         echo "错误: $dir 不存在，请检查项目结构。"
         exit 1
@@ -20,7 +20,7 @@ rm -rf release/bbx
 
 # 打包通用函数
 package_arch() {
-    local arch=$1          # amd64 或 arm64
+    local arch=$1          # amd64 / arm64 / loong64
     local src_dir=$2       # 二进制源目录，如 release/linux-amd64
     local output_name=$3   # 输出文件名，如 bbx-linux-amd64.tar.gz
 
@@ -55,8 +55,10 @@ package_arch() {
         local rpm_arch
         if [ "$arch" = "amd64" ]; then
             rpm_arch="x86_64"
-        else
+        elif [ "$arch" = "arm64" ]; then
             rpm_arch="aarch64"
+        else
+            rpm_arch="loongarch64"
         fi
 
         # 生成临时 nfpm 配置
@@ -68,7 +70,7 @@ package_arch() {
         nfpm package -f "/tmp/nfpm-$arch.yaml" -p rpm -t "release/bbx-${VERSION}.${rpm_arch}.rpm"
         echo "✅ bbx-${VERSION}.${rpm_arch}.rpm 生成完成"
 
-        # DEB (架构名与 Go 一致: amd64 / arm64)
+        # DEB (架构名与 Go 一致: amd64 / arm64 / loong64)
         nfpm package -f "/tmp/nfpm-$arch.yaml" -p deb -t "release/bbx-${VERSION}.${arch}.deb"
         echo "✅ bbx-${VERSION}.${arch}.deb 生成完成"
 
@@ -82,8 +84,9 @@ package_arch() {
     rm -rf "$temp_pkg"
 }
 
-# 分别打包 amd64 和 arm64
-package_arch "amd64" "release/linux-amd64" "bbx-${VERSION}-linux-amd64.tar.gz"
-package_arch "arm64" "release/linux-arm64" "bbx-${VERSION}-linux-arm64.tar.gz"
+# 分别打包 amd64、arm64 和 loong64
+package_arch "amd64"   "release/linux-amd64"   "bbx-${VERSION}-linux-amd64.tar.gz"
+package_arch "arm64"   "release/linux-arm64"   "bbx-${VERSION}-linux-arm64.tar.gz"
+package_arch "loong64" "release/linux-loong64" "bbx-${VERSION}-linux-loong64.tar.gz"
 
 echo "🎉 所有架构打包完成！"
