@@ -5,11 +5,11 @@ set -euo pipefail
 NEXUS_URL="https://nexus.apusic.com/service/rest/v1/components?repository=file-server"
 NEXUS_USER="devops_test"
 NEXUS_PASS="Cloud_dev123"
-NEXUS_DIR="/admq/bbx"
+NEXUS_DIR="//admq/bbx"
 
-# Git Bash / MSYS2 下会把以 / 开头的参数自动转成 Windows 路径
+# Git Bash / MSYS2 下会把以单个 / 开头的参数自动转成 Windows 路径
 # （例如 /admq/bbx -> C:/Program Files/Git/admq/bbx），导致 Nexus 收到的 directory 不对。
-# 禁用该自动路径转换。
+# 使用 // 开头可让 MSYS2 保留为 /admq/bbx 传给 curl。
 export MSYS2_NO_PATHCONV=1
 
 # 获取版本号（优先环境变量，其次 git tag，最后默认 1.0.0）
