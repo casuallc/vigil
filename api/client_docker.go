@@ -578,3 +578,26 @@ func (c *Client) DockerLoadImageStatus(taskID string) (*docker.LoadImageTask, er
 	}
 	return &task, nil
 }
+
+// DockerLoadImageList lists asynchronous image load tasks, optionally filtered by state.
+func (c *Client) DockerLoadImageList(state string) ([]docker.LoadImageTask, error) {
+	path := "/api/docker/images/load"
+	if state != "" {
+		path = path + "?state=" + url.QueryEscape(state)
+	}
+
+	resp, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.errorFromResponse(resp)
+	}
+
+	var tasks []docker.LoadImageTask
+	if err := c.getJSONResponse(resp, &tasks); err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}

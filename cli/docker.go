@@ -59,6 +59,7 @@ func (c *CLI) setupDockerImageCommands() *cobra.Command {
 	}
 
 	imageCmd.AddCommand(c.setupDockerImageLoadCommand())
+	imageCmd.AddCommand(c.setupDockerImageLoadTaskCommands())
 	imageCmd.AddCommand(c.setupDockerImageListCommand())
 	imageCmd.AddCommand(c.setupDockerImageInspectCommand())
 	imageCmd.AddCommand(c.setupDockerImagePullCommand())
@@ -69,13 +70,37 @@ func (c *CLI) setupDockerImageCommands() *cobra.Command {
 	return imageCmd
 }
 
-// setupDockerImageLoadCommand 设置 docker image load 命令
+// setupDockerImageLoadTaskCommands 设置 docker image load-task 命令组
+func (c *CLI) setupDockerImageLoadTaskCommands() *cobra.Command {
+	loadTaskCmd := &cobra.Command{
+		Use:   "load-task",
+		Short: "Manage docker image load tasks",
+		Long:  "List, inspect, and submit asynchronous docker image load tasks.",
+	}
+
+	loadTaskCmd.AddCommand(c.setupDockerImageLoadTaskSubmitCommand())
+	loadTaskCmd.AddCommand(c.setupDockerImageLoadTaskListCommand())
+	loadTaskCmd.AddCommand(c.setupDockerImageLoadTaskStatusCommand())
+
+	return loadTaskCmd
+}
+
+// setupDockerImageLoadCommand 设置 docker image load 命令（向后兼容的别名）
 func (c *CLI) setupDockerImageLoadCommand() *cobra.Command {
+	cmd := c.setupDockerImageLoadTaskSubmitCommand()
+	cmd.Use = "load"
+	cmd.Short = "Load a docker image from a remote tar archive"
+	cmd.Long = "Download a docker tar archive from a URL and load it into the local docker daemon."
+	return cmd
+}
+
+// setupDockerImageLoadTaskSubmitCommand 设置 docker image load-task submit 命令
+func (c *CLI) setupDockerImageLoadTaskSubmitCommand() *cobra.Command {
 	var url, metadataJSON string
 
 	cmd := &cobra.Command{
-		Use:   "load",
-		Short: "Load a docker image from a remote tar archive",
+		Use:   "submit",
+		Short: "Submit a docker image load task",
 		Long:  "Download a docker tar archive from a URL and load it into the local docker daemon.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if url == "" {
@@ -134,6 +159,153 @@ func (c *CLI) handleDockerImageLoad(url string, metadata docker.ImageMetadata) e
 			}
 		}
 	}
+}
+
+// setupDockerImageLoadTaskListCommand 设置 docker image load-task list 命令
+func (c *CLI) setupDockerImageLoadTaskListCommand() *cobra.Command {
+	var state string
+	var limit, offset int
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List docker image load tasks",
+		Long:  "List asynchronous docker image load tasks, optionally filtered by state.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImageLoadTaskList(state, limit, offset)
+		},
+	}
+
+	cmd.Flags().StringVarP(&state, "state", "s", "", "Filter by task state (pending, downloading, loading, success, failed)")
+	cmd.Flags().IntVarP(&limit, "limit", "n", 0, "Maximum number of tasks to show (default 1000)")
+	cmd.Flags().IntVar(&offset, "offset", 0, "Number of tasks to skip")
+
+	return cmd
+}
+
+// handleDockerImageLoadTaskList 处理 docker image load-task list 命令
+func (c *CLI) handleDockerImageLoadTaskList(state string, limit, offset int) error {
+	tasks, err := c.client.DockerLoadImageList(state)
+	if err != nil {
+		return fmt.Errorf("failed to list load tasks: %v", err)
+	}
+
+	if offset > 0 {
+		if offset > len(tasks) {
+			offset = len(tasks)
+		}
+		tasks = tasks[offset:]
+	}
+	if limit > 0 && limit < len(tasks) {
+		tasks = tasks[:limit]
+	}
+
+	if len(tasks) == 0 {
+		fmt.Println("No load tasks found.")
+		return nil
+	}
+
+	type row struct {
+		id, state, url, created, updated, errMsg string
+	}
+	rows := make([]row, 0, len(tasks))
+	idWidth, stateWidth, urlWidth := len("ID"), len("STATE"), len("URL")
+	for _, t := range tasks {
+		r := row{
+			id:      t.ID,
+			state:   t.State,
+			url:     t.URL,
+			created: t.CreatedAt.Format("2006-01-02 15:04:05"),
+			updated: t.UpdatedAt.Format("2006-01-02 15:04:05"),
+			errMsg:  t.ErrorMsg,
+		}
+		rows = append(rows, r)
+		if len(r.id) > idWidth {
+			idWidth = len(r.id)
+		}
+		if len(r.state) > stateWidth {
+			stateWidth = len(r.state)
+		}
+		if len(r.url) > urlWidth {
+			urlWidth = len(r.url)
+		}
+	}
+
+	fmt.Printf("%-*s %-*s %-*s %-20s %-20s %s\n",
+		idWidth, "ID",
+		stateWidth, "STATE",
+		urlWidth, "URL",
+		"CREATED",
+		"UPDATED",
+		"ERROR")
+	fmt.Println(strings.Repeat("-", idWidth+stateWidth+urlWidth+40+len("ERROR")+4))
+	for _, r := range rows {
+		fmt.Printf("%-*s %-*s %-*s %-20s %-20s %s\n",
+			idWidth, r.id,
+			stateWidth, r.state,
+			urlWidth, r.url,
+			r.created,
+			r.updated,
+			r.errMsg)
+	}
+	return nil
+}
+
+// setupDockerImageLoadTaskStatusCommand 设置 docker image load-task status 命令
+func (c *CLI) setupDockerImageLoadTaskStatusCommand() *cobra.Command {
+	var outputJSON bool
+
+	cmd := &cobra.Command{
+		Use:   "status [id]",
+		Short: "Show docker image load task status",
+		Long:  "Return detailed information about a single docker image load task.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImageLoadTaskStatus(args[0], outputJSON)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output as JSON")
+
+	return cmd
+}
+
+// handleDockerImageLoadTaskStatus 处理 docker image load-task status 命令
+func (c *CLI) handleDockerImageLoadTaskStatus(id string, outputJSON bool) error {
+	task, err := c.client.DockerLoadImageStatus(id)
+	if err != nil {
+		return fmt.Errorf("failed to get load task status: %v", err)
+	}
+
+	if outputJSON {
+		data, err := json.MarshalIndent(task, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal task: %v", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	fmt.Printf("Task:        %s\n", task.ID)
+	fmt.Printf("State:       %s\n", task.State)
+	fmt.Printf("URL:         %s\n", task.URL)
+	fmt.Printf("Created:     %s\n", task.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("Updated:     %s\n", task.UpdatedAt.Format("2006-01-02 15:04:05"))
+	if task.Metadata.Name != "" {
+		fmt.Printf("Name:        %s\n", task.Metadata.Name)
+	}
+	if task.Metadata.Tag != "" {
+		fmt.Printf("Tag:         %s\n", task.Metadata.Tag)
+	}
+	if task.Metadata.Platform != "" {
+		fmt.Printf("Platform:    %s\n", task.Metadata.Platform)
+	}
+	if task.ErrorMsg != "" {
+		fmt.Printf("Error:       %s\n", task.ErrorMsg)
+	}
+	if len(task.Images) > 0 {
+		fmt.Printf("Images:      %s\n", strings.Join(task.Images, ", "))
+	}
+	return nil
 }
 
 // setupDockerImageListCommand 设置 docker image list 命令

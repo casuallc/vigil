@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -126,10 +127,14 @@ func (f *loadImageFakeClient) VolumeList(ctx context.Context, options volume.Lis
 func (f *loadImageFakeClient) VolumeRemove(ctx context.Context, volumeID string, force bool) error { return nil }
 func (f *loadImageFakeClient) Close() error { return nil }
 
-func newLoadImageTestServer(fc *loadImageFakeClient) *Server {
+func newLoadImageTestServer(t *testing.T, fc *loadImageFakeClient) *Server {
+	store, err := newLoadImageTaskStore(filepath.Join(t.TempDir(), "docker_load_tasks.json"))
+	if err != nil {
+		t.Fatalf("failed to create load image task store: %v", err)
+	}
 	return &Server{
 		dockerManager:  docker.NewManagerWithClient(fc),
-		loadImageTasks: newLoadImageTaskStore(),
+		loadImageTasks: store,
 	}
 }
 
@@ -142,7 +147,7 @@ func TestHandleDockerLoadImage(t *testing.T) {
 
 	body := `{"stream":"Loaded image: myapp:v1.0\n"}` + "\n"
 	fc := &loadImageFakeClient{loadRespBody: io.NopCloser(strings.NewReader(body))}
-	server := newLoadImageTestServer(fc)
+	server := newLoadImageTestServer(t, fc)
 
 	reqBody, _ := json.Marshal(docker.LoadImageRequest{
 		URL: ts.URL,
@@ -204,7 +209,7 @@ func muxSetURLVars(r *http.Request, vars map[string]string) *http.Request {
 
 func TestHandleDockerLoadImage_MissingURL(t *testing.T) {
 	fc := &loadImageFakeClient{}
-	server := newLoadImageTestServer(fc)
+	server := newLoadImageTestServer(t, fc)
 
 	reqBody, _ := json.Marshal(docker.LoadImageRequest{})
 	req := httptest.NewRequest(http.MethodPost, "/api/docker/images/load", bytes.NewReader(reqBody))
@@ -214,6 +219,72 @@ func TestHandleDockerLoadImage_MissingURL(t *testing.T) {
 	server.handleDockerLoadImage(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandleDockerLoadImageList(t *testing.T) {
+	fc := &loadImageFakeClient{}
+	server := newLoadImageTestServer(t, fc)
+
+	now := time.Now()
+	server.loadImageTasks.create(&docker.LoadImageTask{ID: "task-1", URL: "http://a.tar", State: taskStateSuccess, CreatedAt: now.Add(-2 * time.Hour)})
+	server.loadImageTasks.create(&docker.LoadImageTask{ID: "task-2", URL: "http://b.tar", State: taskStateFailed, CreatedAt: now.Add(-1 * time.Hour)})
+	server.loadImageTasks.create(&docker.LoadImageTask{ID: "task-3", URL: "http://c.tar", State: taskStateSuccess, CreatedAt: now})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/docker/images/load", nil)
+	rr := httptest.NewRecorder()
+	server.handleDockerLoadImageList(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var tasks []docker.LoadImageTask
+	if err := json.Unmarshal(rr.Body.Bytes(), &tasks); err != nil {
+		t.Fatalf("failed to decode tasks: %v", err)
+	}
+	if len(tasks) != 3 {
+		t.Fatalf("expected 3 tasks, got %d", len(tasks))
+	}
+	if tasks[0].ID != "task-3" {
+		t.Fatalf("expected newest task first, got %s", tasks[0].ID)
+	}
+}
+
+func TestHandleDockerLoadImageList_FilterByState(t *testing.T) {
+	fc := &loadImageFakeClient{}
+	server := newLoadImageTestServer(t, fc)
+
+	now := time.Now()
+	server.loadImageTasks.create(&docker.LoadImageTask{ID: "task-1", URL: "http://a.tar", State: taskStateSuccess, CreatedAt: now.Add(-time.Hour)})
+	server.loadImageTasks.create(&docker.LoadImageTask{ID: "task-2", URL: "http://b.tar", State: taskStateFailed, CreatedAt: now})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/docker/images/load?state=failed", nil)
+	rr := httptest.NewRecorder()
+	server.handleDockerLoadImageList(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var tasks []docker.LoadImageTask
+	if err := json.Unmarshal(rr.Body.Bytes(), &tasks); err != nil {
+		t.Fatalf("failed to decode tasks: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != "task-2" {
+		t.Fatalf("unexpected filtered tasks: %v", tasks)
+	}
+}
+
+func TestHandleDockerLoadImageList_DockerManagerNil(t *testing.T) {
+	server := &Server{}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/docker/images/load", nil)
+	rr := httptest.NewRecorder()
+	server.handleDockerLoadImageList(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

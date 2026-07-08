@@ -26,6 +26,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -184,18 +185,22 @@ func (f *composeFakeClient) Close() error {
 	return nil
 }
 
-func newComposeTestServer(fc *composeFakeClient) *Server {
+func newComposeTestServer(t *testing.T, fc *composeFakeClient) *Server {
 	mgr := docker.NewManagerWithClient(fc)
+	store, err := newLoadImageTaskStore(filepath.Join(t.TempDir(), "docker_load_tasks.json"))
+	if err != nil {
+		t.Fatalf("failed to create load image task store: %v", err)
+	}
 	return &Server{
 		dockerManager:  mgr,
 		composeManager: docker.NewComposeManager(mgr),
-		loadImageTasks: newLoadImageTaskStore(),
+		loadImageTasks: store,
 	}
 }
 
 func TestHandleDockerComposeDeploy(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	body, _ := json.Marshal(docker.ComposeDeployRequest{
 		Name:    "demo",
@@ -220,7 +225,7 @@ func TestHandleDockerComposeDeploy(t *testing.T) {
 
 func TestHandleDockerComposeDeploy_InvalidYAML(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	body, _ := json.Marshal(docker.ComposeDeployRequest{
 		Name:    "demo",
@@ -242,7 +247,7 @@ func TestHandleDockerComposeDeploy_Conflict(t *testing.T) {
 			{ID: "old", Labels: map[string]string{docker.ComposeProjectLabel: "demo", docker.ComposeServiceLabel: "web"}},
 		},
 	}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	body, _ := json.Marshal(docker.ComposeDeployRequest{
 		Name:    "demo",
@@ -264,7 +269,7 @@ func TestHandleDockerComposeGet(t *testing.T) {
 			{ID: "c1", Names: []string{"/demo_web_1"}, Image: "nginx:alpine", Labels: map[string]string{docker.ComposeProjectLabel: "demo", docker.ComposeServiceLabel: "web"}},
 		},
 	}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/docker/compose/demo", nil)
 	req = mux.SetURLVars(req, map[string]string{"project": "demo"})
@@ -288,7 +293,7 @@ func TestHandleDockerComposeRemove(t *testing.T) {
 			{ID: "c1", Labels: map[string]string{docker.ComposeProjectLabel: "demo", docker.ComposeServiceLabel: "web"}},
 		},
 	}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/docker/compose/demo?force=true", nil)
 	req = mux.SetURLVars(req, map[string]string{"project": "demo"})
@@ -308,7 +313,7 @@ func TestHandleDockerComposeVersion(t *testing.T) {
 	}
 
 	fc := &composeFakeClient{}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/docker/compose-version", nil)
 	rr := httptest.NewRecorder()
@@ -328,7 +333,7 @@ func TestHandleDockerComposeVersion(t *testing.T) {
 
 func TestHandleDockerComposeDeployFromDir(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  web:\n    image: nginx:alpine\n"), 0644); err != nil {
@@ -358,7 +363,7 @@ func TestHandleDockerComposeDeployFromDir(t *testing.T) {
 
 func TestHandleDockerComposeDeployFromDir_NameFromDir(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	parent := t.TempDir()
 	dir := parent + "/myproject"
@@ -391,7 +396,7 @@ func TestHandleDockerComposeDeployFromDir_NameFromDir(t *testing.T) {
 
 func TestHandleDockerComposeDeployFromDir_MissingDir(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
 		Name: "demo",
@@ -409,7 +414,7 @@ func TestHandleDockerComposeDeployFromDir_MissingDir(t *testing.T) {
 
 func TestHandleDockerComposeDeployFromDir_NotADirectory(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	f, err := os.CreateTemp("", "compose-*.yml")
 	if err != nil {
@@ -433,7 +438,7 @@ func TestHandleDockerComposeDeployFromDir_NotADirectory(t *testing.T) {
 
 func TestHandleDockerComposeDeployFromDir_MissingComposeFile(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	body, _ := json.Marshal(docker.ComposeDeployFromDirRequest{
 		Name: "demo",
@@ -451,7 +456,7 @@ func TestHandleDockerComposeDeployFromDir_MissingComposeFile(t *testing.T) {
 
 func TestHandleDockerComposeDeployFromDir_InvalidProjectName(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	parent := t.TempDir()
 	dir := parent + "/my project!"
@@ -481,7 +486,7 @@ func TestHandleDockerComposeDeployFromDir_Conflict(t *testing.T) {
 			{ID: "old", Labels: map[string]string{docker.ComposeProjectLabel: "demo", docker.ComposeServiceLabel: "web"}},
 		},
 	}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  web:\n    image: nginx:alpine\n"), 0644); err != nil {
@@ -504,7 +509,7 @@ func TestHandleDockerComposeDeployFromDir_Conflict(t *testing.T) {
 
 func TestHandleDockerComposeDeployFromDir_InvalidYAML(t *testing.T) {
 	fc := &composeFakeClient{createdID: "cid1"}
-	server := newComposeTestServer(fc)
+	server := newComposeTestServer(t, fc)
 
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("not: valid: yaml: ["), 0644); err != nil {

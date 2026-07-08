@@ -226,7 +226,12 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
 			} else {
 				server.dockerManager = dockerMgr
 				server.composeManager = docker.NewComposeManager(dockerMgr)
-				server.loadImageTasks = newLoadImageTaskStore()
+				taskStore, err := newLoadImageTaskStore("")
+				if err != nil {
+					log.Printf("Warning: failed to initialize docker load task store: %v", err)
+				} else {
+					server.loadImageTasks = taskStore
+				}
 				log.Printf("Docker manager initialized")
 			}
 			cancel()
@@ -418,16 +423,17 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 				action = audit.ActionDockerContainerPing
 			case strings.HasPrefix(path, "/api/docker/images"):
 				switch {
-				case strings.HasPrefix(path, "/api/docker/images/load"):
-					resource = strings.TrimPrefix(path, "/api/docker/images/load/")
-					if resource == path {
-						resource = ""
-					}
+				case path == "/api/docker/images/load":
 					switch r.Method {
 					case http.MethodPost:
 						action = audit.ActionDockerImageLoad
 					case http.MethodGet:
-						action = audit.ActionDockerImageLoad
+						action = audit.ActionDockerImageLoadList
+					}
+				case strings.HasPrefix(path, "/api/docker/images/load/"):
+					resource = strings.TrimPrefix(path, "/api/docker/images/load/")
+					if r.Method == http.MethodGet {
+						action = audit.ActionDockerImageLoadStatus
 					}
 				case path == "/api/docker/images":
 					if r.Method == http.MethodGet {

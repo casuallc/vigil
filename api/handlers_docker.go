@@ -22,6 +22,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -709,6 +710,44 @@ func (s *Server) handleDockerLoadImageStatus(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, task)
+}
+
+// handleDockerLoadImageList GET /api/docker/images/load
+func (s *Server) handleDockerLoadImageList(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	state := r.URL.Query().Get("state")
+
+	var tasks []*docker.LoadImageTask
+	if state != "" {
+		tasks = s.loadImageTasks.listByState(state)
+	} else {
+		tasks = s.loadImageTasks.list()
+	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	const maxLimit = 1000
+	if limit <= 0 || limit > maxLimit {
+		limit = maxLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	if offset > len(tasks) {
+		offset = len(tasks)
+	}
+	end := offset + limit
+	if end > len(tasks) {
+		end = len(tasks)
+	}
+
+	writeJSON(w, http.StatusOK, tasks[offset:end])
 }
 
 // flushWriter wraps an http.ResponseWriter so that every Write is followed by a

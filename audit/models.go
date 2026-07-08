@@ -72,7 +72,9 @@ const (
 	ActionDockerComposeGet    ActionType = "docker_compose_get"
 	ActionDockerComposeRemove ActionType = "docker_compose_remove"
 
-	ActionDockerImageLoad ActionType = "docker_image_load"
+	ActionDockerImageLoad       ActionType = "docker_image_load"
+	ActionDockerImageLoadList   ActionType = "docker_image_load_list"
+	ActionDockerImageLoadStatus ActionType = "docker_image_load_status"
 
 	ActionDockerImageList    ActionType = "docker_image_list"
 	ActionDockerImageInspect ActionType = "docker_image_inspect"
