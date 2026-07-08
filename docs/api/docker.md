@@ -26,6 +26,8 @@ Authorization: Basic base64(username:password)
 | /api/docker/ping | GET | 探测 Docker Daemon 连通性 |
 | /api/docker/version | GET | 获取 Docker Daemon 版本信息 |
 | /api/docker/images/load | POST | 异步下载并加载 Docker tar 镜像包 |
+| /api/docker/images/load | GET | 查询镜像加载任务列表 |
+| /api/docker/images/load/{id} | DELETE | 删除镜像加载任务 |
 | /api/docker/images/load/{id}/status | GET | 查询镜像加载任务状态 |
 | /api/docker/images | GET | 列出本地镜像 |
 | /api/docker/images/{id} | GET | 查看镜像详情 |
@@ -229,6 +231,92 @@ curl -u <username>:<password> \
 **状态码**：
 
 - `200 OK`：任务存在
+- `404 Not Found`：任务不存在
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## GET /api/docker/images/load
+
+**功能描述**：查询镜像加载任务列表。任务会持久化到 vigil server 本地文件（`./data/docker_load_tasks.json`），server 重启后仍可查询。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| state | string | 否 | 按状态过滤：`pending` / `downloading` / `loading` / `success` / `failed` |
+| limit | int | 否 | 最多返回的任务数量，默认 `1000` |
+| offset | int | 否 | 跳过的任务数量，默认 `0` |
+
+**响应格式**：`[]LoadImageTask`，按 `created_at` 倒序排列。
+
+**响应示例**：
+
+```json
+[
+  {
+    "id": "task_1751270400000000000",
+    "url": "https://example.com/app-v1.0.tar",
+    "metadata": {"name":"myapp","tag":"v1.0"},
+    "state": "success",
+    "images": ["myapp:v1.0"],
+    "created_at": "2025-07-05T10:00:00Z",
+    "updated_at": "2025-07-05T10:00:05Z"
+  }
+]
+```
+
+**cURL 示例**：
+
+```bash
+# 列出所有任务
+curl -u <username>:<password> \
+  http://localhost:57575/api/docker/images/load
+
+# 只列出失败的任务
+curl -u <username>:<password> \
+  "http://localhost:57575/api/docker/images/load?state=failed"
+
+# 分页：跳过 10 条，最多返回 5 条
+curl -u <username>:<password> \
+  "http://localhost:57575/api/docker/images/load?offset=10&limit=5"
+```
+
+**状态码**：
+
+- `200 OK`：成功
+- `503 Service Unavailable`：Docker manager 未初始化
+
+---
+
+## DELETE /api/docker/images/load/{id}
+
+**功能描述**：删除指定的镜像加载任务。删除后任务将从本地持久化文件中移除。
+
+**路径参数**：
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| id | string | 任务 ID，即 `task_id` |
+
+**响应格式**：
+
+```json
+{
+  "status": "deleted"
+}
+```
+
+**cURL 示例**：
+
+```bash
+curl -u <username>:<password> -X DELETE \
+  http://localhost:57575/api/docker/images/load/task_1751270400000000000
+```
+
+**状态码**：
+
+- `200 OK`：删除成功
 - `404 Not Found`：任务不存在
 - `503 Service Unavailable`：Docker manager 未初始化
 
