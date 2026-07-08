@@ -158,6 +158,7 @@ bbx-cli docker image load-task [command]
 | `submit` | 提交一个镜像加载任务（与 `docker image load` 等价） |
 | `list` | 列出镜像加载任务 |
 | `status` | 查看单个镜像加载任务详情 |
+| `rm` | 删除镜像加载任务 |
 
 ##### docker image load-task submit
 
@@ -257,6 +258,28 @@ URL:         https://example.com/images/nginx.tar.gz
 Created:     2026-07-08 10:00:00
 Updated:     2026-07-08 10:00:05
 Images:      nginx:latest
+```
+
+##### docker image load-task rm
+
+删除一个镜像加载任务。
+
+**语法：**
+
+```
+bbx-cli docker image load-task rm [id]
+```
+
+**参数：**
+
+| 参数 | 描述 |
+|------|------|
+| `id` | 任务 ID（必填） |
+
+**示例：**
+
+```bash
+./bbx-cli docker image load-task rm task_1751270400000
 ```
 
 #### docker image list

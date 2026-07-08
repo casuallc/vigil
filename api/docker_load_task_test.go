@@ -137,6 +137,40 @@ func TestLoadImageTaskStore_List(t *testing.T) {
 	}
 }
 
+func TestLoadImageTaskStore_Delete(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.json")
+	store, err := newLoadImageTaskStore(path)
+	if err != nil {
+		t.Fatalf("newLoadImageTaskStore failed: %v", err)
+	}
+
+	id := store.create(&docker.LoadImageTask{URL: "http://example.com/img.tar", State: taskStateSuccess})
+	if len(store.list()) != 1 {
+		t.Fatal("expected 1 task")
+	}
+
+	if !store.delete(id) {
+		t.Fatal("expected delete to succeed")
+	}
+	if len(store.list()) != 0 {
+		t.Fatal("expected 0 tasks after delete")
+	}
+
+	// Deleting a non-existent task should return false.
+	if store.delete(id) {
+		t.Fatal("expected delete of missing task to fail")
+	}
+
+	// Verify persistence after reopening.
+	store2, err := newLoadImageTaskStore(path)
+	if err != nil {
+		t.Fatalf("failed to reopen store: %v", err)
+	}
+	if len(store2.list()) != 0 {
+		t.Fatal("expected store to remain empty after reopen")
+	}
+}
+
 func TestLoadImageTaskStore_CorruptFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tasks.json")
 	if err := os.WriteFile(path, []byte("not json"), 0644); err != nil {

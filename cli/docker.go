@@ -75,12 +75,13 @@ func (c *CLI) setupDockerImageLoadTaskCommands() *cobra.Command {
 	loadTaskCmd := &cobra.Command{
 		Use:   "load-task",
 		Short: "Manage docker image load tasks",
-		Long:  "List, inspect, and submit asynchronous docker image load tasks.",
+		Long:  "List, inspect, submit, and remove asynchronous docker image load tasks.",
 	}
 
 	loadTaskCmd.AddCommand(c.setupDockerImageLoadTaskSubmitCommand())
 	loadTaskCmd.AddCommand(c.setupDockerImageLoadTaskListCommand())
 	loadTaskCmd.AddCommand(c.setupDockerImageLoadTaskStatusCommand())
+	loadTaskCmd.AddCommand(c.setupDockerImageLoadTaskRemoveCommand())
 
 	return loadTaskCmd
 }
@@ -305,6 +306,28 @@ func (c *CLI) handleDockerImageLoadTaskStatus(id string, outputJSON bool) error 
 	if len(task.Images) > 0 {
 		fmt.Printf("Images:      %s\n", strings.Join(task.Images, ", "))
 	}
+	return nil
+}
+
+// setupDockerImageLoadTaskRemoveCommand 设置 docker image load-task rm 命令
+func (c *CLI) setupDockerImageLoadTaskRemoveCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm [id]",
+		Short: "Remove a docker image load task",
+		Long:  "Delete an asynchronous docker image load task from the server.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.handleDockerImageLoadTaskRemove(args[0])
+		},
+	}
+}
+
+// handleDockerImageLoadTaskRemove 处理 docker image load-task rm 命令
+func (c *CLI) handleDockerImageLoadTaskRemove(id string) error {
+	if err := c.client.DockerDeleteLoadImage(id); err != nil {
+		return fmt.Errorf("failed to remove load task: %v", err)
+	}
+	fmt.Printf("Load task %s removed\n", id)
 	return nil
 }
 

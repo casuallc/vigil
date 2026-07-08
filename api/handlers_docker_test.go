@@ -288,6 +288,40 @@ func TestHandleDockerLoadImageList_DockerManagerNil(t *testing.T) {
 	}
 }
 
+func TestHandleDockerLoadImageDelete(t *testing.T) {
+	fc := &loadImageFakeClient{}
+	server := newLoadImageTestServer(t, fc)
+
+	server.loadImageTasks.create(&docker.LoadImageTask{ID: "task-1", URL: "http://a.tar", State: taskStateSuccess})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/docker/images/load/task-1", nil)
+	req = muxSetURLVars(req, map[string]string{"id": "task-1"})
+	rr := httptest.NewRecorder()
+	server.handleDockerLoadImageDelete(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if _, ok := server.loadImageTasks.get("task-1"); ok {
+		t.Fatal("expected task to be deleted")
+	}
+}
+
+func TestHandleDockerLoadImageDelete_NotFound(t *testing.T) {
+	fc := &loadImageFakeClient{}
+	server := newLoadImageTestServer(t, fc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/docker/images/load/missing", nil)
+	req = muxSetURLVars(req, map[string]string{"id": "missing"})
+	rr := httptest.NewRecorder()
+	server.handleDockerLoadImageDelete(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 // imageHandlerFakeClient implements docker.Client for image handler tests.
 type imageHandlerFakeClient struct {
 	loadRespBody io.ReadCloser

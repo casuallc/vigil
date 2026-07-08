@@ -163,6 +163,22 @@ func (s *loadImageTaskStore) update(id string, updater func(*docker.LoadImageTas
 	return true
 }
 
+// delete removes the task with the given ID and persists the change.
+func (s *loadImageTaskStore) delete(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.tasks[id]; !ok {
+		return false
+	}
+	delete(s.tasks, id)
+
+	if err := s.save(); err != nil {
+		log.Printf("Warning: failed to persist load task deletion %s: %v", id, err)
+	}
+	return true
+}
+
 // list returns a snapshot of all tasks sorted by CreatedAt descending.
 func (s *loadImageTaskStore) list() []*docker.LoadImageTask {
 	s.mu.RLock()

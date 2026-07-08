@@ -601,3 +601,16 @@ func (c *Client) DockerLoadImageList(state string) ([]docker.LoadImageTask, erro
 	}
 	return tasks, nil
 }
+
+// DockerDeleteLoadImage deletes an asynchronous image load task by ID.
+func (c *Client) DockerDeleteLoadImage(taskID string) error {
+	resp, err := c.doRequest("DELETE", fmt.Sprintf("/api/docker/images/load/%s", taskID), nil)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return c.errorFromResponse(resp)
+	}
+	return nil
+}

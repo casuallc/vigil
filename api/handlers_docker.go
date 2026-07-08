@@ -712,6 +712,21 @@ func (s *Server) handleDockerLoadImageStatus(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, task)
 }
 
+// handleDockerLoadImageDelete DELETE /api/docker/images/load/{id}
+func (s *Server) handleDockerLoadImageDelete(w http.ResponseWriter, r *http.Request) {
+	if s.dockerManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "docker manager not initialized")
+		return
+	}
+
+	id := mux.Vars(r)["id"]
+	if !s.loadImageTasks.delete(id) {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 // handleDockerLoadImageList GET /api/docker/images/load
 func (s *Server) handleDockerLoadImageList(w http.ResponseWriter, r *http.Request) {
 	if s.dockerManager == nil {

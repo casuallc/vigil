@@ -75,6 +75,7 @@ const (
 	ActionDockerImageLoad       ActionType = "docker_image_load"
 	ActionDockerImageLoadList   ActionType = "docker_image_load_list"
 	ActionDockerImageLoadStatus ActionType = "docker_image_load_status"
+	ActionDockerImageLoadDelete ActionType = "docker_image_load_delete"
 
 	ActionDockerImageList    ActionType = "docker_image_list"
 	ActionDockerImageInspect ActionType = "docker_image_inspect"

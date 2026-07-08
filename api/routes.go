@@ -210,6 +210,7 @@ func (s *Server) Router() *mux.Router {
 		r.HandleFunc("/api/docker/version", s.handleDockerVersion).Methods("GET")
 		r.HandleFunc("/api/docker/images/load", s.handleDockerLoadImage).Methods("POST")
 		r.HandleFunc("/api/docker/images/load", s.handleDockerLoadImageList).Methods("GET")
+		r.HandleFunc("/api/docker/images/load/{id}", s.handleDockerLoadImageDelete).Methods("DELETE")
 		r.HandleFunc("/api/docker/images/load/{id}/status", s.handleDockerLoadImageStatus).Methods("GET")
 		r.HandleFunc("/api/docker/images", s.handleDockerListImages).Methods("GET")
 		r.HandleFunc("/api/docker/images/{id}", s.handleDockerInspectImage).Methods("GET")

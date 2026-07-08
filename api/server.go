@@ -432,8 +432,11 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 					}
 				case strings.HasPrefix(path, "/api/docker/images/load/"):
 					resource = strings.TrimPrefix(path, "/api/docker/images/load/")
-					if r.Method == http.MethodGet {
+					switch r.Method {
+					case http.MethodGet:
 						action = audit.ActionDockerImageLoadStatus
+					case http.MethodDelete:
+						action = audit.ActionDockerImageLoadDelete
 					}
 				case path == "/api/docker/images":
 					if r.Method == http.MethodGet {
