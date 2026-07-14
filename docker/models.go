@@ -90,12 +90,14 @@ type ComposeServiceStatus struct {
 	Image      string             `json:"image"`
 	Command    string             `json:"command,omitempty"`
 	Replicas   int                `json:"replicas"`
+	Restart    string             `json:"restart,omitempty"`
 	Containers []ContainerSummary `json:"containers"`
 }
 
 // ComposeProjectStatus is the response for compose project endpoints.
 type ComposeProjectStatus struct {
 	Name     string                 `json:"name"`
+	Status   string                 `json:"status"`
 	Services []ComposeServiceStatus `json:"services"`
 }
 

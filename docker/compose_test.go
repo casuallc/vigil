@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 )
 
@@ -201,6 +202,9 @@ func TestServiceToDockerConfigs(t *testing.T) {
 	if cfg.Labels[ComposeProjectLabel] != "demo" || cfg.Labels[ComposeServiceLabel] != "web" {
 		t.Fatalf("unexpected labels: %v", cfg.Labels)
 	}
+	if cfg.Labels[ComposeRestartLabel] != "on-failure:3" {
+		t.Fatalf("unexpected restart label: %s", cfg.Labels[ComposeRestartLabel])
+	}
 	if cfg.Hostname != "web" {
 		t.Fatalf("unexpected hostname: %s", cfg.Hostname)
 	}
@@ -218,6 +222,25 @@ func TestServiceToDockerConfigs(t *testing.T) {
 	}
 	if _, ok := netCfg.EndpointsConfig["demo_frontend"]; !ok {
 		t.Fatalf("expected demo_frontend network, got %v", netCfg.EndpointsConfig)
+	}
+}
+
+func TestServiceToDockerConfigs_OneOffRestart(t *testing.T) {
+	svc := types.ServiceConfig{
+		Name:    "init",
+		Image:   "app:latest",
+		Restart: "no",
+	}
+
+	cfg, hostCfg, _, err := serviceToDockerConfigs("demo", "init", svc, 1, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Labels[ComposeRestartLabel] != "no" {
+		t.Fatalf("expected restart label 'no', got %q", cfg.Labels[ComposeRestartLabel])
+	}
+	if hostCfg.RestartPolicy.Name != container.RestartPolicyDisabled {
+		t.Fatalf("expected disabled restart policy, got %+v", hostCfg.RestartPolicy)
 	}
 }
 

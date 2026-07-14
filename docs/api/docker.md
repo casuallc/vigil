@@ -1002,11 +1002,13 @@ curl -u <username>:<password> \
 ```json
 {
   "name": "demo",
+  "status": "running",
   "services": [
     {
       "name": "web",
       "image": "nginx:alpine",
       "replicas": 1,
+      "restart": "unless-stopped",
       "containers": [
         {
           "id": "a1b2c3d4e5f6...",
@@ -1017,7 +1019,8 @@ curl -u <username>:<password> \
           "ports": [{"ip": "0.0.0.0", "private_port": 80, "public_port": 8080, "type": "tcp"}],
           "labels": {
             "com.docker.compose.project": "demo",
-            "com.docker.compose.service": "web"
+            "com.docker.compose.service": "web",
+            "com.vigil.compose.restart": "unless-stopped"
           }
         }
       ]
@@ -1025,6 +1028,17 @@ curl -u <username>:<password> \
   ]
 }
 ```
+
+响应中的 `status` 字段表示项目整体状态，取值如下：
+
+| 状态值 | 含义 |
+|--------|------|
+| `running` | 所有长期运行服务（`restart` 不为 `no`）的副本均处于 `running` 状态 |
+| `partial` | 长期运行服务的副本部分在运行、部分未运行 |
+| `stopped` | 长期运行服务的副本均未运行 |
+| `completed` | 项目中只包含 `restart: "no"` 的一次性任务，且已全部退出 |
+
+`services[].restart` 为服务的重启策略。`restart: "no"` 的服务被视作一次性初始化任务，其容器退出后不会影响项目整体状态。
 
 **cURL 示例**：
 
@@ -1096,7 +1110,52 @@ curl -u <username>:<password> -X POST \
 |------|------|------|
 | project | string | 项目名称 |
 
-**响应格式**：`ComposeProjectStatus`
+**响应格式**：`ComposeProjectStatus`，与 `POST /api/docker/compose` 相同。`status` 字段聚合了项目下所有长期运行服务的状态；`restart: "no"` 的一次性服务退出后不会导致整体状态变为 `stopped` 或 `partial`。
+
+**响应示例**：
+
+```json
+{
+  "name": "demo",
+  "status": "running",
+  "services": [
+    {
+      "name": "web",
+      "image": "nginx:alpine",
+      "replicas": 1,
+      "restart": "unless-stopped",
+      "containers": [
+        {
+          "id": "a1b2c3d4e5f6...",
+          "names": ["/demo_web_1"],
+          "image": "nginx:alpine",
+          "status": "Up 2 hours",
+          "state": "running",
+          "ports": [{"ip": "0.0.0.0", "private_port": 80, "public_port": 8080, "type": "tcp"}],
+          "labels": {}
+        }
+      ]
+    },
+    {
+      "name": "init",
+      "image": "app:latest",
+      "replicas": 1,
+      "restart": "no",
+      "containers": [
+        {
+          "id": "def789abc012...",
+          "names": ["/demo_init_1"],
+          "image": "app:latest",
+          "status": "Exited (0) 5 minutes ago",
+          "state": "exited",
+          "ports": [],
+          "labels": {}
+        }
+      ]
+    }
+  ]
+}
+```
 
 **cURL 示例**：
 

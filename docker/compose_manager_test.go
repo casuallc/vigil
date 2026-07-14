@@ -130,6 +130,146 @@ func TestComposeManager_GetProject(t *testing.T) {
 	}
 }
 
+func TestComposeManager_GetProject_OneOffExited(t *testing.T) {
+	fc := &FakeClient{
+		containers: []types.Container{
+			{
+				ID: "c1", Names: []string{"/demo_web_1"}, Image: "nginx:alpine", State: "running",
+				Labels: map[string]string{ComposeProjectLabel: "demo", ComposeServiceLabel: "web"},
+			},
+			{
+				ID: "c2", Names: []string{"/demo_init_1"}, Image: "app:latest", State: "exited",
+				Labels: map[string]string{
+					ComposeProjectLabel: "demo",
+					ComposeServiceLabel: "init",
+					ComposeRestartLabel: "no",
+				},
+			},
+		},
+	}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	status, err := cm.GetProject(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.Status != "running" {
+		t.Fatalf("expected status running, got %s", status.Status)
+	}
+	if len(status.Services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(status.Services))
+	}
+	initSvc := serviceStatusByName(status.Services, "init")
+	if initSvc == nil {
+		t.Fatalf("init service not found in %+v", status.Services)
+	}
+	if initSvc.Restart != "no" {
+		t.Fatalf("expected restart no, got %q", initSvc.Restart)
+	}
+}
+
+func serviceStatusByName(services []ComposeServiceStatus, name string) *ComposeServiceStatus {
+	for i := range services {
+		if services[i].Name == name {
+			return &services[i]
+		}
+	}
+	return nil
+}
+
+func TestComposeManager_GetProject_Running(t *testing.T) {
+	fc := &FakeClient{
+		containers: []types.Container{
+			{
+				ID: "c1", Names: []string{"/demo_web_1"}, Image: "nginx:alpine", State: "running",
+				Labels: map[string]string{ComposeProjectLabel: "demo", ComposeServiceLabel: "web"},
+			},
+		},
+	}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	status, err := cm.GetProject(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.Status != "running" {
+		t.Fatalf("expected status running, got %s", status.Status)
+	}
+}
+
+func TestComposeManager_GetProject_Partial(t *testing.T) {
+	fc := &FakeClient{
+		containers: []types.Container{
+			{
+				ID: "c1", Names: []string{"/demo_web_1"}, Image: "nginx:alpine", State: "running",
+				Labels: map[string]string{ComposeProjectLabel: "demo", ComposeServiceLabel: "web"},
+			},
+			{
+				ID: "c2", Names: []string{"/demo_api_1"}, Image: "app:latest", State: "exited",
+				Labels: map[string]string{ComposeProjectLabel: "demo", ComposeServiceLabel: "api"},
+			},
+		},
+	}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	status, err := cm.GetProject(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.Status != "partial" {
+		t.Fatalf("expected status partial, got %s", status.Status)
+	}
+}
+
+func TestComposeManager_GetProject_Stopped(t *testing.T) {
+	fc := &FakeClient{
+		containers: []types.Container{
+			{
+				ID: "c1", Names: []string{"/demo_web_1"}, Image: "nginx:alpine", State: "exited",
+				Labels: map[string]string{ComposeProjectLabel: "demo", ComposeServiceLabel: "web"},
+			},
+		},
+	}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	status, err := cm.GetProject(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.Status != "stopped" {
+		t.Fatalf("expected status stopped, got %s", status.Status)
+	}
+}
+
+func TestComposeManager_GetProject_CompletedOnlyOneOffs(t *testing.T) {
+	fc := &FakeClient{
+		containers: []types.Container{
+			{
+				ID: "c1", Names: []string{"/demo_init_1"}, Image: "app:latest", State: "exited",
+				Labels: map[string]string{
+					ComposeProjectLabel: "demo",
+					ComposeServiceLabel: "init",
+					ComposeRestartLabel: "no",
+				},
+			},
+		},
+	}
+	mgr := NewManagerWithClient(fc)
+	cm := NewComposeManager(mgr)
+
+	status, err := cm.GetProject(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.Status != "completed" {
+		t.Fatalf("expected status completed, got %s", status.Status)
+	}
+}
+
 func TestComposeManager_RemoveProject(t *testing.T) {
 	fc := &FakeClient{
 		containers: []types.Container{

@@ -36,6 +36,7 @@ const (
 	ComposeProjectLabel = "com.docker.compose.project"
 	ComposeServiceLabel = "com.docker.compose.service"
 	ComposeOneoffLabel  = "com.docker.compose.oneoff"
+	ComposeRestartLabel = "com.vigil.compose.restart"
 )
 
 // ComposeNetwork is a minimal adapter for network creation parameters.
@@ -131,6 +132,7 @@ func serviceToDockerConfigs(project, service string, svc types.ServiceConfig, in
 		ComposeProjectLabel: project,
 		ComposeServiceLabel: service,
 		ComposeOneoffLabel:  "False",
+		ComposeRestartLabel: svc.Restart,
 	}
 	for k, v := range svc.Labels {
 		labels[k] = v

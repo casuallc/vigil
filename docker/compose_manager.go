@@ -371,9 +371,14 @@ func (cm *ComposeManager) buildProjectStatus(project string, services map[string
 
 	for _, svcName := range svcNames {
 		svc := services[svcName]
+		restart := svc.Restart
+		if restart == "" && len(groups[svcName]) > 0 {
+			restart = groups[svcName][0].Labels[ComposeRestartLabel]
+		}
 		svcStatus := ComposeServiceStatus{
 			Name:     svcName,
 			Image:    svc.Image,
+			Restart:  restart,
 			Replicas: len(groups[svcName]),
 		}
 		if len(svc.Command) > 0 {
@@ -385,7 +390,56 @@ func (cm *ComposeManager) buildProjectStatus(project string, services map[string
 		status.Services = append(status.Services, svcStatus)
 	}
 
+	status.Status = computeProjectStatus(status.Services)
 	return status
+}
+
+// computeProjectStatus returns an aggregate status for a compose project.
+// Services with restart policy "no" are treated as one-off tasks; exited
+// containers for those services do not degrade the aggregate status.
+func computeProjectStatus(services []ComposeServiceStatus) string {
+	if len(services) == 0 {
+		return "completed"
+	}
+
+	longRunningReplicas := 0
+	longRunningRunning := 0
+	oneoffReplicas := 0
+	oneoffExited := 0
+
+	for _, svc := range services {
+		if svc.Restart == "no" {
+			oneoffReplicas += svc.Replicas
+			for _, c := range svc.Containers {
+				if c.State == "exited" {
+					oneoffExited++
+				}
+			}
+			continue
+		}
+
+		longRunningReplicas += svc.Replicas
+		for _, c := range svc.Containers {
+			if c.State == "running" {
+				longRunningRunning++
+			}
+		}
+	}
+
+	if longRunningReplicas == 0 {
+		if oneoffReplicas == 0 || oneoffExited == oneoffReplicas {
+			return "completed"
+		}
+		return "running"
+	}
+
+	if longRunningRunning == longRunningReplicas {
+		return "running"
+	}
+	if longRunningRunning == 0 {
+		return "stopped"
+	}
+	return "partial"
 }
 
 // LoadEnvFile reads KEY=VALUE pairs from a .env style file.

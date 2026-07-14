@@ -1468,13 +1468,18 @@ func formatDockerPorts(ports []docker.PortMapping) string {
 
 // printComposeProjectStatus 打印 compose 项目状态
 func printComposeProjectStatus(status *docker.ComposeProjectStatus) {
-	fmt.Printf("Project: %s\n", status.Name)
+	fmt.Printf("Project: %s (status: %s)\n", status.Name, status.Status)
 	if len(status.Services) == 0 {
 		fmt.Println("  No services found.")
 		return
 	}
 	for _, svc := range status.Services {
-		fmt.Printf("  Service: %s (image: %s, replicas: %d)\n", svc.Name, svc.Image, svc.Replicas)
+		suffix := ""
+		if svc.Restart == "no" {
+			suffix = ", restart: no"
+		}
+		fmt.Printf("  Service: %s (image: %s, replicas: %d%s)\n",
+			svc.Name, svc.Image, svc.Replicas, suffix)
 		for _, ct := range svc.Containers {
 			fmt.Printf("    %-14s %-20s %-12s %-20s\n",
 				truncateString(ct.ID, 14),
