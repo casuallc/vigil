@@ -1481,14 +1481,34 @@ func printComposeProjectStatus(status *docker.ComposeProjectStatus) {
 		fmt.Printf("  Service: %s (image: %s, replicas: %d%s)\n",
 			svc.Name, svc.Image, svc.Replicas, suffix)
 		for _, ct := range svc.Containers {
-			fmt.Printf("    %-14s %-20s %-12s %-20s\n",
+			fmt.Printf("    %-14s %-20s %-12s %-20s %-16s\n",
 				truncateString(ct.ID, 14),
 				truncateString(ct.Image, 20),
 				ct.State,
 				ct.Status,
+				formatContainerCreated(ct.Created),
 			)
 		}
 	}
+}
+
+// formatContainerCreated returns a human-readable relative time for a container
+// creation timestamp (Unix seconds), or "-" if the timestamp is missing.
+func formatContainerCreated(created int64) string {
+	if created <= 0 {
+		return "-"
+	}
+	d := time.Since(time.Unix(created, 0))
+	if d < time.Minute {
+		return "Just now"
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 }
 
 // dockerWebSocketInteractive 通过 WebSocket 建立交互式会话

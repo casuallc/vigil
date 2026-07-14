@@ -973,9 +973,9 @@ bbx-cli docker compose status [project]
 ```
 Project: myapp (status: running)
   Service: web (image: nginx:latest, replicas: 1)
-    abc123def456   nginx:latest         running      Up 2 hours
+    abc123def456   nginx:latest         running      Up 2 hours           2 hours ago
   Service: db (image: postgres:15, replicas: 1)
-    def789abc012   postgres:15          running      Up 2 hours
+    def789abc012   postgres:15          running      Up 2 hours           2 hours ago
 ```
 
 对于 `restart: "no"` 的一次性初始化服务，输出会额外标注 `restart: no`，且其容器退出后项目整体仍可能显示为 `running`：
@@ -983,9 +983,9 @@ Project: myapp (status: running)
 ```
 Project: myapp (status: running)
   Service: web (image: nginx:latest, replicas: 1)
-    abc123def456   nginx:latest         running      Up 2 hours
+    abc123def456   nginx:latest         running      Up 2 hours           2 hours ago
   Service: init (image: app:latest, replicas: 1, restart: no)
-    def789abc012   app:latest           exited       Exited (0) 5 minutes ago
+    def789abc012   app:latest           exited       Exited (0) 5 minutes ago  5 minutes ago
 ```
 
 #### docker compose down
