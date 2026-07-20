@@ -19,6 +19,7 @@ package filetransfer
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"strings"
 	"testing"
 )
@@ -31,18 +32,21 @@ func TestEncodeKafkaMessageFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-	// Exactly one newline separates the JSON header from the base64 body.
-	idx := bytes.IndexByte(msg, '\n')
-	if idx < 0 {
-		t.Fatal("expected newline separator")
+	// Binary frame: [4-byte BE header length][JSON header][raw chunk bytes].
+	if len(msg) < kafkaFrameLenBytes {
+		t.Fatal("message shorter than frame prefix")
 	}
-	header := string(msg[:idx])
-	body := string(msg[idx+1:])
+	headerLen := int(binary.BigEndian.Uint32(msg[:kafkaFrameLenBytes]))
+	if headerLen != len(msg)-kafkaFrameLenBytes-len(data) {
+		t.Fatalf("header length %d inconsistent with message size %d", headerLen, len(msg))
+	}
+	header := string(msg[kafkaFrameLenBytes : kafkaFrameLenBytes+headerLen])
+	body := msg[kafkaFrameLenBytes+headerLen:]
 	if !strings.Contains(header, `"relPath"`) || !strings.Contains(header, `"crc32"`) {
 		t.Fatalf("header missing expected fields: %s", header)
 	}
-	if body != "YWJj" { // base64("abc")
-		t.Fatalf("body not base64 of chunk: %q", body)
+	if !bytes.Equal(body, data) {
+		t.Fatalf("body not the raw chunk: got %q want %q", body, data)
 	}
 }
 
@@ -67,8 +71,14 @@ func TestDecodeKafkaMessageRoundtrip(t *testing.T) {
 }
 
 func TestDecodeKafkaMessageRejectsMalformed(t *testing.T) {
-	if _, _, err := decodeKafkaMessage([]byte("no-newline-here")); err == nil {
-		t.Fatal("expected error for message without newline")
+	if _, _, err := decodeKafkaMessage([]byte("ab")); err == nil {
+		t.Fatal("expected error for message shorter than frame prefix")
+	}
+	// Frame prefix claims a header longer than the message.
+	bogus := make([]byte, kafkaFrameLenBytes+2)
+	binary.BigEndian.PutUint32(bogus, 100)
+	if _, _, err := decodeKafkaMessage(bogus); err == nil {
+		t.Fatal("expected error for header length exceeding message size")
 	}
 }
 

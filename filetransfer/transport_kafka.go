@@ -17,18 +17,29 @@ limitations under the License.
 package filetransfer
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"log"
 	"strings"
 
 	"github.com/IBM/sarama"
 )
 
-const kafkaMaxMessageBytes = 10 * 1024 * 1024 // 10MB, matches Java MAX_REQUEST_SIZE
+// kafkaFrameLenBytes is the size of the big-endian uint32 header-length
+// prefix that frames each Kafka message.
+const kafkaFrameLenBytes = 4
+
+// kafkaDefaultMaxMessageBytes applies when KafkaConfig.MaxMessageBytes is
+// unset. It stays below the Kafka broker default message.max.bytes
+// (1,000,012) so a stock broker accepts relayed chunks.
+const kafkaDefaultMaxMessageBytes = 1_000_000
+
+// kafkaHeaderMargin reserves room for the JSON ChunkMeta header when clamping
+// the chunk size to the max message size.
+const kafkaHeaderMargin = 4096
 
 // kafkaTransport sends file chunks through a Kafka topic (KAFKA relay).
 type kafkaTransport struct{}
@@ -50,7 +61,11 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 	}
 	saramaCfg.Producer.RequiredAcks = sarama.WaitForAll
 	saramaCfg.Producer.Retry.Max = 3
-	saramaCfg.Producer.MaxMessageBytes = kafkaMaxMessageBytes
+	maxMsgBytes := cfg.Kafka.MaxMessageBytes
+	if maxMsgBytes <= 0 {
+		maxMsgBytes = kafkaDefaultMaxMessageBytes
+	}
+	saramaCfg.Producer.MaxMessageBytes = maxMsgBytes
 	saramaCfg.Producer.Return.Successes = true
 
 	producer, err := sarama.NewSyncProducer(brokerList(cfg.Kafka.BootstrapServers), saramaCfg)
@@ -62,6 +77,12 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 	chunkSize := cfg.ChunkSize
 	if chunkSize <= 0 {
 		chunkSize = defaultChunkSizeBytes
+	}
+	// Clamp the chunk size so one framed message (4-byte length prefix + JSON
+	// header + raw chunk) never exceeds MaxMessageBytes.
+	if maxChunk := maxMsgBytes - kafkaFrameLenBytes - kafkaHeaderMargin; chunkSize > maxChunk {
+		log.Printf("filetransfer: kafka chunkSize clamped from %d to %d (maxMessageBytes=%d)", chunkSize, maxChunk, maxMsgBytes)
+		chunkSize = maxChunk
 	}
 
 	var offset int64
@@ -216,34 +237,35 @@ func brokerList(bootstrap string) []string {
 	return brokers
 }
 
-// encodeKafkaMessage builds the Kafka message body, byte-compatible with the
-// Java agent: JSON(ChunkMeta) + "\n" + base64(chunkData).
+// encodeKafkaMessage builds the Kafka message body as a binary frame:
+// [4-byte big-endian header length][JSON(ChunkMeta)][raw chunk bytes].
+// The chunk payload is carried unencoded so chunkSize translates directly
+// into on-the-wire message size.
 func encodeKafkaMessage(meta ChunkMeta, chunkData []byte) ([]byte, error) {
 	header, err := json.Marshal(meta)
 	if err != nil {
 		return nil, err
 	}
-	var buf bytes.Buffer
-	buf.Write(header)
-	buf.WriteByte('\n')
-	buf.WriteString(base64.StdEncoding.EncodeToString(chunkData))
-	return buf.Bytes(), nil
+	msg := make([]byte, kafkaFrameLenBytes, kafkaFrameLenBytes+len(header)+len(chunkData))
+	binary.BigEndian.PutUint32(msg, uint32(len(header)))
+	msg = append(msg, header...)
+	msg = append(msg, chunkData...)
+	return msg, nil
 }
 
 // decodeKafkaMessage parses a message produced by encodeKafkaMessage back into
 // its ChunkMeta header and raw chunk bytes.
 func decodeKafkaMessage(msg []byte) (ChunkMeta, []byte, error) {
-	idx := bytes.IndexByte(msg, '\n')
-	if idx < 0 {
-		return ChunkMeta{}, nil, fmt.Errorf("malformed kafka message: missing header separator")
+	if len(msg) < kafkaFrameLenBytes {
+		return ChunkMeta{}, nil, fmt.Errorf("malformed kafka message: shorter than frame prefix")
+	}
+	headerLen := int(binary.BigEndian.Uint32(msg[:kafkaFrameLenBytes]))
+	if headerLen > len(msg)-kafkaFrameLenBytes {
+		return ChunkMeta{}, nil, fmt.Errorf("malformed kafka message: header length %d exceeds message size %d", headerLen, len(msg))
 	}
 	var meta ChunkMeta
-	if err := json.Unmarshal(msg[:idx], &meta); err != nil {
+	if err := json.Unmarshal(msg[kafkaFrameLenBytes:kafkaFrameLenBytes+headerLen], &meta); err != nil {
 		return ChunkMeta{}, nil, fmt.Errorf("malformed kafka message header: %w", err)
 	}
-	data, err := base64.StdEncoding.DecodeString(string(msg[idx+1:]))
-	if err != nil {
-		return ChunkMeta{}, nil, fmt.Errorf("malformed kafka message body: %w", err)
-	}
-	return meta, data, nil
+	return meta, msg[kafkaFrameLenBytes+headerLen:], nil
 }

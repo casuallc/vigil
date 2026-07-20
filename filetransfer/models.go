@@ -85,6 +85,11 @@ type KafkaConfig struct {
 	SecurityProtocol string `json:"securityProtocol"`
 	Username         string `json:"username"`
 	Password         string `json:"password"` // AES-GCM encrypted at rest
+	// MaxMessageBytes caps one Kafka message (frame prefix + JSON header +
+	// raw chunk). 0 -> kafkaDefaultMaxMessageBytes (just below the broker
+	// default message.max.bytes). Raise it only when the broker/topic
+	// max.message.bytes is raised accordingly.
+	MaxMessageBytes int `json:"maxMessageBytes,omitempty"`
 }
 
 // ChunkMeta is the per-chunk header. Crc32 is a 32-bit unsigned value; it
