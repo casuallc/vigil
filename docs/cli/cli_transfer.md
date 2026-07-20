@@ -128,8 +128,8 @@ bbx-cli transfer task create --file <task.json>
     {
       "host": "10.0.0.2",
       "port": 57575,
-      "authUser": "admq",
-      "authPass": "admq-file-transfer",
+      "authUser": "admin",
+      "authPass": "change-me",
       "agentTaskId": 2001
     }
   ]

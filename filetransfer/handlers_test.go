@@ -32,8 +32,8 @@ import (
 )
 
 const (
-	itAuthUser = "admq"
-	itAuthPass = "admq-file-transfer"
+	itAuthUser = "vigil"
+	itAuthPass = "vigil-transfer-secret"
 )
 
 func newReceiverServer(t *testing.T, targetDir string) (*Manager, *httptest.Server) {
@@ -47,6 +47,8 @@ func newReceiverServer(t *testing.T, targetDir string) (*Manager, *httptest.Serv
 	m.RegisterRoutes(r)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
+	// Registered after t.TempDir() so it runs before the data dir is removed.
+	t.Cleanup(m.Shutdown)
 	return m, srv
 }
 

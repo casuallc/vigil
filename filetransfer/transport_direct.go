@@ -113,7 +113,7 @@ func (d *directTransport) queryResumeOffset(ctx context.Context, base string, ta
 	if resp.StatusCode != http.StatusOK {
 		return 0
 	}
-	// vigil returns a bare []FileProgress (not the Java Result envelope).
+	// The progress endpoint returns a bare []FileProgress.
 	var progress []FileProgress
 	if err := json.NewDecoder(resp.Body).Decode(&progress); err != nil {
 		return 0

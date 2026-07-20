@@ -19,7 +19,7 @@ package filetransfer
 import "context"
 
 // defaultChunkSizeBytes is the fallback chunk size (1MB) when a task does not
-// specify one, matching the Java agent default.
+// specify one.
 const defaultChunkSizeBytes = 1048576
 
 // ChunkReader reads length bytes starting at offset from the source file.

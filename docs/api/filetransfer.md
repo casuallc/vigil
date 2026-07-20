@@ -1,6 +1,6 @@
 # 文件传输 Agent API
 
-文件传输 Agent 是 `bbx-server` 的子功能，提供文件系统浏览与分块文件传输任务管理，REST 路径、参数与 Kafka 消息格式与 ADMQ Manager 的 Java `file-transfer-agent` 对齐。
+文件传输 Agent 是 `bbx-server` 的子功能，提供文件系统浏览与分块文件传输任务管理。
 
 > 启用方式：在 `conf/config.yaml` 的 `filetransfer.enabled: true`（详见末尾「配置」）。未启用时不注册以下接口。
 
@@ -312,8 +312,9 @@ curl -u <username>:<password> -X POST \
 KAFKA 模式下，每个分块作为一条 Kafka 消息：
 
 - key = `relPath`（保证同文件分块有序）；
-- value = `JSON(ChunkMeta) + "\n" + base64(chunkData)`（与 Java agent 字节级一致）；
-- producer：`acks=all`、`retries=3`、`max.message.bytes=10MB`。
+- value 为二进制帧：`[4 字节大端 uint32 头长度][JSON(ChunkMeta)][原始 chunk 字节]`，chunk 不做 base64 编码，`chunkSize` 即为线上消息体大小的主要部分；
+- producer：`acks=all`、`retries=3`；
+- 单条消息上限取任务 `kafka.maxMessageBytes`（可选，默认 1,000,000 字节，低于 broker 默认 `message.max.bytes=1,000,012`）；`chunkSize` 超过「上限 − 帧头开销」时自动钳制并打日志。broker/topic 调大过 `max.message.bytes` 时，可相应调大 `kafka.maxMessageBytes`。
 
 ## 配置
 
@@ -322,15 +323,15 @@ KAFKA 模式下，每个分块作为一条 Kafka 消息：
 ```yaml
 filetransfer:
   enabled: true
-  data_dir: ""                          # 空则默认 ~/.admq-file-transfer-agent
+  data_dir: ""                          # 空则默认 ~/.vigil-file-transfer（旧版 ~/.admq-file-transfer-agent 自动迁移）
   default_chunk_size: 1048576           # 1MB
-  encryption_key: "admq-file-transfer-agent-key-16"
+  encryption_key: "vigil-file-transfer-change-me"   # 经 SHA-256 派生 AES-256-GCM 密钥
   roots: []                             # 允许浏览/落地的根目录白名单；为空则仅用户主目录
 ```
 
 > 认证复用全局 `auth`（见「认证」），本节不再有独立的 `auth_user` / `auth_pass`。
 
-本地持久化目录结构（对齐 Java）：
+本地持久化目录结构：
 
 ```
 {dataDir}/tasks/{taskId}/

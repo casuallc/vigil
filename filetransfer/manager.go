@@ -40,8 +40,7 @@ type Options struct {
 }
 
 // Manager is the core orchestrator: task CRUD, lifecycle, execution, status
-// aggregation and startup recovery. It is a Go port of the Java
-// TransferTaskManager.
+// aggregation and startup recovery.
 type Manager struct {
 	store            *Store
 	fs               *FS

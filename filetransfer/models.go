@@ -15,9 +15,8 @@ limitations under the License.
 */
 
 // Package filetransfer implements the file-transfer agent sub-feature of
-// bbx-server. It is a Go re-implementation of the ADMQ Manager Java
-// file-transfer-agent; REST paths, request/response parameters and the Kafka
-// message format are kept compatible with the Java agent.
+// bbx-server: filesystem browsing and chunked file-transfer tasks over
+// DIRECT (peer REST) or KAFKA (topic relay) transports.
 package filetransfer
 
 // Role identifies whether a task sends or receives files.
@@ -92,8 +91,8 @@ type KafkaConfig struct {
 	MaxMessageBytes int `json:"maxMessageBytes,omitempty"`
 }
 
-// ChunkMeta is the per-chunk header. Crc32 is a 32-bit unsigned value; it
-// serializes to a positive integer matching the Java `long` representation.
+// ChunkMeta is the per-chunk header. Crc32 is the IEEE checksum of the chunk
+// payload, serialized as a positive integer.
 type ChunkMeta struct {
 	RelPath    string `json:"relPath"`
 	ChunkIndex int    `json:"chunkIndex"`
@@ -113,8 +112,7 @@ type FileProgress struct {
 	Completed     bool   `json:"completed"`
 }
 
-// TaskConfig is the full configuration of a transfer task. Pointer/omitempty
-// fields mirror the Java nullable types.
+// TaskConfig is the full configuration of a transfer task.
 type TaskConfig struct {
 	TaskID          int64           `json:"taskId"`
 	Role            Role            `json:"role"`
@@ -142,8 +140,8 @@ type TaskStatus struct {
 	ErrorMsg         string         `json:"errorMsg"`
 }
 
-// FsItem is one entry returned by the FS list endpoint. Field names match the
-// Java agent: name/dir/size/mtime (mtime is epoch milliseconds).
+// FsItem is one entry returned by the FS list endpoint (mtime is epoch
+// milliseconds).
 type FsItem struct {
 	Name  string `json:"name"`
 	IsDir bool   `json:"dir"`

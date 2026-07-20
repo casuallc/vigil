@@ -89,8 +89,8 @@ func defaultHome() (string, error) {
 }
 
 // resolveSafe validates path against the jail and returns the resolved
-// absolute path. It mirrors the Java FsService.resolveAndValidate behaviour:
-// reject blank, reject any ".." segment, then require containment in a root.
+// absolute path: reject blank, reject any ".." segment, then require
+// containment in a root.
 func (fs *FS) resolveSafe(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", fmt.Errorf("path cannot be empty")

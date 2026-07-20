@@ -44,7 +44,7 @@
 
 ### 文件操作
 - [文件管理](files.md) - 本地文件的上传、下载、列表、复制、移动
-- [文件传输 Agent](filetransfer.md) - 文件系统浏览与 DIRECT/KAFKA 分块文件传输任务（与 Java agent 互通）
+- [文件传输 Agent](filetransfer.md) - 文件系统浏览与 DIRECT/KAFKA 分块文件传输任务
 
 ### VM 管理
 - [VM 管理](vms.md) - VM 服务器管理、分组、SSH 连接、文件操作、权限管理、批量执行、资源监控

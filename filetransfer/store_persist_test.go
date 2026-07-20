@@ -35,7 +35,7 @@ func sampleConfig() TaskConfig {
 		RelayType:       RelayDirect,
 		OverwritePolicy: Overwrite,
 		Targets: []TargetConfig{
-			{Host: "10.0.0.1", Port: 8080, AuthUser: "admq", AuthPass: "p@ss"},
+			{Host: "10.0.0.1", Port: 8080, AuthUser: "vigil", AuthPass: "p@ss"},
 		},
 		Kafka: &KafkaConfig{BootstrapServers: "b:9092", Topic: "t", Password: "kpw"},
 	}
