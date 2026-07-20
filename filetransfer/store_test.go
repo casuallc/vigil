@@ -19,10 +19,50 @@ package filetransfer
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
 const testKey = "vigil-filetransfer-test-key"
+
+func TestMigrateLegacyDataDir(t *testing.T) {
+	home := t.TempDir()
+	legacyTaskDir := filepath.Join(home, legacyDataDirName, tasksDirName, "42")
+	if err := os.MkdirAll(legacyTaskDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	got := migrateLegacyDataDir(home)
+	want := filepath.Join(home, defaultDataDirName)
+	if got != want {
+		t.Fatalf("base dir: got %q want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(want, tasksDirName, "42")); err != nil {
+		t.Fatalf("legacy task not migrated: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, legacyDataDirName)); !os.IsNotExist(err) {
+		t.Fatal("legacy dir should be gone after rename")
+	}
+}
+
+func TestMigrateLegacyDataDirKeepsExistingNewDir(t *testing.T) {
+	home := t.TempDir()
+	for _, name := range []string{defaultDataDirName, legacyDataDirName} {
+		if err := os.MkdirAll(filepath.Join(home, name, tasksDirName), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+
+	got := migrateLegacyDataDir(home)
+	if want := filepath.Join(home, defaultDataDirName); got != want {
+		t.Fatalf("base dir: got %q want %q", got, want)
+	}
+	// The legacy dir must be left untouched when the new one already exists.
+	if _, err := os.Stat(filepath.Join(home, legacyDataDirName)); err != nil {
+		t.Fatal("legacy dir must be kept when the new dir exists")
+	}
+}
 
 func TestDeriveAESKeyHashesWithSHA256(t *testing.T) {
 	key, err := deriveAESKey(testKey)

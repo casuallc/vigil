@@ -96,7 +96,7 @@ type VMConfig struct {
 // FiletransferConfig configures the file-transfer agent sub-feature.
 type FiletransferConfig struct {
   Enabled          bool     `yaml:"enabled"`
-  DataDir          string   `yaml:"data_dir"`           // empty -> ~/.admq-file-transfer-agent
+  DataDir          string   `yaml:"data_dir"`           // empty -> ~/.vigil-file-transfer (legacy ~/.admq-file-transfer-agent is migrated)
   DefaultChunkSize int      `yaml:"default_chunk_size"` // bytes; 0 -> 1MB
   EncryptionKey    string   `yaml:"encryption_key"`     // SHA-256 hashed into the AES-256-GCM key
   Roots            []string `yaml:"roots"`              // allowed browse/landing roots; empty -> user home

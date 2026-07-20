@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -33,7 +34,8 @@ import (
 const gcmIVLength = 12
 
 const (
-	defaultDataDirName = ".admq-file-transfer-agent"
+	defaultDataDirName = ".vigil-file-transfer"
+	legacyDataDirName  = ".admq-file-transfer-agent"
 	tasksDirName       = "tasks"
 	configFileName     = "config.json"
 	stateFileName      = "state.json"
@@ -102,16 +104,15 @@ func decryptField(ciphertext string, key []byte) (string, error) {
 	return string(plain), nil
 }
 
-// Store persists task config/state/progress under {dataDir}/tasks/{taskId}/,
-// mirroring the Java agent's on-disk layout. Sensitive config fields are
-// AES-GCM encrypted at rest.
+// Store persists task config/state/progress under {dataDir}/tasks/{taskId}/.
+// Sensitive config fields are AES-GCM encrypted at rest.
 type Store struct {
 	tasksDir string
 	encKey   string
 }
 
 // newStore resolves the tasks directory: an empty dataDir defaults to
-// ~/.admq-file-transfer-agent (matching Java), otherwise {dataDir}/tasks.
+// ~/.vigil-file-transfer, otherwise {dataDir}/tasks.
 func newStore(dataDir, encKey string) *Store {
 	var tasksDir string
 	if dataDir == "" {
@@ -119,11 +120,31 @@ func newStore(dataDir, encKey string) *Store {
 		if err != nil {
 			home = "."
 		}
-		tasksDir = filepath.Join(home, defaultDataDirName, tasksDirName)
+		tasksDir = filepath.Join(migrateLegacyDataDir(home), tasksDirName)
 	} else {
 		tasksDir = filepath.Join(dataDir, tasksDirName)
 	}
 	return &Store{tasksDir: tasksDir, encKey: encKey}
+}
+
+// migrateLegacyDataDir renames a legacy default data directory
+// (~/.admq-file-transfer-agent) left by older builds to the current default
+// when the new directory does not exist yet, and returns the effective base
+// directory.
+func migrateLegacyDataDir(home string) string {
+	newDir := filepath.Join(home, defaultDataDirName)
+	if _, err := os.Stat(newDir); err == nil {
+		return newDir
+	}
+	legacyDir := filepath.Join(home, legacyDataDirName)
+	if _, err := os.Stat(legacyDir); err == nil {
+		if err := os.Rename(legacyDir, newDir); err != nil {
+			log.Printf("filetransfer: cannot migrate legacy data dir %s -> %s: %v", legacyDir, newDir, err)
+		} else {
+			log.Printf("filetransfer: migrated legacy data dir %s -> %s", legacyDir, newDir)
+		}
+	}
+	return newDir
 }
 
 func (s *Store) taskDir(taskID int64) string {
