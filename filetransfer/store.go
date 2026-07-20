@@ -20,6 +20,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -39,64 +40,66 @@ const (
 	progressFileName   = "progress.json"
 )
 
-// deriveAESKey returns the first 16 bytes of the configured key as the AES-128
-// key, matching the Java agent (key.substring(0,16) UTF-8 bytes).
+// deriveAESKey hashes the configured key with SHA-256, yielding the 32-byte
+// AES-256 key. An empty key means encryption is disabled (fields are stored
+// as plaintext).
 func deriveAESKey(key string) ([]byte, error) {
-	b := []byte(key)
-	if len(b) < 16 {
-		return nil, fmt.Errorf("encryption_key must be at least 16 bytes, got %d", len(b))
+	if key == "" {
+		return nil, fmt.Errorf("encryption_key is not set")
 	}
-	return b[:16], nil
+	sum := sha256.Sum256([]byte(key))
+	return sum[:], nil
 }
 
-// encryptField encrypts plaintext with AES-128-GCM and returns
-// base64(iv || ciphertext+tag). Blank input passes through unchanged, and any
-// failure degrades to returning the plaintext (matching Java behaviour).
-func encryptField(plaintext string, key []byte) string {
+// encryptField encrypts plaintext with AES-256-GCM and returns
+// base64(iv || ciphertext+tag). Blank input passes through unchanged.
+func encryptField(plaintext string, key []byte) (string, error) {
 	if plaintext == "" {
-		return plaintext
+		return plaintext, nil
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return plaintext
+		return "", err
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return plaintext
+		return "", err
 	}
 	iv := make([]byte, gcmIVLength)
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return plaintext
+		return "", err
 	}
 	// Seal appends the ciphertext+tag to iv, giving iv || ciphertext+tag.
 	sealed := gcm.Seal(iv, iv, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(sealed)
+	return base64.StdEncoding.EncodeToString(sealed), nil
 }
 
-// decryptField reverses encryptField. Blank input passes through, and any
-// value that is not our ciphertext is returned unchanged (plaintext fallback).
-func decryptField(ciphertext string, key []byte) string {
+// decryptField reverses encryptField. Blank input passes through, and a value
+// that is not our ciphertext (legacy plaintext) is returned unchanged. A value
+// that has the ciphertext shape but fails to decrypt — e.g. it was encrypted
+// with a different key or an incompatible format — is an error.
+func decryptField(ciphertext string, key []byte) (string, error) {
 	if ciphertext == "" {
-		return ciphertext
+		return ciphertext, nil
 	}
 	decoded, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil || len(decoded) <= gcmIVLength {
-		return ciphertext
+		return ciphertext, nil
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return ciphertext
+		return "", err
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return ciphertext
+		return "", err
 	}
 	iv, enc := decoded[:gcmIVLength], decoded[gcmIVLength:]
 	plain, err := gcm.Open(nil, iv, enc, nil)
 	if err != nil {
-		return ciphertext
+		return "", fmt.Errorf("decrypt field: %w", err)
 	}
-	return string(plain)
+	return string(plain), nil
 }
 
 // Store persists task config/state/progress under {dataDir}/tasks/{taskId}/,
@@ -151,14 +154,22 @@ func (s *Store) saveConfig(taskID int64, cfg TaskConfig) error {
 		copy(toSave.Targets, cfg.Targets)
 		if keyErr == nil {
 			for i := range toSave.Targets {
-				toSave.Targets[i].AuthPass = encryptField(toSave.Targets[i].AuthPass, key)
+				enc, err := encryptField(toSave.Targets[i].AuthPass, key)
+				if err != nil {
+					return fmt.Errorf("encrypt target authPass: %w", err)
+				}
+				toSave.Targets[i].AuthPass = enc
 			}
 		}
 	}
 	if cfg.Kafka != nil {
 		k := *cfg.Kafka
 		if keyErr == nil {
-			k.Password = encryptField(k.Password, key)
+			enc, err := encryptField(k.Password, key)
+			if err != nil {
+				return fmt.Errorf("encrypt kafka password: %w", err)
+			}
+			k.Password = enc
 		}
 		toSave.Kafka = &k
 	}
@@ -180,10 +191,18 @@ func (s *Store) loadConfig(taskID int64) (*TaskConfig, error) {
 	}
 	if key, keyErr := deriveAESKey(s.encKey); keyErr == nil {
 		for i := range cfg.Targets {
-			cfg.Targets[i].AuthPass = decryptField(cfg.Targets[i].AuthPass, key)
+			dec, err := decryptField(cfg.Targets[i].AuthPass, key)
+			if err != nil {
+				return nil, fmt.Errorf("task %d: decrypt target authPass (wrong encryption_key or incompatible stored format): %w", taskID, err)
+			}
+			cfg.Targets[i].AuthPass = dec
 		}
 		if cfg.Kafka != nil {
-			cfg.Kafka.Password = decryptField(cfg.Kafka.Password, key)
+			dec, err := decryptField(cfg.Kafka.Password, key)
+			if err != nil {
+				return nil, fmt.Errorf("task %d: decrypt kafka password (wrong encryption_key or incompatible stored format): %w", taskID, err)
+			}
+			cfg.Kafka.Password = dec
 		}
 	}
 	return &cfg, nil

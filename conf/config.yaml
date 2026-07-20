@@ -35,7 +35,7 @@ filetransfer:
   enabled: true
   data_dir: ""                          # empty -> ~/.admq-file-transfer-agent
   default_chunk_size: 1048576           # 1MB
-  encryption_key: "admq-file-transfer-agent-key-16"
+  encryption_key: "vigil-file-transfer-change-me"
   roots:                                # allowed browse/landing roots; empty -> user home
     - /                                  # entire filesystem (agent runs as root)
 

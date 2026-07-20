@@ -98,7 +98,7 @@ type FiletransferConfig struct {
   Enabled          bool     `yaml:"enabled"`
   DataDir          string   `yaml:"data_dir"`           // empty -> ~/.admq-file-transfer-agent
   DefaultChunkSize int      `yaml:"default_chunk_size"` // bytes; 0 -> 1MB
-  EncryptionKey    string   `yaml:"encryption_key"`     // first 16 bytes used as AES-128 key
+  EncryptionKey    string   `yaml:"encryption_key"`     // SHA-256 hashed into the AES-256-GCM key
   Roots            []string `yaml:"roots"`              // allowed browse/landing roots; empty -> user home
 }
 

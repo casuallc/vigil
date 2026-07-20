@@ -17,28 +17,30 @@ limitations under the License.
 package filetransfer
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"testing"
 )
 
-const testKey = "admq-file-transfer-agent-key-16"
+const testKey = "vigil-filetransfer-test-key"
 
-func TestDeriveAESKeyTakesFirst16Bytes(t *testing.T) {
+func TestDeriveAESKeyHashesWithSHA256(t *testing.T) {
 	key, err := deriveAESKey(testKey)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(key) != 16 {
-		t.Fatalf("expected 16-byte key, got %d", len(key))
+	want := sha256.Sum256([]byte(testKey))
+	if len(key) != 32 {
+		t.Fatalf("expected 32-byte key, got %d", len(key))
 	}
-	if string(key) != "admq-file-transf" {
-		t.Fatalf("expected first 16 bytes, got %q", string(key))
+	if string(key) != string(want[:]) {
+		t.Fatal("expected SHA-256 of the configured key")
 	}
 }
 
-func TestDeriveAESKeyRejectsShortKey(t *testing.T) {
-	if _, err := deriveAESKey("short"); err == nil {
-		t.Fatal("expected error for key shorter than 16 bytes")
+func TestDeriveAESKeyRejectsEmptyKey(t *testing.T) {
+	if _, err := deriveAESKey(""); err == nil {
+		t.Fatal("expected error for empty key")
 	}
 }
 
@@ -46,12 +48,18 @@ func TestEncryptDecryptRoundtrip(t *testing.T) {
 	key, _ := deriveAESKey(testKey)
 	plain := "super-secret-password"
 
-	enc := encryptField(plain, key)
+	enc, err := encryptField(plain, key)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
 	if enc == plain {
 		t.Fatal("ciphertext must differ from plaintext")
 	}
 
-	dec := decryptField(enc, key)
+	dec, err := decryptField(enc, key)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
 	if dec != plain {
 		t.Fatalf("roundtrip mismatch: got %q want %q", dec, plain)
 	}
@@ -59,7 +67,10 @@ func TestEncryptDecryptRoundtrip(t *testing.T) {
 
 func TestEncryptProducesIVPlusCiphertext(t *testing.T) {
 	key, _ := deriveAESKey(testKey)
-	enc := encryptField("x", key)
+	enc, err := encryptField("x", key)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
 
 	raw, err := base64.StdEncoding.DecodeString(enc)
 	if err != nil {
@@ -71,20 +82,44 @@ func TestEncryptProducesIVPlusCiphertext(t *testing.T) {
 	}
 }
 
-func TestDecryptPlaintextFallback(t *testing.T) {
+func TestDecryptPlaintextPassthrough(t *testing.T) {
 	key, _ := deriveAESKey(testKey)
 	// A value that is not our ciphertext should be returned unchanged.
-	if got := decryptField("not-encrypted-plaintext", key); got != "not-encrypted-plaintext" {
+	got, err := decryptField("not-encrypted-plaintext", key)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	if got != "not-encrypted-plaintext" {
 		t.Fatalf("expected plaintext passthrough, got %q", got)
+	}
+}
+
+func TestDecryptWrongKeyReturnsError(t *testing.T) {
+	key, _ := deriveAESKey(testKey)
+	enc, err := encryptField("secret", key)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	otherKey, _ := deriveAESKey("another-key")
+	if _, err := decryptField(enc, otherKey); err == nil {
+		t.Fatal("expected error when decrypting with the wrong key")
 	}
 }
 
 func TestEncryptDecryptBlankPassthrough(t *testing.T) {
 	key, _ := deriveAESKey(testKey)
-	if got := encryptField("", key); got != "" {
+	got, err := encryptField("", key)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	if got != "" {
 		t.Fatalf("expected blank encrypt passthrough, got %q", got)
 	}
-	if got := decryptField("", key); got != "" {
+	got, err = decryptField("", key)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	if got != "" {
 		t.Fatalf("expected blank decrypt passthrough, got %q", got)
 	}
 }
