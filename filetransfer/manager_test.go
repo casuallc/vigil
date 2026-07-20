@@ -32,11 +32,15 @@ func sha256Hex(b []byte) string {
 
 func newTestManager(t *testing.T, roots ...string) *Manager {
 	t.Helper()
-	return NewManager(Options{
+	m := NewManager(Options{
 		DataDir:       t.TempDir(),
 		EncryptionKey: testKey,
 		Roots:         roots,
 	})
+	// Stop task goroutines before t.TempDir cleanup removes the data dir;
+	// cleanups run LIFO, so this must be registered after t.TempDir().
+	t.Cleanup(m.Shutdown)
+	return m
 }
 
 func TestComputeSHA256(t *testing.T) {

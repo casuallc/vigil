@@ -50,6 +50,7 @@ type Manager struct {
 
 	mu       sync.RWMutex
 	runtimes map[int64]*taskRuntime
+	wg       sync.WaitGroup // tracks executeTask goroutines; Shutdown waits on it
 }
 
 // taskRuntime holds the live state of a single task.
@@ -270,7 +271,11 @@ func (rt *taskRuntime) requestCancel() {
 func (m *Manager) launch(rt *taskRuntime) {
 	ctx, cancel := context.WithCancel(context.Background())
 	rt.cancel = cancel
-	go m.executeTask(ctx, rt)
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		m.executeTask(ctx, rt)
+	}()
 }
 
 func (m *Manager) loadProgressLocked(rt *taskRuntime) {
@@ -285,10 +290,10 @@ func (m *Manager) loadProgressLocked(rt *taskRuntime) {
 }
 
 // Shutdown cancels all running goroutines without changing persisted state, so
-// tasks marked RUNNING resume on next startup.
+// tasks marked RUNNING resume on next startup. It blocks until every task
+// goroutine has returned.
 func (m *Manager) Shutdown() {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	for _, rt := range m.runtimes {
 		rt.mu.Lock()
 		if rt.cancel != nil {
@@ -296,6 +301,8 @@ func (m *Manager) Shutdown() {
 		}
 		rt.mu.Unlock()
 	}
+	m.mu.RUnlock()
+	m.wg.Wait()
 }
 
 // Recover loads persisted tasks at startup and resumes those left RUNNING.
