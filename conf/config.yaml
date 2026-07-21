@@ -33,7 +33,7 @@ vm:
 
 filetransfer:
   enabled: true
-  data_dir: ""                          # empty -> ~/.vigil-file-transfer (legacy ~/.admq-file-transfer-agent is auto-migrated)
+  data_dir: ./data/file-transfer
   default_chunk_size: 1048576           # 1MB
   encryption_key: "vigil-file-transfer-change-me"
   roots:                                # allowed browse/landing roots; empty -> user home
