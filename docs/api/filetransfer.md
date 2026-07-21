@@ -312,7 +312,7 @@ curl -u <username>:<password> -X POST \
 
 KAFKA 模式下，每个分块作为一条 Kafka 消息：
 
-- key = `relPath`（保证同文件分块落在同一 partition）；`parallelism > 1` 时分块由 worker 池并发发送，到达 broker 的顺序不再保证，接收端按 offset 落盘、用区间集合跟踪已收字节，收齐整个文件后才校验 SHA-256 并改名落地（EOF 分块先到也能正确收尾）；
+- key：`parallelism <= 1` 时为 `relPath`（同文件分块有序落在同一 partition）；`parallelism > 1` 时为 nil，producer 用 round-robin 分区器把分块打散到**所有 partition**（Kafka 的并行单元），由 worker 池并发发送。乱序到达由接收端按 offset 落盘、用区间集合跟踪已收字节，收齐整个文件后才校验 SHA-256 并改名落地（EOF 分块先到也能正确收尾）；消费端按 partition 并发 claim，多 partition 可同时消费；
 - value 为二进制帧：`[4 字节大端 uint32 头长度][JSON(ChunkMeta)][原始 chunk 字节]`，chunk 不做 base64 编码，`chunkSize` 即为线上消息体大小的主要部分；
 - producer：`acks=all`、`retries=3`、压缩按 `kafka.compression`（默认 snappy）；
 - 单条消息上限取任务 `kafka.maxMessageBytes`（可选，默认 1,000,000 字节，低于 broker 默认 `message.max.bytes=1,000,012`）；`chunkSize` 超过「上限 − 帧头开销」时自动钳制并打日志。broker/topic 调大过 `max.message.bytes` 时，可相应调大 `kafka.maxMessageBytes`。

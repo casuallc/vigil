@@ -58,23 +58,32 @@ type kafkaSyncProducer interface {
 	Close() error
 }
 
-// SendFile publishes each chunk as one Kafka record keyed by relPath (so a
-// file's chunks stay on one partition). Kafka relay does not resume; it
-// always sends from offset 0.
+// SendFile publishes each chunk as one Kafka record. Kafka relay does not
+// resume; it always sends from offset 0.
 //
-// When cfg.Parallelism > 1, chunks are produced by a worker pool and may
-// reach the broker out of order; the receiver tolerates this by tracking
-// received byte ranges and finalising only once the whole file is present.
+// With cfg.Parallelism <= 1 records are keyed by relPath, keeping a file's
+// chunks ordered on one partition (the historical behaviour). With
+// parallelism > 1 a worker pool produces chunks concurrently with a nil key
+// and a round-robin partitioner, so chunks spread across ALL topic
+// partitions — Kafka's unit of parallelism — instead of pinning the file to
+// a single partition/broker. Order is then no longer guaranteed; the
+// receiver tolerates this by tracking received byte ranges and finalising
+// only once the whole file is present.
 func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetConfig, file FileEntry, read ChunkReader, sink ProgressSink) error {
 	if cfg.Kafka == nil {
 		return fmt.Errorf("kafka config not set for KAFKA relay type")
 	}
+	parallelism := effectiveParallelism(cfg.Parallelism)
 	saramaCfg, err := buildKafkaConfig(cfg.Kafka)
 	if err != nil {
 		return err
 	}
 	saramaCfg.Producer.RequiredAcks = sarama.WaitForAll
 	saramaCfg.Producer.Retry.Max = 3
+	if parallelism > 1 {
+		// Spread chunks over every partition (see SendFile comment).
+		saramaCfg.Producer.Partitioner = sarama.NewRoundRobinPartitioner
+	}
 	maxMsgBytes := cfg.Kafka.MaxMessageBytes
 	if maxMsgBytes <= 0 {
 		maxMsgBytes = kafkaDefaultMaxMessageBytes
@@ -99,16 +108,25 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 		chunkSize = maxChunk
 	}
 
-	return sendKafkaChunks(ctx, producer, cfg.Kafka.Topic, file, read, sink, chunkSize, effectiveParallelism(cfg.Parallelism))
+	return sendKafkaChunks(ctx, producer, cfg.Kafka.Topic, file, read, sink, chunkSize, parallelism)
 }
 
 // sendKafkaChunks publishes all chunks of file. With parallelism <= 1 it
-// sends strictly in order; otherwise a worker pool sends chunks concurrently
-// (order no longer guaranteed — the receiver reassembles by offset).
+// sends strictly in order, keyed by relPath so the file stays ordered on one
+// partition; otherwise a worker pool sends chunks concurrently with nil keys
+// (round-robin across partitions — order no longer guaranteed, the receiver
+// reassembles by offset).
 func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic string, file FileEntry, read ChunkReader, sink ProgressSink, chunkSize, parallelism int) error {
 	totalChunks := int((file.Size + int64(chunkSize) - 1) / int64(chunkSize))
 	if totalChunks <= 0 {
 		return nil
+	}
+	// A nil key lets the round-robin partitioner fan chunks across all
+	// partitions; the relPath key is only needed for the ordered sequential
+	// path.
+	var key sarama.Encoder
+	if parallelism <= 1 {
+		key = sarama.StringEncoder(file.RelPath)
 	}
 
 	sendOne := func(idx int) error {
@@ -142,7 +160,7 @@ func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic stri
 		}
 		if _, _, err := producer.SendMessage(&sarama.ProducerMessage{
 			Topic: topic,
-			Key:   sarama.StringEncoder(file.RelPath),
+			Key:   key,
 			Value: sarama.ByteEncoder(msg),
 		}); err != nil {
 			return fmt.Errorf("kafka send: %w", err)

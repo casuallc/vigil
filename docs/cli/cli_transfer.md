@@ -167,7 +167,7 @@ bbx-cli transfer task create --file <task.json>
 }
 ```
 
-> `parallelism` 为 0/1 时保持串行；大于 1 时多文件并行发送，且单文件内分块并发推送（接收端按 offset 乱序重组，收齐后校验 SHA-256）。`kafka.compression` 支持 `none`/`snappy`（默认）/`zstd`/`lz4`/`gzip`。
+> `parallelism` 为 0/1 时保持串行（key=relPath，同文件有序落在单个 partition）；大于 1 时多文件并行发送，且单文件内分块以 nil key + round-robin 打散到所有 partition 并发推送（接收端按 offset 乱序重组，收齐后校验 SHA-256）。注意 topic 的 partition 数决定了并行上限，单 partition 的 topic 吃不到并行红利。`kafka.compression` 支持 `none`/`snappy`（默认）/`zstd`/`lz4`/`gzip`。
 
 **示例：**
 

@@ -151,8 +151,15 @@ func TestSendKafkaChunksSequentialAndParallelEquivalent(t *testing.T) {
 		reassembled := make([]byte, len(payload))
 		eofSeen := 0
 		for _, msg := range fake.messages {
-			if key, _ := msg.Key.Encode(); string(key) != file.RelPath {
-				t.Fatalf("parallelism=%d: message key = %q", parallelism, key)
+			if parallelism <= 1 {
+				// Sequential path: keyed by relPath (ordered, one partition).
+				if key, _ := msg.Key.Encode(); string(key) != file.RelPath {
+					t.Fatalf("parallelism=%d: message key = %q", parallelism, key)
+				}
+			} else if msg.Key != nil {
+				// Parallel path: nil key lets the round-robin partitioner
+				// spread chunks across all partitions.
+				t.Fatalf("parallelism=%d: expected nil key, got %v", parallelism, msg.Key)
 			}
 			val, _ := msg.Value.Encode()
 			meta, data, err := decodeKafkaMessage(val)
