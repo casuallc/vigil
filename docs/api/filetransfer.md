@@ -229,7 +229,12 @@ curl -u <username>:<password> -X POST \
   "files": [
     { "relPath": "a.bin", "receivedBytes": 1048576, "totalBytes": 1048576, "completed": true }
   ],
-  "errorMsg": ""
+  "errorMsg": "",
+  "startedAt": 1753100000000,
+  "finishedAt": 0,
+  "elapsedMs": 8300,
+  "bytesPerSecond": 530604,
+  "currentBytesPerSecond": 1048576
 }
 ```
 
@@ -239,6 +244,13 @@ curl -u <username>:<password> -X POST \
 | progress | int | 总体进度百分比（0-100） |
 | files | FileProgress[] | 每文件进度 |
 | errorMsg | string | 失败原因，正常时为空 |
+| startedAt | int64 | 首次进入 RUNNING 的 epoch 毫秒；未启动为 0 |
+| finishedAt | int64 | 到达终态（SUCCESS/FAILED/PARTIAL_FAILED/CANCELLED）的 epoch 毫秒；未结束为 0 |
+| elapsedMs | int64 | 累计活跃耗时（毫秒），暂停期间冻结、不计入 |
+| bytesPerSecond | int64 | 全程平均速率（transferredBytes / elapsedMs） |
+| currentBytesPerSecond | int64 | 最近 5 秒滑动窗口速率；SEND 任务为发送速率，RECV 任务为接收速率 |
+
+> 计时持久化在 `{dataDir}/tasks/{taskId}/timing.json`，服务重启后保留。
 
 ---
 
@@ -338,7 +350,8 @@ filetransfer:
 {dataDir}/tasks/{taskId}/
 ├── config.json     # TaskConfig（敏感字段 AES-GCM 加密）
 ├── state.json      # 任务状态字符串
-└── progress.json   # []FileProgress
+├── progress.json   # []FileProgress
+└── timing.json     # 计时（startedAt/finishedAt/activeMs）
 ```
 
 `bbx-server` 重启时扫描该目录恢复任务，`state=RUNNING` 的任务自动续传。
