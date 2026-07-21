@@ -41,6 +41,7 @@ const (
 	stateFileName      = "state.json"
 	progressFileName   = "progress.json"
 	timingFileName     = "timing.json"
+	recvStateFileName  = "recvstate.json"
 )
 
 // deriveAESKey hashes the configured key with SHA-256, yielding the 32-byte
@@ -286,6 +287,44 @@ func (s *Store) loadTiming(taskID int64) (taskTiming, error) {
 		return taskTiming{}, err
 	}
 	return t, nil
+}
+
+// recvFileStatePersist is the persisted form of one file's RECV reassembly
+// state. Persisting the exact ranges (rather than the ReceivedBytes scalar)
+// is what makes restart recovery correct for out-of-order parallel
+// transfers: a scalar cannot express holes, and the chunks filling them may
+// already be past the committed Kafka offset.
+type recvFileStatePersist struct {
+	Ranges    []interval `json:"ranges,omitempty"`
+	EofSeen   bool       `json:"eofSeen,omitempty"`
+	Total     int64      `json:"total,omitempty"`
+	Sha256    string     `json:"sha256,omitempty"`
+	Finalized bool       `json:"finalized,omitempty"`
+}
+
+// saveRecvState writes recvstate.json (RECV-side reassembly state per file).
+func (s *Store) saveRecvState(taskID int64, states map[string]recvFileStatePersist) error {
+	if states == nil {
+		states = map[string]recvFileStatePersist{}
+	}
+	return s.writeJSONFile(taskID, recvStateFileName, states)
+}
+
+// loadRecvState reads recvstate.json. Returns (nil, nil) when absent (e.g.
+// tasks written by older versions).
+func (s *Store) loadRecvState(taskID int64) (map[string]recvFileStatePersist, error) {
+	data, err := os.ReadFile(filepath.Join(s.taskDir(taskID), recvStateFileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var states map[string]recvFileStatePersist
+	if err := json.Unmarshal(data, &states); err != nil {
+		return nil, err
+	}
+	return states, nil
 }
 
 // loadProgress reads progress.json. Returns an empty slice when absent.

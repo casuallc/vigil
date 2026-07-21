@@ -433,19 +433,55 @@ func (m *Manager) loadProgressLocked(rt *taskRuntime) {
 	for i := range persisted {
 		fp := persisted[i]
 		rt.progress[fp.RelPath] = &fp
-		// Seed the reassembly ranges with the persisted byte count treated as
-		// a contiguous prefix. That is exact for sequential delivery (DIRECT,
-		// or KAFKA with parallelism 1); parallel KAFKA sends resend from
-		// offset 0 on failure, so the ranges refill as chunks are re-received.
+	}
+	// Restore the exact reassembly state when available. The ReceivedBytes
+	// scalar cannot represent holes from out-of-order delivery, and the
+	// chunks filling them may be past the committed Kafka offset, so
+	// restoring anything less precise can wedge a file that is actually
+	// complete — or finalise one that is not.
+	states, err := m.store.loadRecvState(rt.taskID)
+	if err == nil && states != nil {
+		for rel, sp := range states {
+			st := rt.recvStateFor(rel)
+			st.ranges = intervalSet{intervals: append([]interval(nil), sp.Ranges...)}
+			st.eofSeen = sp.EofSeen
+			st.total = sp.Total
+			st.sha256 = sp.Sha256
+			st.finalized = sp.Finalized
+		}
+		return
+	}
+	// Legacy fallback (tasks written before recvstate.json existed): treat
+	// persisted bytes as a contiguous prefix. Exact for sequential delivery
+	// (DIRECT, or KAFKA with parallelism 1).
+	for i := range persisted {
+		fp := persisted[i]
 		if !fp.Completed && fp.ReceivedBytes > 0 {
 			rt.recvStateFor(fp.RelPath).ranges.insert(0, fp.ReceivedBytes)
 		}
 	}
 }
 
+// saveRecvStateLocked persists the RECV reassembly state of every in-flight
+// file. Caller must hold rt.mu.
+func (m *Manager) saveRecvStateLocked(rt *taskRuntime) {
+	states := make(map[string]recvFileStatePersist, len(rt.recvFiles))
+	for rel, st := range rt.recvFiles {
+		states[rel] = recvFileStatePersist{
+			Ranges:    append([]interval(nil), st.ranges.intervals...),
+			EofSeen:   st.eofSeen,
+			Total:     st.total,
+			Sha256:    st.sha256,
+			Finalized: st.finalized,
+		}
+	}
+	_ = m.store.saveRecvState(rt.taskID, states)
+}
+
 // Shutdown cancels all running goroutines without changing persisted state, so
 // tasks marked RUNNING resume on next startup. It blocks until every task
-// goroutine has returned.
+// goroutine has returned, then closes transports holding reusable resources
+// (the KAFKA transport caches its producer).
 func (m *Manager) Shutdown() {
 	m.mu.RLock()
 	for _, rt := range m.runtimes {
@@ -457,6 +493,11 @@ func (m *Manager) Shutdown() {
 	}
 	m.mu.RUnlock()
 	m.wg.Wait()
+	for _, t := range m.registry.m {
+		if c, ok := t.(io.Closer); ok {
+			_ = c.Close()
+		}
+	}
 }
 
 // Recover loads persisted tasks at startup and resumes those left RUNNING.
@@ -600,6 +641,13 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 		return fmt.Errorf("path escapes target directory: %s", meta.RelPath)
 	}
 
+	st := rt.recvStateFor(meta.RelPath)
+	if st.finalized {
+		// Redelivery of an already-completed file (at-least-once): skip the
+		// write entirely so no orphan .part file is recreated.
+		return nil
+	}
+
 	if err := os.MkdirAll(filepath.Dir(partFile), 0o755); err != nil {
 		return err
 	}
@@ -612,7 +660,6 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 		fp = &FileProgress{RelPath: meta.RelPath, TotalBytes: -1}
 		rt.progress[meta.RelPath] = fp
 	}
-	st := rt.recvStateFor(meta.RelPath)
 	newly := st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
 	// Derive progress from actual coverage rather than accumulating deltas:
 	// self-consistent even if chunks are duplicated or arrive out of order.
@@ -645,6 +692,7 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 	}
 
 	_ = m.store.saveProgress(taskID, progressValues(rt.progress))
+	m.saveRecvStateLocked(rt)
 	return nil
 }
 

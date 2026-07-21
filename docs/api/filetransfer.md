@@ -355,7 +355,8 @@ filetransfer:
 ├── config.json     # TaskConfig（敏感字段 AES-GCM 加密）
 ├── state.json      # 任务状态字符串
 ├── progress.json   # []FileProgress
-└── timing.json     # 计时（startedAt/finishedAt/activeMs）
+├── timing.json     # 计时（startedAt/finishedAt/activeMs）
+└── recvstate.json  # RECV 重组状态（精确区间集合 + EOF 信息），重启后精确恢复
 ```
 
 `bbx-server` 重启时扫描该目录恢复任务，`state=RUNNING` 的任务自动续传。

@@ -489,6 +489,117 @@ func TestReceiveRateReported(t *testing.T) {
 	}
 }
 
+// TestReceiveChunkRestartRestoresExactRecvState simulates a service restart
+// mid-transfer with an out-of-order hole: the EOF chunk was consumed (and
+// its offset committed) before the restart, so it will never be
+// redelivered. Recovery must restore the exact ranges + EOF state from
+// recvstate.json rather than guessing a contiguous prefix, or the file can
+// never finalise.
+func TestReceiveChunkRestartRestoresExactRecvState(t *testing.T) {
+	dir := t.TempDir()
+	targetDir := t.TempDir()
+	m := NewManager(Options{DataDir: dir, EncryptionKey: testKey})
+
+	// DIRECT RECV so the task can enter RUNNING without a Kafka broker; the
+	// reassembly path (ReceiveChunk) is shared by both relay types.
+	if err := m.CreateTask(TaskConfig{TaskID: 21, Role: RoleRecv, RelayType: RelayDirect, TargetDir: targetDir, OverwritePolicy: Overwrite}); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	if err := m.Start(21); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	full := []byte("0123456789abcde") // 15 bytes, three 5-byte chunks
+	// Chunks [0,5) and the EOF chunk [10,15) land; the hole [5,10) does not
+	// arrive before the "restart".
+	if err := m.ReceiveChunk(21, ChunkMeta{RelPath: "f.bin", Offset: 0, Length: 5}, full[:5]); err != nil {
+		t.Fatalf("chunk1: %v", err)
+	}
+	if err := m.ReceiveChunk(21, ChunkMeta{RelPath: "f.bin", Offset: 10, Length: 5, Eof: true, Sha256: sha256Hex(full)}, full[10:]); err != nil {
+		t.Fatalf("eof chunk: %v", err)
+	}
+	m.Shutdown()
+
+	m2 := NewManager(Options{DataDir: dir, EncryptionKey: testKey})
+	t.Cleanup(m2.Shutdown)
+	if err := m2.Recover(); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	// A duplicate of [0,5) (harmless), then the hole [5,10) — the EOF chunk
+	// itself is NOT redelivered (committed before the restart).
+	if err := m2.ReceiveChunk(21, ChunkMeta{RelPath: "f.bin", Offset: 0, Length: 5}, full[:5]); err != nil {
+		t.Fatalf("duplicate chunk: %v", err)
+	}
+	if err := m2.ReceiveChunk(21, ChunkMeta{RelPath: "f.bin", Offset: 5, Length: 5}, full[5:10]); err != nil {
+		t.Fatalf("hole chunk: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(targetDir, "f.bin"))
+	if err != nil {
+		t.Fatalf("read finalised file: %v", err)
+	}
+	if string(got) != string(full) {
+		t.Fatalf("content mismatch: %q", got)
+	}
+	st, err := m2.GetStatus(21)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if st.CompletedFiles != 1 || st.Progress != 100 {
+		t.Fatalf("unexpected status after restart recovery: %+v", st)
+	}
+}
+
+// TestReceiveChunkRedeliveryAfterFinalizeSkipped ensures chunks of an
+// already-finalised file are dropped without recreating an orphan .part.
+func TestReceiveChunkRedeliveryAfterFinalizeSkipped(t *testing.T) {
+	targetDir := t.TempDir()
+	m := newTestManager(t, targetDir)
+	_ = m.CreateTask(TaskConfig{TaskID: 22, Role: RoleRecv, RelayType: RelayKafka, TargetDir: targetDir, OverwritePolicy: Overwrite})
+
+	content := []byte("done")
+	meta := ChunkMeta{RelPath: "f.txt", Offset: 0, Length: 4, Eof: true, Sha256: sha256Hex(content)}
+	if err := m.ReceiveChunk(22, meta, content); err != nil {
+		t.Fatalf("first delivery: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "f.txt")); err != nil {
+		t.Fatalf("final file missing: %v", err)
+	}
+	// Redelivered after finalisation: must not recreate the .part file.
+	if err := m.ReceiveChunk(22, meta, content); err != nil {
+		t.Fatalf("redelivery: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "f.txt.part")); !os.IsNotExist(err) {
+		t.Fatal("orphan .part file recreated after finalise")
+	}
+}
+
+// TestReceiveChunkZeroByteFileFinalizes verifies a zero-byte file (single
+// empty EOF chunk) is created and marked completed.
+func TestReceiveChunkZeroByteFileFinalizes(t *testing.T) {
+	targetDir := t.TempDir()
+	m := newTestManager(t, targetDir)
+	_ = m.CreateTask(TaskConfig{TaskID: 23, Role: RoleRecv, RelayType: RelayKafka, TargetDir: targetDir, OverwritePolicy: Overwrite})
+
+	emptySha := sha256Hex(nil)
+	if err := m.ReceiveChunk(23, ChunkMeta{RelPath: "empty.bin", Offset: 0, Length: 0, Eof: true, Sha256: emptySha}, nil); err != nil {
+		t.Fatalf("ReceiveChunk: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(targetDir, "empty.bin"))
+	if err != nil {
+		t.Fatalf("zero-byte file not created: %v", err)
+	}
+	if info.Size() != 0 {
+		t.Fatalf("zero-byte file size = %d", info.Size())
+	}
+	st, err := m.GetStatus(23)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if st.CompletedFiles != 1 {
+		t.Fatalf("unexpected status: %+v", st)
+	}
+}
+
 func TestCreateTaskRejectsDuplicate(t *testing.T) {
 	m := newTestManager(t)
 	cfg := TaskConfig{TaskID: 10, Role: RoleSend, RelayType: RelayDirect}

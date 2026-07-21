@@ -16,8 +16,12 @@ limitations under the License.
 
 package filetransfer
 
-// interval is a half-open byte range [start, end).
-type interval struct{ start, end int64 }
+// interval is a half-open byte range [Start, End). Fields are exported (with
+// compact JSON tags) so the RECV reassembly state can be persisted.
+type interval struct {
+	Start int64 `json:"s"`
+	End   int64 `json:"e"`
+}
 
 // intervalSet is a sorted set of disjoint, coalesced byte intervals. The RECV
 // side uses it to track which parts of a file have landed, so chunks may
@@ -39,11 +43,11 @@ func (s *intervalSet) insert(start, end int64) int64 {
 	out := make([]interval, 0, len(s.intervals)+1)
 	inserted := false
 	for _, iv := range s.intervals {
-		if iv.end < start {
+		if iv.End < start {
 			out = append(out, iv)
 			continue
 		}
-		if iv.start > end {
+		if iv.Start > end {
 			if !inserted {
 				out = append(out, interval{start, end})
 				inserted = true
@@ -54,18 +58,18 @@ func (s *intervalSet) insert(start, end int64) int64 {
 		// Overlapping (or touching) interval: discount the already-covered
 		// part and extend the pending range to swallow iv.
 		ovStart, ovEnd := start, end
-		if iv.start > ovStart {
-			ovStart = iv.start
+		if iv.Start > ovStart {
+			ovStart = iv.Start
 		}
-		if iv.end < ovEnd {
-			ovEnd = iv.end
+		if iv.End < ovEnd {
+			ovEnd = iv.End
 		}
 		added -= ovEnd - ovStart
-		if iv.start < start {
-			start = iv.start
+		if iv.Start < start {
+			start = iv.Start
 		}
-		if iv.end > end {
-			end = iv.end
+		if iv.End > end {
+			end = iv.End
 		}
 	}
 	if !inserted {
@@ -82,7 +86,7 @@ func (s *intervalSet) insert(start, end int64) int64 {
 func (s *intervalSet) covered() int64 {
 	var n int64
 	for _, iv := range s.intervals {
-		n += iv.end - iv.start
+		n += iv.End - iv.Start
 	}
 	return n
 }
