@@ -24,8 +24,10 @@ import (
 	"hash/crc32"
 	"log"
 	"strings"
+	"sync/atomic"
 
 	"github.com/IBM/sarama"
+	"golang.org/x/sync/errgroup"
 )
 
 // kafkaFrameLenBytes is the size of the big-endian uint32 header-length
@@ -48,9 +50,21 @@ func newKafkaTransport() *kafkaTransport { return &kafkaTransport{} }
 
 func (k *kafkaTransport) Type() RelayType { return RelayKafka }
 
+// kafkaSyncProducer abstracts sarama.SyncProducer so tests can inject a fake.
+// sarama's SyncProducer is safe for concurrent use, so the parallel send path
+// shares one producer across workers.
+type kafkaSyncProducer interface {
+	SendMessage(msg *sarama.ProducerMessage) (partition int32, offset int64, err error)
+	Close() error
+}
+
 // SendFile publishes each chunk as one Kafka record keyed by relPath (so a
-// file's chunks stay ordered within a partition). Kafka relay does not resume;
-// it always sends from offset 0.
+// file's chunks stay on one partition). Kafka relay does not resume; it
+// always sends from offset 0.
+//
+// When cfg.Parallelism > 1, chunks are produced by a worker pool and may
+// reach the broker out of order; the receiver tolerates this by tracking
+// received byte ranges and finalising only once the whole file is present.
 func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetConfig, file FileEntry, read ChunkReader, sink ProgressSink) error {
 	if cfg.Kafka == nil {
 		return fmt.Errorf("kafka config not set for KAFKA relay type")
@@ -85,12 +99,20 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 		chunkSize = maxChunk
 	}
 
-	var offset int64
-	chunkIndex := 0
-	for offset < file.Size {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
+	return sendKafkaChunks(ctx, producer, cfg.Kafka.Topic, file, read, sink, chunkSize, effectiveParallelism(cfg.Parallelism))
+}
+
+// sendKafkaChunks publishes all chunks of file. With parallelism <= 1 it
+// sends strictly in order; otherwise a worker pool sends chunks concurrently
+// (order no longer guaranteed — the receiver reassembles by offset).
+func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic string, file FileEntry, read ChunkReader, sink ProgressSink, chunkSize, parallelism int) error {
+	totalChunks := int((file.Size + int64(chunkSize) - 1) / int64(chunkSize))
+	if totalChunks <= 0 {
+		return nil
+	}
+
+	sendOne := func(idx int) error {
+		offset := int64(idx) * int64(chunkSize)
 		length := chunkSize
 		if remaining := file.Size - offset; remaining < int64(length) {
 			length = int(remaining)
@@ -100,12 +122,12 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 			return fmt.Errorf("read chunk at %d: %w", offset, err)
 		}
 		if len(data) == 0 {
-			break
+			return nil
 		}
 		eof := offset+int64(len(data)) >= file.Size
 		meta := ChunkMeta{
 			RelPath:    file.RelPath,
-			ChunkIndex: chunkIndex,
+			ChunkIndex: idx,
 			Offset:     offset,
 			Length:     len(data),
 			Crc32:      crc32.ChecksumIEEE(data),
@@ -119,19 +141,49 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 			return err
 		}
 		if _, _, err := producer.SendMessage(&sarama.ProducerMessage{
-			Topic: cfg.Kafka.Topic,
+			Topic: topic,
 			Key:   sarama.StringEncoder(file.RelPath),
 			Value: sarama.ByteEncoder(msg),
 		}); err != nil {
 			return fmt.Errorf("kafka send: %w", err)
 		}
-		offset += int64(len(data))
-		chunkIndex++
 		if sink != nil {
 			sink(len(data))
 		}
+		return nil
 	}
-	return nil
+
+	if parallelism <= 1 {
+		for idx := 0; idx < totalChunks; idx++ {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := sendOne(idx); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	var next atomic.Int64
+	for w := 0; w < parallelism; w++ {
+		g.Go(func() error {
+			for {
+				if err := gctx.Err(); err != nil {
+					return err
+				}
+				idx := int(next.Add(1) - 1)
+				if idx >= totalChunks {
+					return nil
+				}
+				if err := sendOne(idx); err != nil {
+					return err
+				}
+			}
+		})
+	}
+	return g.Wait()
 }
 
 // consumeKafka runs a consumer-group loop, invoking handle for each chunk
@@ -196,6 +248,11 @@ func (h *chunkConsumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 func buildKafkaConfig(cfg *KafkaConfig) (*sarama.Config, error) {
 	c := sarama.NewConfig()
 	c.Version = sarama.V2_0_0_0
+	compression, err := kafkaCompressionCodec(cfg.Compression)
+	if err != nil {
+		return nil, err
+	}
+	c.Producer.Compression = compression
 	if cfg.AuthEnabled {
 		c.Net.SASL.Enable = true
 		c.Net.SASL.User = cfg.Username
@@ -235,6 +292,25 @@ func brokerList(bootstrap string) []string {
 		}
 	}
 	return brokers
+}
+
+// kafkaCompressionCodec maps the configured compression name to a sarama
+// codec. Empty defaults to snappy.
+func kafkaCompressionCodec(name string) (sarama.CompressionCodec, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "snappy":
+		return sarama.CompressionSnappy, nil
+	case "none":
+		return sarama.CompressionNone, nil
+	case "zstd":
+		return sarama.CompressionZSTD, nil
+	case "lz4":
+		return sarama.CompressionLZ4, nil
+	case "gzip":
+		return sarama.CompressionGZIP, nil
+	default:
+		return sarama.CompressionNone, fmt.Errorf("unsupported kafka compression: %q (want none|snappy|zstd|lz4|gzip)", name)
+	}
 }
 
 // encodeKafkaMessage builds the Kafka message body as a binary frame:

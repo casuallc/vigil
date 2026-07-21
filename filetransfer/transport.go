@@ -22,6 +22,22 @@ import "context"
 // specify one.
 const defaultChunkSizeBytes = 1048576
 
+// maxParallelism caps TaskConfig.Parallelism to bound goroutines and
+// in-flight chunk buffers.
+const maxParallelism = 16
+
+// effectiveParallelism normalises a configured parallelism: values <= 1 mean
+// sequential; anything above maxParallelism is clamped.
+func effectiveParallelism(n int) int {
+	if n < 1 {
+		return 1
+	}
+	if n > maxParallelism {
+		return maxParallelism
+	}
+	return n
+}
+
 // ChunkReader reads length bytes starting at offset from the source file.
 type ChunkReader func(offset int64, length int) ([]byte, error)
 
