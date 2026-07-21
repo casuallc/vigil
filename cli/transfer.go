@@ -22,6 +22,7 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/casuallc/vigil/api"
 	"github.com/casuallc/vigil/filetransfer"
 	"github.com/spf13/cobra"
 )
@@ -141,10 +142,10 @@ func (c *CLI) setupTransferTaskCommands() *cobra.Command {
 			fmt.Printf("Task %d deleted\n", id)
 			return nil
 		}),
-		c.transferIDCommand("start", "Start a task", c.transferLifecycle("started", c.client.TransferStart)),
-		c.transferIDCommand("pause", "Pause a task", c.transferLifecycle("paused", c.client.TransferPause)),
-		c.transferIDCommand("resume", "Resume a task", c.transferLifecycle("resumed", c.client.TransferResume)),
-		c.transferIDCommand("cancel", "Cancel a task", c.transferLifecycle("cancelled", c.client.TransferCancel)),
+		c.transferIDCommand("start", "Start a task", c.transferLifecycle("started", (*api.Client).TransferStart)),
+		c.transferIDCommand("pause", "Pause a task", c.transferLifecycle("paused", (*api.Client).TransferPause)),
+		c.transferIDCommand("resume", "Resume a task", c.transferLifecycle("resumed", (*api.Client).TransferResume)),
+		c.transferIDCommand("cancel", "Cancel a task", c.transferLifecycle("cancelled", (*api.Client).TransferCancel)),
 		c.transferIDCommand("status", "Show task status", func(id int64) error {
 			status, err := c.client.TransferStatus(id)
 			if err != nil {
@@ -178,9 +179,11 @@ func (c *CLI) transferIDCommand(use, short string, run func(id int64) error) *co
 	return cmd
 }
 
-func (c *CLI) transferLifecycle(verb string, action func(int64) error) func(int64) error {
+func (c *CLI) transferLifecycle(verb string, action func(*api.Client, int64) error) func(int64) error {
 	return func(id int64) error {
-		if err := action(id); err != nil {
+		// Resolve c.client at run time: the root PersistentPreRunE replaces it
+		// with a client bound to the -H flag after this command tree was built.
+		if err := action(c.client, id); err != nil {
 			return err
 		}
 		fmt.Printf("Task %d %s\n", id, verb)
