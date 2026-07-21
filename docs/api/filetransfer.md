@@ -329,10 +329,14 @@ KAFKA 模式下，每个分块作为一条 Kafka 消息：
 - producer：`acks=all`、`retries=3`、压缩按 `kafka.compression`（默认 snappy）；
 - 单条消息上限取任务 `kafka.maxMessageBytes`（可选，默认 1,000,000 字节，低于 broker 默认 `message.max.bytes=1,000,012`）；`chunkSize` 超过「上限 − 帧头开销」时自动钳制并打日志。broker/topic 调大过 `max.message.bytes` 时，可相应调大 `kafka.maxMessageBytes`。
 
+## 故障排查（KAFKA）
+
+- **RECV 任务一直 RUNNING 属正常**：KAFKA 接收任务是常驻消费者，完成判据看 `completedFiles` / per-file `completed`，而不是任务状态。
+- **进度卡在 <100% 但 `.part` 文件已是全量大小**：乱序落盘时尾部 EOF 分块会把文件撑到全量大小（中间是空洞），文件大小不代表完整。`receivedBytes < totalBytes` 即存在缺失分块，文件不会 finalize。消费端处理分块失败时会终止消费会话、重平衡后从已提交 offset 重投（日志有 `chunk handle failed`），若仍有洞，修复方式：**换一个新的 `groupId` 重建 RECV 任务**（新消费组从 OffsetOldest 全量重消费，乱序落盘幂等，会补齐空洞后 finalize）。建议每次传输使用独立 `groupId`，避免复用已提交 offset 的旧消费组跳过早期分块。
+
 ## 配置
 
 `conf/config.yaml`：
-
 ```yaml
 filetransfer:
   enabled: true

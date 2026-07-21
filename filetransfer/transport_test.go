@@ -217,6 +217,71 @@ func TestKafkaCompressionCodec(t *testing.T) {
 	}
 }
 
+// fakeConsumerSession implements sarama.ConsumerGroupSession, recording
+// marked messages.
+type fakeConsumerSession struct {
+	ctx    context.Context
+	marked []*sarama.ConsumerMessage
+}
+
+func (f *fakeConsumerSession) Claims() map[string][]int32 { return nil }
+func (f *fakeConsumerSession) MemberID() string           { return "" }
+func (f *fakeConsumerSession) GenerationID() int32        { return 0 }
+func (f *fakeConsumerSession) MarkOffset(string, int32, int64, string) {
+}
+func (f *fakeConsumerSession) Commit()                                  {}
+func (f *fakeConsumerSession) ResetOffset(string, int32, int64, string) {}
+func (f *fakeConsumerSession) MarkMessage(msg *sarama.ConsumerMessage, _ string) {
+	f.marked = append(f.marked, msg)
+}
+func (f *fakeConsumerSession) Context() context.Context { return f.ctx }
+
+// fakeConsumerClaim implements sarama.ConsumerGroupClaim over a channel.
+type fakeConsumerClaim struct {
+	sarama.ConsumerGroupClaim
+	ch chan *sarama.ConsumerMessage
+}
+
+func (f fakeConsumerClaim) Messages() <-chan *sarama.ConsumerMessage { return f.ch }
+
+func TestConsumeClaimSkipsUndecodableButMarks(t *testing.T) {
+	session := &fakeConsumerSession{ctx: context.Background()}
+	ch := make(chan *sarama.ConsumerMessage, 1)
+	ch <- &sarama.ConsumerMessage{Topic: "t", Partition: 0, Offset: 7, Value: []byte("not-a-frame")}
+	close(ch)
+
+	h := &chunkConsumerHandler{handle: func(ChunkMeta, []byte) error { return nil }}
+	if err := h.ConsumeClaim(session, fakeConsumerClaim{ch: ch}); err != nil {
+		t.Fatalf("ConsumeClaim: %v", err)
+	}
+	if len(session.marked) != 1 {
+		t.Fatalf("expected the bad message to be marked, got %d", len(session.marked))
+	}
+}
+
+// TestConsumeClaimHandleErrorStopsSession ensures a failed chunk is NOT
+// marked and the error propagates so the session restarts for redelivery.
+func TestConsumeClaimHandleErrorStopsSession(t *testing.T) {
+	session := &fakeConsumerSession{ctx: context.Background()}
+	ch := make(chan *sarama.ConsumerMessage, 1)
+	msg, err := encodeKafkaMessage(ChunkMeta{RelPath: "f.bin", Offset: 0, Length: 3}, []byte("abc"))
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	ch <- &sarama.ConsumerMessage{Topic: "t", Partition: 0, Offset: 9, Value: msg}
+	close(ch)
+
+	h := &chunkConsumerHandler{handle: func(ChunkMeta, []byte) error {
+		return errors.New("disk full")
+	}}
+	if err := h.ConsumeClaim(session, fakeConsumerClaim{ch: ch}); err == nil {
+		t.Fatal("expected ConsumeClaim to return the handle error")
+	}
+	if len(session.marked) != 0 {
+		t.Fatalf("failed message must not be marked, got %d", len(session.marked))
+	}
+}
+
 func TestTransportRegistryGet(t *testing.T) {
 	reg := newTransportRegistry()
 	reg.register(stubTransport{rt: RelayDirect})

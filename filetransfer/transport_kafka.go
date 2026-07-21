@@ -25,6 +25,7 @@ import (
 	"log"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/IBM/sarama"
 	"golang.org/x/sync/errgroup"
@@ -205,7 +206,11 @@ func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic stri
 }
 
 // consumeKafka runs a consumer-group loop, invoking handle for each chunk
-// message until ctx is cancelled.
+// message until ctx is cancelled. When handle rejects a chunk, ConsumeClaim
+// returns an error which ends the consumer-group session; the loop then
+// rejoins so the group rebalances and consumption resumes from the last
+// committed offset, redelivering the failed chunk instead of leaving a
+// permanent hole in the received file.
 func consumeKafka(ctx context.Context, cfg *KafkaConfig, handle func(meta ChunkMeta, data []byte) error) error {
 	if cfg == nil {
 		return fmt.Errorf("kafka config not set for KAFKA relay type")
@@ -227,11 +232,22 @@ func consumeKafka(ctx context.Context, cfg *KafkaConfig, handle func(meta ChunkM
 		if err := ctx.Err(); err != nil {
 			return nil
 		}
-		if err := group.Consume(ctx, []string{cfg.Topic}, handler); err != nil {
-			if err == sarama.ErrClosedConsumerGroup {
-				return nil
-			}
-			return err
+		err := group.Consume(ctx, []string{cfg.Topic}, handler)
+		if err == nil || err == sarama.ErrClosedConsumerGroup {
+			continue
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		// A chunk handler failure tears the session down (see ConsumeClaim).
+		// Back off briefly and rejoin for redelivery; log loudly so a
+		// persistently failing chunk (e.g. corrupted data failing SHA-256)
+		// is visible instead of silently stalling the task.
+		log.Printf("filetransfer: kafka consume session ended with error, rejoining group: %v", err)
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(2 * time.Second):
 		}
 	}
 }
@@ -254,8 +270,19 @@ func (h *chunkConsumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 				return nil
 			}
 			meta, data, err := decodeKafkaMessage(msg.Value)
-			if err == nil {
-				_ = h.handle(meta, data)
+			if err != nil {
+				// Not one of our chunk frames (or garbage): skip but still
+				// commit past it, otherwise the consumer wedges forever.
+				log.Printf("filetransfer: skipping undecodable kafka message (topic=%s partition=%d offset=%d): %v", msg.Topic, msg.Partition, msg.Offset, err)
+				session.MarkMessage(msg, "")
+				continue
+			}
+			if err := h.handle(meta, data); err != nil {
+				// Do NOT mark: return the error to end the session so the
+				// chunk is redelivered after rebalance (at-least-once).
+				log.Printf("filetransfer: chunk handle failed (relPath=%s chunkOffset=%d, partition=%d offset=%d), restarting session for redelivery: %v",
+					meta.RelPath, meta.Offset, msg.Partition, msg.Offset, err)
+				return err
 			}
 			session.MarkMessage(msg, "")
 		}
