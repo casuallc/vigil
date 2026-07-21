@@ -40,6 +40,7 @@ const (
 	configFileName     = "config.json"
 	stateFileName      = "state.json"
 	progressFileName   = "progress.json"
+	timingFileName     = "timing.json"
 )
 
 // deriveAESKey hashes the configured key with SHA-256, yielding the 32-byte
@@ -256,6 +257,35 @@ func (s *Store) saveProgress(taskID int64, progress []FileProgress) error {
 		progress = []FileProgress{}
 	}
 	return s.writeJSONFile(taskID, progressFileName, progress)
+}
+
+// taskTiming is the persisted form of a task's timing information (epoch
+// milliseconds; 0 means unset).
+type taskTiming struct {
+	StartedAt  int64 `json:"startedAt,omitempty"`
+	FinishedAt int64 `json:"finishedAt,omitempty"`
+	ActiveMs   int64 `json:"activeMs"`
+}
+
+// saveTiming writes timing.json.
+func (s *Store) saveTiming(taskID int64, t taskTiming) error {
+	return s.writeJSONFile(taskID, timingFileName, t)
+}
+
+// loadTiming reads timing.json. Returns the zero value when absent.
+func (s *Store) loadTiming(taskID int64) (taskTiming, error) {
+	var t taskTiming
+	data, err := os.ReadFile(filepath.Join(s.taskDir(taskID), timingFileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return t, nil
+		}
+		return t, err
+	}
+	if err := json.Unmarshal(data, &t); err != nil {
+		return taskTiming{}, err
+	}
+	return t, nil
 }
 
 // loadProgress reads progress.json. Returns an empty slice when absent.

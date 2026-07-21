@@ -28,6 +28,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Options configures a Manager. It is intentionally decoupled from the global
@@ -70,6 +71,15 @@ type taskRuntime struct {
 	// ranges from persisted progress on resume.
 	recvFiles map[string]*recvFileState
 
+	// Timing (guarded by rt.mu): startedAt/finishedAt mark the first run and
+	// the terminal state; activeMs accumulates run time excluding pauses;
+	// runStart is the current run's start (zero while not RUNNING).
+	startedAt  time.Time
+	finishedAt time.Time
+	activeMs   int64
+	runStart   time.Time
+	rate       rateWindow
+
 	paused   atomic.Bool
 	canceled atomic.Bool
 }
@@ -95,6 +105,106 @@ func (rt *taskRuntime) recvStateFor(relPath string) *recvFileState {
 		rt.recvFiles[relPath] = st
 	}
 	return st
+}
+
+// beginRunLocked records the start of a RUNNING period. Idempotent while
+// already running. Caller must hold rt.mu.
+func (rt *taskRuntime) beginRunLocked(now time.Time) {
+	if rt.startedAt.IsZero() {
+		rt.startedAt = now
+	}
+	if rt.runStart.IsZero() {
+		rt.runStart = now
+	}
+}
+
+// endRunLocked closes the current RUNNING period, folding its duration into
+// activeMs, and stamps finishedAt on terminal states. Idempotent while not
+// running. Caller must hold rt.mu.
+func (rt *taskRuntime) endRunLocked(now time.Time, terminal bool) {
+	if !rt.runStart.IsZero() {
+		rt.activeMs += now.Sub(rt.runStart).Milliseconds()
+		rt.runStart = time.Time{}
+	}
+	if terminal {
+		rt.finishedAt = now
+	}
+}
+
+// timingLocked snapshots the persisted timing form. Caller must hold rt.mu.
+func (rt *taskRuntime) timingLocked() taskTiming {
+	var t taskTiming
+	if !rt.startedAt.IsZero() {
+		t.StartedAt = rt.startedAt.UnixMilli()
+	}
+	if !rt.finishedAt.IsZero() {
+		t.FinishedAt = rt.finishedAt.UnixMilli()
+	}
+	t.ActiveMs = rt.activeMs
+	return t
+}
+
+// applyTiming restores persisted timing (used at Recover, before the runtime
+// is shared, so no lock is needed).
+func (rt *taskRuntime) applyTiming(t taskTiming) {
+	if t.StartedAt > 0 {
+		rt.startedAt = time.UnixMilli(t.StartedAt)
+	}
+	if t.FinishedAt > 0 {
+		rt.finishedAt = time.UnixMilli(t.FinishedAt)
+	}
+	rt.activeMs = t.ActiveMs
+}
+
+// isTerminalState reports whether s ends the task's timing.
+func isTerminalState(s TaskState) bool {
+	switch s {
+	case StateSuccess, StateFailed, StatePartialFailed, StateCancelled:
+		return true
+	}
+	return false
+}
+
+// rateWindowBuckets is the number of per-second buckets kept for the
+// trailing transfer-rate estimate.
+const rateWindowBuckets = 10
+
+// rateWindowReportSecs is the trailing window length reported as the current
+// transfer rate.
+const rateWindowReportSecs = 5
+
+// rateWindow tracks transferred bytes in per-second buckets to estimate the
+// current send/receive rate. Live-traffic estimate only; not persisted.
+type rateWindow struct {
+	secs  [rateWindowBuckets]int64
+	bytes [rateWindowBuckets]int64
+}
+
+// add records n transferred bytes at now. Caller must hold rt.mu.
+func (w *rateWindow) add(now time.Time, n int64) {
+	if n <= 0 {
+		return
+	}
+	sec := now.Unix()
+	i := sec % rateWindowBuckets
+	if w.secs[i] != sec {
+		w.secs[i] = sec
+		w.bytes[i] = 0
+	}
+	w.bytes[i] += n
+}
+
+// perSecond returns the trailing average rate over the last
+// rateWindowReportSecs seconds.
+func (w *rateWindow) perSecond(now time.Time) int64 {
+	cutoff := now.Unix() - rateWindowReportSecs
+	var sum int64
+	for i := 0; i < rateWindowBuckets; i++ {
+		if w.secs[i] > cutoff {
+			sum += w.bytes[i]
+		}
+	}
+	return sum / rateWindowReportSecs
 }
 
 // NewManager builds a Manager and registers the DIRECT and KAFKA transports.
@@ -224,7 +334,9 @@ func (m *Manager) Start(taskID int64) error {
 	rt.paused.Store(false)
 	rt.canceled.Store(false)
 	rt.state = StateRunning
+	rt.beginRunLocked(time.Now())
 	_ = m.store.saveState(taskID, StateRunning)
+	_ = m.store.saveTiming(taskID, rt.timingLocked())
 	m.launch(rt)
 	return nil
 }
@@ -242,7 +354,9 @@ func (m *Manager) Pause(taskID int64) error {
 	}
 	rt.paused.Store(true)
 	rt.state = StatePaused
+	rt.endRunLocked(time.Now(), false)
 	_ = m.store.saveState(taskID, StatePaused)
+	_ = m.store.saveTiming(taskID, rt.timingLocked())
 	if rt.cancel != nil {
 		rt.cancel()
 	}
@@ -263,7 +377,9 @@ func (m *Manager) Resume(taskID int64) error {
 	rt.paused.Store(false)
 	rt.canceled.Store(false)
 	rt.state = StateRunning
+	rt.beginRunLocked(time.Now())
 	_ = m.store.saveState(taskID, StateRunning)
+	_ = m.store.saveTiming(taskID, rt.timingLocked())
 	m.loadProgressLocked(rt)
 	m.launch(rt)
 	return nil
@@ -280,7 +396,9 @@ func (m *Manager) Cancel(taskID int64) error {
 	rt.canceled.Store(true)
 	rt.paused.Store(false)
 	rt.state = StateCancelled
+	rt.endRunLocked(time.Now(), true)
 	_ = m.store.saveState(taskID, StateCancelled)
+	_ = m.store.saveTiming(taskID, rt.timingLocked())
 	if rt.cancel != nil {
 		rt.cancel()
 	}
@@ -362,12 +480,16 @@ func (m *Manager) Recover() error {
 			state:    state,
 			progress: make(map[string]*FileProgress),
 		}
+		if timing, err := m.store.loadTiming(id); err == nil {
+			rt.applyTiming(timing)
+		}
 		m.mu.Lock()
 		m.runtimes[id] = rt
 		m.mu.Unlock()
 
 		if state == StateRunning {
 			rt.mu.Lock()
+			rt.beginRunLocked(time.Now())
 			m.loadProgressLocked(rt)
 			m.launch(rt)
 			rt.mu.Unlock()
@@ -410,6 +532,22 @@ func (m *Manager) GetStatus(taskID int64) (TaskStatus, error) {
 	if totalBytes > 0 {
 		status.Progress = int(transferredBytes * 100 / totalBytes)
 	}
+	now := time.Now()
+	if !rt.startedAt.IsZero() {
+		status.StartedAt = rt.startedAt.UnixMilli()
+	}
+	if !rt.finishedAt.IsZero() {
+		status.FinishedAt = rt.finishedAt.UnixMilli()
+	}
+	elapsed := rt.activeMs
+	if !rt.runStart.IsZero() {
+		elapsed += now.Sub(rt.runStart).Milliseconds()
+	}
+	status.ElapsedMs = elapsed
+	if elapsed > 0 {
+		status.BytesPerSecond = transferredBytes * 1000 / elapsed
+	}
+	status.CurrentBytesPerSecond = rt.rate.perSecond(now)
 	return status, nil
 }
 
@@ -475,7 +613,9 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 		rt.progress[meta.RelPath] = fp
 	}
 	st := rt.recvStateFor(meta.RelPath)
-	fp.ReceivedBytes += st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
+	newly := st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
+	fp.ReceivedBytes += newly
+	rt.rate.add(time.Now(), newly)
 
 	if meta.Eof {
 		st.eofSeen = true
@@ -712,6 +852,7 @@ func (m *Manager) sendFileToTarget(ctx context.Context, rt *taskRuntime, config 
 		if fp := rt.progress[file.RelPath]; fp != nil {
 			fp.ReceivedBytes += int64(n)
 		}
+		rt.rate.add(time.Now(), int64(n))
 		rt.mu.Unlock()
 	}
 	return transport.SendFile(ctx, config, target, file, reader, sink)
@@ -744,9 +885,17 @@ func (m *Manager) executeRecv(ctx context.Context, rt *taskRuntime) error {
 
 func (m *Manager) setState(rt *taskRuntime, state TaskState) {
 	rt.mu.Lock()
+	now := time.Now()
+	if state == StateRunning {
+		rt.beginRunLocked(now)
+	} else {
+		rt.endRunLocked(now, isTerminalState(state))
+	}
 	rt.state = state
+	timing := rt.timingLocked()
 	rt.mu.Unlock()
 	_ = m.store.saveState(rt.taskID, state)
+	_ = m.store.saveTiming(rt.taskID, timing)
 }
 
 func (m *Manager) progressFor(rt *taskRuntime, relPath string) *FileProgress {

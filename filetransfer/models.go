@@ -147,6 +147,17 @@ type TaskStatus struct {
 	CompletedFiles   int            `json:"completedFiles"`
 	Files            []FileProgress `json:"files"`
 	ErrorMsg         string         `json:"errorMsg"`
+	// StartedAt / FinishedAt are epoch milliseconds (0 when unset).
+	// ElapsedMs is the cumulative ACTIVE time: it freezes while the task is
+	// paused and keeps no time for IDLE tasks. BytesPerSecond is the
+	// average rate over the elapsed active time; CurrentBytesPerSecond is
+	// the trailing 5-second rate. On a SEND task the rates describe sending,
+	// on a RECV task receiving.
+	StartedAt             int64 `json:"startedAt,omitempty"`
+	FinishedAt            int64 `json:"finishedAt,omitempty"`
+	ElapsedMs             int64 `json:"elapsedMs"`
+	BytesPerSecond        int64 `json:"bytesPerSecond"`
+	CurrentBytesPerSecond int64 `json:"currentBytesPerSecond"`
 }
 
 // FsItem is one entry returned by the FS list endpoint (mtime is epoch

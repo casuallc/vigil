@@ -402,9 +402,96 @@ func TestExecuteSendParallelFiles(t *testing.T) {
 	}
 }
 
+// TestTaskTimingLifecycle verifies started/finished timestamps, the
+// pause-frozen elapsed clock, and timing persistence across a restart.
+func TestTaskTimingLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(Options{DataDir: dir, EncryptionKey: testKey})
+
+	cfg := TaskConfig{TaskID: 8, Role: RoleRecv, RelayType: RelayDirect, TargetDir: t.TempDir()}
+	if err := m.CreateTask(cfg); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	if err := m.Start(8); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	time.Sleep(30 * time.Millisecond)
+
+	st, err := m.GetStatus(8)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if st.StartedAt == 0 {
+		t.Fatal("startedAt not set while running")
+	}
+	if st.FinishedAt != 0 {
+		t.Fatal("finishedAt set while running")
+	}
+	if st.ElapsedMs <= 0 {
+		t.Fatalf("elapsedMs=%d, want > 0", st.ElapsedMs)
+	}
+
+	// Paused: the elapsed clock must freeze.
+	if err := m.Pause(8); err != nil {
+		t.Fatalf("Pause: %v", err)
+	}
+	st, _ = m.GetStatus(8)
+	frozen := st.ElapsedMs
+	time.Sleep(30 * time.Millisecond)
+	st, _ = m.GetStatus(8)
+	if st.ElapsedMs != frozen {
+		t.Fatalf("elapsed moved while paused: %d -> %d", frozen, st.ElapsedMs)
+	}
+
+	if err := m.Cancel(8); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	st, _ = m.GetStatus(8)
+	if st.FinishedAt == 0 {
+		t.Fatal("finishedAt not set after cancel")
+	}
+
+	// Timing survives a manager restart.
+	m.Shutdown()
+	m2 := NewManager(Options{DataDir: dir, EncryptionKey: testKey})
+	t.Cleanup(m2.Shutdown)
+	if err := m2.Recover(); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	st, err = m2.GetStatus(8)
+	if err != nil {
+		t.Fatalf("GetStatus after recover: %v", err)
+	}
+	if st.StartedAt == 0 || st.FinishedAt == 0 {
+		t.Fatalf("timing not persisted: %+v", st)
+	}
+	if st.ElapsedMs != frozen {
+		t.Fatalf("elapsedMs after recover = %d, want %d", st.ElapsedMs, frozen)
+	}
+}
+
+// TestReceiveRateReported verifies the trailing receive rate shows up in
+// the task status after chunks land.
+func TestReceiveRateReported(t *testing.T) {
+	targetDir := t.TempDir()
+	m := newTestManager(t, targetDir)
+	_ = m.CreateTask(TaskConfig{TaskID: 9, Role: RoleRecv, RelayType: RelayKafka, TargetDir: targetDir, OverwritePolicy: Overwrite})
+
+	if err := m.ReceiveChunk(9, ChunkMeta{RelPath: "f.bin", Offset: 0, Length: 10}, []byte("0123456789")); err != nil {
+		t.Fatalf("ReceiveChunk: %v", err)
+	}
+	st, err := m.GetStatus(9)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if st.CurrentBytesPerSecond <= 0 {
+		t.Fatalf("currentBytesPerSecond=%d, want > 0", st.CurrentBytesPerSecond)
+	}
+}
+
 func TestCreateTaskRejectsDuplicate(t *testing.T) {
 	m := newTestManager(t)
-	cfg := TaskConfig{TaskID: 9, Role: RoleSend, RelayType: RelayDirect}
+	cfg := TaskConfig{TaskID: 10, Role: RoleSend, RelayType: RelayDirect}
 	if err := m.CreateTask(cfg); err != nil {
 		t.Fatalf("CreateTask: %v", err)
 	}
