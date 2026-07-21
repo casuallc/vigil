@@ -148,6 +148,27 @@ bbx-cli transfer task create --file <task.json>
 }
 ```
 
+**task.json 示例**（SEND KAFKA，经 Kafka 主题中继，并行 + 压缩）：
+
+```json
+{
+  "taskId": 3001,
+  "role": "SEND",
+  "relayType": "KAFKA",
+  "sourcePaths": ["/data/release"],
+  "chunkSize": 1048576,
+  "parallelism": 4,
+  "kafka": {
+    "bootstrapServers": "10.0.0.10:9092",
+    "topic": "file-transfer",
+    "groupId": "vigil-transfer",
+    "compression": "zstd"
+  }
+}
+```
+
+> `parallelism` 为 0/1 时保持串行；大于 1 时多文件并行发送，且单文件内分块并发推送（接收端按 offset 乱序重组，收齐后校验 SHA-256）。`kafka.compression` 支持 `none`/`snappy`（默认）/`zstd`/`lz4`/`gzip`。
+
 **示例：**
 
 ```bash
