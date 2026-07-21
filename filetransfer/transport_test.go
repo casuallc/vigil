@@ -101,6 +101,7 @@ type fakeKafkaProducer struct {
 	messages []*sarama.ProducerMessage
 	calls    int
 	failOn   int
+	closed   bool
 }
 
 func (f *fakeKafkaProducer) SendMessage(msg *sarama.ProducerMessage) (int32, int64, error) {
@@ -114,7 +115,12 @@ func (f *fakeKafkaProducer) SendMessage(msg *sarama.ProducerMessage) (int32, int
 	return 0, int64(f.calls), nil
 }
 
-func (f *fakeKafkaProducer) Close() error { return nil }
+func (f *fakeKafkaProducer) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = true
+	return nil
+}
 
 // sliceReader returns a ChunkReader over an in-memory byte slice.
 func sliceReader(b []byte) ChunkReader {
@@ -194,6 +200,75 @@ func TestSendKafkaChunksPropagatesSendError(t *testing.T) {
 	err := sendKafkaChunks(context.Background(), fake, "topic", file, sliceReader(payload), nil, 128, 4)
 	if err == nil || !strings.Contains(err.Error(), "broker unavailable") {
 		t.Fatalf("expected broker error, got %v", err)
+	}
+}
+
+// TestSendKafkaChunksZeroByteFileSendsEmptyEOF ensures zero-byte files still
+// reach the receiver (as a single empty EOF chunk) instead of vanishing.
+func TestSendKafkaChunksZeroByteFileSendsEmptyEOF(t *testing.T) {
+	fake := &fakeKafkaProducer{}
+	file := FileEntry{RelPath: "empty.bin", Size: 0, Sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+	if err := sendKafkaChunks(context.Background(), fake, "topic", file, sliceReader(nil), nil, 256, 4); err != nil {
+		t.Fatalf("sendKafkaChunks: %v", err)
+	}
+	if len(fake.messages) != 1 {
+		t.Fatalf("got %d messages, want 1 empty EOF chunk", len(fake.messages))
+	}
+	val, _ := fake.messages[0].Value.Encode()
+	meta, data, err := decodeKafkaMessage(val)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !meta.Eof || meta.Offset != 0 || meta.Length != 0 || len(data) != 0 {
+		t.Fatalf("unexpected zero-file chunk: meta=%+v dataLen=%d", meta, len(data))
+	}
+	if meta.Sha256 != file.Sha256 {
+		t.Fatalf("EOF chunk sha256 = %q, want %q", meta.Sha256, file.Sha256)
+	}
+}
+
+// TestKafkaTransportReusesProducer verifies the cached producer is reused
+// across files with the same effective config, recreated when the config
+// changes, and released on Close.
+func TestKafkaTransportReusesProducer(t *testing.T) {
+	fake := &fakeKafkaProducer{}
+	creates := 0
+	tr := newKafkaTransport()
+	tr.newSyncProducer = func(_ []string, _ *sarama.Config) (kafkaSyncProducer, error) {
+		creates++
+		return fake, nil
+	}
+
+	cfg := TaskConfig{
+		RelayType: RelayKafka,
+		Kafka:     &KafkaConfig{BootstrapServers: "broker:9092", Topic: "t"},
+	}
+	file := FileEntry{RelPath: "a.bin", Size: 10}
+	read := sliceReader([]byte("0123456789"))
+	for i := 0; i < 3; i++ {
+		if err := tr.SendFile(context.Background(), cfg, TargetConfig{}, file, read, nil); err != nil {
+			t.Fatalf("SendFile %d: %v", i, err)
+		}
+	}
+	if creates != 1 {
+		t.Fatalf("producer created %d times across 3 sends, want 1 (reused)", creates)
+	}
+
+	// A config change must build a fresh producer.
+	cfg.Kafka.Compression = "lz4"
+	if err := tr.SendFile(context.Background(), cfg, TargetConfig{}, file, read, nil); err != nil {
+		t.Fatalf("SendFile with new config: %v", err)
+	}
+	if creates != 2 {
+		t.Fatalf("producer created %d times after config change, want 2", creates)
+	}
+
+	if err := tr.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if !fake.closed {
+		t.Fatal("cached producer was not closed")
 	}
 }
 

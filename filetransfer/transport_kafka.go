@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"log"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -45,11 +47,89 @@ const kafkaDefaultMaxMessageBytes = 1_000_000
 const kafkaHeaderMargin = 4096
 
 // kafkaTransport sends file chunks through a Kafka topic (KAFKA relay).
-type kafkaTransport struct{}
+// Creating a SyncProducer involves broker metadata fetches, so the producer
+// is cached and reused across files/tasks with the same effective config;
+// Manager.Shutdown closes it via io.Closer.
+type kafkaTransport struct {
+	mu       sync.Mutex
+	producer kafkaSyncProducer
+	prodKey  string
+	// newSyncProducer is replaceable in tests.
+	newSyncProducer func(brokers []string, cfg *sarama.Config) (kafkaSyncProducer, error)
+}
 
-func newKafkaTransport() *kafkaTransport { return &kafkaTransport{} }
+func newKafkaTransport() *kafkaTransport {
+	return &kafkaTransport{
+		newSyncProducer: func(brokers []string, cfg *sarama.Config) (kafkaSyncProducer, error) {
+			return sarama.NewSyncProducer(brokers, cfg)
+		},
+	}
+}
 
 func (k *kafkaTransport) Type() RelayType { return RelayKafka }
+
+// Close releases the cached producer, if any.
+func (k *kafkaTransport) Close() error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.producer == nil {
+		return nil
+	}
+	err := k.producer.Close()
+	k.producer = nil
+	return err
+}
+
+// getProducer returns the cached producer, creating it when the effective
+// config changed or none exists yet.
+func (k *kafkaTransport) getProducer(kafkaCfg *KafkaConfig, parallelism, maxMsgBytes int) (kafkaSyncProducer, error) {
+	key := kafkaProducerKey(kafkaCfg, parallelism, maxMsgBytes)
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.producer != nil && k.prodKey == key {
+		return k.producer, nil
+	}
+	if k.producer != nil {
+		_ = k.producer.Close()
+		k.producer = nil
+	}
+	saramaCfg, err := buildKafkaConfig(kafkaCfg)
+	if err != nil {
+		return nil, err
+	}
+	saramaCfg.Producer.RequiredAcks = sarama.WaitForAll
+	saramaCfg.Producer.Retry.Max = 3
+	if parallelism > 1 {
+		// Spread chunks over every partition (see SendFile comment).
+		saramaCfg.Producer.Partitioner = sarama.NewRoundRobinPartitioner
+	}
+	saramaCfg.Producer.MaxMessageBytes = maxMsgBytes
+	saramaCfg.Producer.Return.Successes = true
+
+	producer, err := k.newSyncProducer(brokerList(kafkaCfg.BootstrapServers), saramaCfg)
+	if err != nil {
+		return nil, fmt.Errorf("create kafka producer: %w", err)
+	}
+	k.producer = producer
+	k.prodKey = key
+	return producer, nil
+}
+
+// kafkaProducerKey identifies the effective producer configuration so the
+// cached producer is only reused when every relevant setting matches.
+func kafkaProducerKey(cfg *KafkaConfig, parallelism, maxMsgBytes int) string {
+	return strings.Join([]string{
+		cfg.BootstrapServers,
+		strconv.FormatBool(cfg.AuthEnabled),
+		cfg.Username,
+		cfg.Password,
+		cfg.SaslMechanism,
+		cfg.SecurityProtocol,
+		cfg.Compression,
+		strconv.Itoa(maxMsgBytes),
+		strconv.Itoa(parallelism),
+	}, "|")
+}
 
 // kafkaSyncProducer abstracts sarama.SyncProducer so tests can inject a fake.
 // sarama's SyncProducer is safe for concurrent use, so the parallel send path
@@ -75,28 +155,14 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 		return fmt.Errorf("kafka config not set for KAFKA relay type")
 	}
 	parallelism := effectiveParallelism(cfg.Parallelism)
-	saramaCfg, err := buildKafkaConfig(cfg.Kafka)
-	if err != nil {
-		return err
-	}
-	saramaCfg.Producer.RequiredAcks = sarama.WaitForAll
-	saramaCfg.Producer.Retry.Max = 3
-	if parallelism > 1 {
-		// Spread chunks over every partition (see SendFile comment).
-		saramaCfg.Producer.Partitioner = sarama.NewRoundRobinPartitioner
-	}
 	maxMsgBytes := cfg.Kafka.MaxMessageBytes
 	if maxMsgBytes <= 0 {
 		maxMsgBytes = kafkaDefaultMaxMessageBytes
 	}
-	saramaCfg.Producer.MaxMessageBytes = maxMsgBytes
-	saramaCfg.Producer.Return.Successes = true
-
-	producer, err := sarama.NewSyncProducer(brokerList(cfg.Kafka.BootstrapServers), saramaCfg)
+	producer, err := k.getProducer(cfg.Kafka, parallelism, maxMsgBytes)
 	if err != nil {
-		return fmt.Errorf("create kafka producer: %w", err)
+		return err
 	}
-	defer producer.Close()
 
 	chunkSize := cfg.ChunkSize
 	if chunkSize <= 0 {
@@ -119,15 +185,29 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 // reassembles by offset).
 func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic string, file FileEntry, read ChunkReader, sink ProgressSink, chunkSize, parallelism int) error {
 	totalChunks := int((file.Size + int64(chunkSize) - 1) / int64(chunkSize))
-	if totalChunks <= 0 {
-		return nil
-	}
 	// A nil key lets the round-robin partitioner fan chunks across all
 	// partitions; the relPath key is only needed for the ordered sequential
 	// path.
 	var key sarama.Encoder
 	if parallelism <= 1 {
 		key = sarama.StringEncoder(file.RelPath)
+	}
+
+	if totalChunks <= 0 {
+		// Zero-byte file: deliver an empty EOF chunk so the receiver still
+		// finalises (creates) the file.
+		msg, err := encodeKafkaMessage(ChunkMeta{RelPath: file.RelPath, Eof: true, Sha256: file.Sha256}, nil)
+		if err != nil {
+			return err
+		}
+		if _, _, err := producer.SendMessage(&sarama.ProducerMessage{
+			Topic: topic,
+			Key:   key,
+			Value: sarama.ByteEncoder(msg),
+		}); err != nil {
+			return fmt.Errorf("kafka send: %w", err)
+		}
+		return nil
 	}
 
 	sendOne := func(idx int) error {

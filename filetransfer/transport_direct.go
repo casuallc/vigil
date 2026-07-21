@@ -58,6 +58,12 @@ func (d *directTransport) SendFile(ctx context.Context, cfg TaskConfig, target T
 	resumeOffset := d.queryResumeOffset(ctx, base, target, file.RelPath)
 	offset := resumeOffset
 	chunkIndex := 0
+	if file.Size == 0 {
+		// Zero-byte file: deliver an empty EOF chunk so the receiver still
+		// finalises (creates) the file.
+		meta := ChunkMeta{RelPath: file.RelPath, Eof: true, Sha256: file.Sha256}
+		return d.postChunk(ctx, base, target, meta, nil)
+	}
 	for offset < file.Size {
 		if err := ctx.Err(); err != nil {
 			return err
