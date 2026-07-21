@@ -600,6 +600,55 @@ func TestReceiveChunkZeroByteFileFinalizes(t *testing.T) {
 	}
 }
 
+// TestReceiveChunkTaskSuccessAndResumeOnNewFile verifies a RECV task
+// transitions to SUCCESS once every known file is completed, and flips back
+// to RUNNING when chunks of a NEW file arrive (another transfer over the
+// same channel).
+func TestReceiveChunkTaskSuccessAndResumeOnNewFile(t *testing.T) {
+	targetDir := t.TempDir()
+	m := newTestManager(t, targetDir)
+	_ = m.CreateTask(TaskConfig{TaskID: 24, Role: RoleRecv, RelayType: RelayDirect, TargetDir: targetDir, OverwritePolicy: Overwrite})
+	if err := m.Start(24); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	c1 := []byte("first")
+	if err := m.ReceiveChunk(24, ChunkMeta{RelPath: "a.txt", Offset: 0, Length: 5, Eof: true, Sha256: sha256Hex(c1)}, c1); err != nil {
+		t.Fatalf("file a: %v", err)
+	}
+	st, err := m.GetStatus(24)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if st.State != StateSuccess {
+		t.Fatalf("state=%s, want SUCCESS after all files completed", st.State)
+	}
+	if st.FinishedAt == 0 {
+		t.Fatal("finishedAt not set on SUCCESS")
+	}
+
+	// A new file arrives (second transfer): task must resume RUNNING.
+	c2 := []byte("secondfile!")
+	if err := m.ReceiveChunk(24, ChunkMeta{RelPath: "b.txt", Offset: 0, Length: 6}, c2[:6]); err != nil {
+		t.Fatalf("file b chunk1: %v", err)
+	}
+	st, _ = m.GetStatus(24)
+	if st.State != StateRunning {
+		t.Fatalf("state=%s, want RUNNING after new file arrived", st.State)
+	}
+	if st.FinishedAt != 0 {
+		t.Fatal("finishedAt must be cleared while running again")
+	}
+
+	if err := m.ReceiveChunk(24, ChunkMeta{RelPath: "b.txt", Offset: 6, Length: 6, Eof: true, Sha256: sha256Hex(c2)}, c2[6:]); err != nil {
+		t.Fatalf("file b chunk2: %v", err)
+	}
+	st, _ = m.GetStatus(24)
+	if st.State != StateSuccess || st.CompletedFiles != 2 {
+		t.Fatalf("unexpected final status: %+v", st)
+	}
+}
+
 func TestCreateTaskRejectsDuplicate(t *testing.T) {
 	m := newTestManager(t)
 	cfg := TaskConfig{TaskID: 10, Role: RoleSend, RelayType: RelayDirect}

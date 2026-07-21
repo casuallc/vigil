@@ -108,13 +108,15 @@ func (rt *taskRuntime) recvStateFor(relPath string) *recvFileState {
 }
 
 // beginRunLocked records the start of a RUNNING period. Idempotent while
-// already running. Caller must hold rt.mu.
+// already running. A SUCCESS task flipping back to RUNNING (new files
+// arriving) clears finishedAt. Caller must hold rt.mu.
 func (rt *taskRuntime) beginRunLocked(now time.Time) {
 	if rt.startedAt.IsZero() {
 		rt.startedAt = now
 	}
 	if rt.runStart.IsZero() {
 		rt.runStart = now
+		rt.finishedAt = time.Time{}
 	}
 }
 
@@ -613,52 +615,76 @@ func (m *Manager) GetProgress(taskID int64) ([]FileProgress, error) {
 // arrive out of order (parallel KAFKA sends): once the EOF chunk has been
 // seen AND the received ranges cover the whole file, the SHA-256 is verified
 // and the overwrite policy applied.
+//
+// When every file the task knows about is completed the task transitions to
+// SUCCESS; if chunks for a NEW file arrive later (another transfer over the
+// same topic), the task flips back to RUNNING.
 func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error {
 	rt, err := m.getRuntime(taskID)
 	if err != nil {
 		return err
 	}
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
+	allDone, newFile, err := m.receiveChunkLocked(rt, taskID, meta, body)
+	state := rt.state
+	rt.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if newFile && state == StateSuccess {
+		// Another transfer started over the same channel.
+		m.setState(rt, StateRunning)
+		state = StateRunning
+	}
+	if allDone && state == StateRunning {
+		m.setState(rt, StateSuccess)
+	}
+	return nil
+}
 
+// receiveChunkLocked is the locked body of ReceiveChunk. It reports whether
+// every known file is now completed (allDone) and whether the chunk belongs
+// to a previously unseen file (newFile).
+func (m *Manager) receiveChunkLocked(rt *taskRuntime, taskID int64, meta ChunkMeta, body []byte) (allDone, newFile bool, err error) {
 	config := rt.config
 	if config.Role != RoleRecv {
-		return fmt.Errorf("task %d is not RECV role", taskID)
+		return false, false, fmt.Errorf("task %d is not RECV role", taskID)
 	}
 	if config.TargetDir == "" {
-		return fmt.Errorf("targetDir not set for task %d", taskID)
+		return false, false, fmt.Errorf("targetDir not set for task %d", taskID)
 	}
 	if strings.Contains(meta.RelPath, "..") {
-		return fmt.Errorf("path traversal not allowed: %s", meta.RelPath)
+		return false, false, fmt.Errorf("path traversal not allowed: %s", meta.RelPath)
 	}
 
 	targetDir, err := filepath.Abs(filepath.Clean(config.TargetDir))
 	if err != nil {
-		return err
+		return false, false, err
 	}
 	partFile := filepath.Clean(filepath.Join(targetDir, meta.RelPath+".part"))
 	if !within(targetDir, partFile) {
-		return fmt.Errorf("path escapes target directory: %s", meta.RelPath)
+		return false, false, fmt.Errorf("path escapes target directory: %s", meta.RelPath)
 	}
 
 	st := rt.recvStateFor(meta.RelPath)
 	if st.finalized {
 		// Redelivery of an already-completed file (at-least-once): skip the
 		// write entirely so no orphan .part file is recreated.
-		return nil
+		return len(rt.progress) > 0 && allFilesCompletedLocked(rt), false, nil
 	}
 
 	if err := os.MkdirAll(filepath.Dir(partFile), 0o755); err != nil {
-		return err
+		return false, false, err
 	}
 	if err := writeChunkAt(partFile, meta.Offset, body); err != nil {
-		return err
+		return false, false, err
 	}
 
 	fp := rt.progress[meta.RelPath]
 	if fp == nil {
 		fp = &FileProgress{RelPath: meta.RelPath, TotalBytes: -1}
 		rt.progress[meta.RelPath] = fp
+		newFile = true
 	}
 	newly := st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
 	// Derive progress from actual coverage rather than accumulating deltas:
@@ -677,15 +703,15 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 		if st.sha256 != "" {
 			actual, err := computeSHA256(partFile)
 			if err != nil {
-				return err
+				return false, false, err
 			}
 			if !strings.EqualFold(actual, st.sha256) {
-				return fmt.Errorf("sha256 mismatch for %s", meta.RelPath)
+				return false, false, fmt.Errorf("sha256 mismatch for %s", meta.RelPath)
 			}
 		}
 		finalFile := filepath.Clean(filepath.Join(targetDir, meta.RelPath))
 		if err := applyOverwritePolicy(finalFile, partFile, config.OverwritePolicy); err != nil {
-			return err
+			return false, false, err
 		}
 		st.finalized = true
 		fp.Completed = true
@@ -693,7 +719,18 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 
 	_ = m.store.saveProgress(taskID, progressValues(rt.progress))
 	m.saveRecvStateLocked(rt)
-	return nil
+	return len(rt.progress) > 0 && allFilesCompletedLocked(rt), newFile, nil
+}
+
+// allFilesCompletedLocked reports whether every known file is completed.
+// Caller must hold rt.mu.
+func allFilesCompletedLocked(rt *taskRuntime) bool {
+	for _, fp := range rt.progress {
+		if !fp.Completed {
+			return false
+		}
+	}
+	return true
 }
 
 // ===================== execution =====================
@@ -925,9 +962,10 @@ func (m *Manager) executeRecv(ctx context.Context, rt *taskRuntime) error {
 		}
 		return err
 	}
-	// DIRECT RECV: chunks arrive via the HTTP handler; nothing to do here but
-	// remain RUNNING until paused/cancelled.
-	m.setState(rt, StateRunning)
+	// DIRECT RECV: chunks arrive via the HTTP handler; nothing to do here.
+	// The task is already RUNNING (set by Start/Resume/Recover) — do NOT
+	// re-assert the state here: this goroutine races with ReceiveChunk,
+	// which may already have moved the task to SUCCESS.
 	return nil
 }
 

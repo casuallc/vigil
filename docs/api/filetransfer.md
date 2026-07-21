@@ -331,7 +331,7 @@ KAFKA 模式下，每个分块作为一条 Kafka 消息：
 
 ## 故障排查（KAFKA）
 
-- **RECV 任务一直 RUNNING 属正常**：KAFKA 接收任务是常驻消费者，完成判据看 `completedFiles` / per-file `completed`，而不是任务状态。
+- **RECV 任务的完成语义**：当任务已知的所有文件都 completed 时，任务自动转为 `SUCCESS`（`finishedAt` 落地）；此后若有新文件的 chunk 经同一通道到达，任务自动翻回 `RUNNING` 继续接收。RUNNING 但 progress <100% 才是异常。
 - **进度卡在 <100% 但 `.part` 文件已是全量大小**：乱序落盘时尾部 EOF 分块会把文件撑到全量大小（中间是空洞），文件大小不代表完整。`receivedBytes < totalBytes` 即存在缺失分块，文件不会 finalize。消费端处理分块失败时会终止消费会话、重平衡后从已提交 offset 重投（日志有 `chunk handle failed`），若仍有洞，修复方式：**换一个新的 `groupId` 重建 RECV 任务**（新消费组从 OffsetOldest 全量重消费，乱序落盘幂等，会补齐空洞后 finalize）。建议每次传输使用独立 `groupId`，避免复用已提交 offset 的旧消费组跳过早期分块。
 
 ## 配置
