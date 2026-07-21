@@ -16,7 +16,10 @@ limitations under the License.
 
 package filetransfer
 
-import "testing"
+import (
+	"math/rand"
+	"testing"
+)
 
 func TestIntervalSetDisjointInsertAndCoalesce(t *testing.T) {
 	var s intervalSet
@@ -67,6 +70,86 @@ func TestIntervalSetOutOfOrderShuffledChunks(t *testing.T) {
 	}
 	if len(s.intervals) != 1 {
 		t.Fatalf("expected coalesced single interval, got %+v", s.intervals)
+	}
+}
+
+// TestIntervalSetInsertBeforeFirstWithPendingIntervals is a regression test
+// for the aliasing bug where out reused s.intervals' backing array: an
+// insert before the first interval appends two entries in one iteration and
+// used to overwrite unread intervals, silently dropping ranges.
+func TestIntervalSetInsertBeforeFirstWithPendingIntervals(t *testing.T) {
+	var s intervalSet
+	s.insert(100, 200)
+	s.insert(300, 400)
+	s.insert(500, 600)
+	s.insert(700, 800)
+
+	if added := s.insert(0, 50); added != 50 {
+		t.Fatalf("insert before first: added=%d, want 50", added)
+	}
+	want := []interval{{0, 50}, {100, 200}, {300, 400}, {500, 600}, {700, 800}}
+	if len(s.intervals) != len(want) {
+		t.Fatalf("intervals=%+v, want %+v", s.intervals, want)
+	}
+	for i, iv := range want {
+		if s.intervals[i] != iv {
+			t.Fatalf("intervals=%+v, want %+v", s.intervals, want)
+		}
+	}
+	if got := s.covered(); got != 450 {
+		t.Fatalf("covered=%d, want 450", got)
+	}
+}
+
+// TestIntervalSetRandomShufflesMatchesModel stress-tests insert against a
+// simple boolean-array model over many deterministic shuffles, including
+// duplicate (re-delivered) chunks and coalesced multi-chunk intervals.
+func TestIntervalSetRandomShufflesMatchesModel(t *testing.T) {
+	const (
+		chunks    = 64
+		chunkSize = 100
+		trials    = 50
+	)
+	rng := rand.New(rand.NewSource(42))
+	for trial := 0; trial < trials; trial++ {
+		var s intervalSet
+		model := make([]bool, chunks*chunkSize)
+		order := rng.Perm(chunks)
+		// Re-deliver some chunks (duplicates must be idempotent).
+		for _, dup := range order[:chunks/4] {
+			order = append(order, dup)
+		}
+		rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+
+		var addedTotal int64
+		for _, c := range order {
+			start := int64(c * chunkSize)
+			end := start + chunkSize
+			added := s.insert(start, end)
+			if added < 0 {
+				t.Fatalf("trial %d: negative added %d", trial, added)
+			}
+			addedTotal += added
+			var modelAdded int64
+			for b := start; b < end; b++ {
+				if !model[b] {
+					model[b] = true
+					modelAdded++
+				}
+			}
+			if added != modelAdded {
+				t.Fatalf("trial %d chunk %d: added=%d, model=%d", trial, c, added, modelAdded)
+			}
+		}
+		if got := s.covered(); got != chunks*chunkSize {
+			t.Fatalf("trial %d: covered=%d, want %d (intervals=%+v)", trial, got, chunks*chunkSize, s.intervals)
+		}
+		if addedTotal != chunks*chunkSize {
+			t.Fatalf("trial %d: sum(added)=%d, want %d", trial, addedTotal, chunks*chunkSize)
+		}
+		if len(s.intervals) != 1 {
+			t.Fatalf("trial %d: expected coalesced single interval, got %+v", trial, s.intervals)
+		}
 	}
 }
 

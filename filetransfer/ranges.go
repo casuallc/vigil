@@ -32,7 +32,11 @@ func (s *intervalSet) insert(start, end int64) int64 {
 		return 0
 	}
 	added := end - start
-	out := s.intervals[:0]
+	// A fresh slice is required: writing into s.intervals[:0] while ranging
+	// over s.intervals corrupts unread elements whenever one iteration
+	// appends two entries (insert-before-first with further intervals
+	// pending), which silently drops ranges and can double-discount added.
+	out := make([]interval, 0, len(s.intervals)+1)
 	inserted := false
 	for _, iv := range s.intervals {
 		if iv.end < start {
@@ -66,6 +70,9 @@ func (s *intervalSet) insert(start, end int64) int64 {
 	}
 	if !inserted {
 		out = append(out, interval{start, end})
+	}
+	if added < 0 {
+		added = 0 // defensive: disjoint intervals can never double-discount
 	}
 	s.intervals = out
 	return added

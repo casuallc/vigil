@@ -614,7 +614,9 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 	}
 	st := rt.recvStateFor(meta.RelPath)
 	newly := st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
-	fp.ReceivedBytes += newly
+	// Derive progress from actual coverage rather than accumulating deltas:
+	// self-consistent even if chunks are duplicated or arrive out of order.
+	fp.ReceivedBytes = st.ranges.covered()
 	rt.rate.add(time.Now(), newly)
 
 	if meta.Eof {
