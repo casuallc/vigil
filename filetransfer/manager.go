@@ -63,8 +63,38 @@ type taskRuntime struct {
 	cancel   context.CancelFunc
 	progress map[string]*FileProgress
 
+	// recvFiles tracks per-file received byte ranges (RECV side) so chunks
+	// arriving out of order — from parallel KAFKA sends — are reassembled by
+	// offset and finalised only once the file is fully covered. In-memory
+	// only: the KAFKA relay never resumes mid-file and DIRECT seeds the
+	// ranges from persisted progress on resume.
+	recvFiles map[string]*recvFileState
+
 	paused   atomic.Bool
 	canceled atomic.Bool
+}
+
+// recvFileState is the RECV-side reassembly state for one file.
+type recvFileState struct {
+	ranges    intervalSet
+	eofSeen   bool
+	total     int64
+	sha256    string
+	finalized bool
+}
+
+// recvStateFor returns the reassembly state for relPath, creating the map
+// and entry lazily. Caller must hold rt.mu.
+func (rt *taskRuntime) recvStateFor(relPath string) *recvFileState {
+	if rt.recvFiles == nil {
+		rt.recvFiles = make(map[string]*recvFileState)
+	}
+	st := rt.recvFiles[relPath]
+	if st == nil {
+		st = &recvFileState{}
+		rt.recvFiles[relPath] = st
+	}
+	return st
 }
 
 // NewManager builds a Manager and registers the DIRECT and KAFKA transports.
@@ -285,6 +315,13 @@ func (m *Manager) loadProgressLocked(rt *taskRuntime) {
 	for i := range persisted {
 		fp := persisted[i]
 		rt.progress[fp.RelPath] = &fp
+		// Seed the reassembly ranges with the persisted byte count treated as
+		// a contiguous prefix. That is exact for sequential delivery (DIRECT,
+		// or KAFKA with parallelism 1); parallel KAFKA sends resend from
+		// offset 0 on failure, so the ranges refill as chunks are re-received.
+		if !fp.Completed && fp.ReceivedBytes > 0 {
+			rt.recvStateFor(fp.RelPath).ranges.insert(0, fp.ReceivedBytes)
+		}
 	}
 }
 
@@ -393,8 +430,10 @@ func (m *Manager) GetProgress(taskID int64) ([]FileProgress, error) {
 
 // ===================== RECV: receive a chunk =====================
 
-// ReceiveChunk writes one chunk to {targetDir}/{relPath}.part, and on EOF
-// verifies the whole-file SHA-256 and applies the overwrite policy.
+// ReceiveChunk writes one chunk to {targetDir}/{relPath}.part. Chunks may
+// arrive out of order (parallel KAFKA sends): once the EOF chunk has been
+// seen AND the received ranges cover the whole file, the SHA-256 is verified
+// and the overwrite policy applied.
 func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error {
 	rt, err := m.getRuntime(taskID)
 	if err != nil {
@@ -435,17 +474,23 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 		fp = &FileProgress{RelPath: meta.RelPath, TotalBytes: -1}
 		rt.progress[meta.RelPath] = fp
 	}
-	fp.ReceivedBytes = meta.Offset + int64(len(body))
+	st := rt.recvStateFor(meta.RelPath)
+	fp.ReceivedBytes += st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
 
 	if meta.Eof {
-		fp.Completed = true
-		fp.TotalBytes = meta.Offset + int64(len(body))
-		if meta.Sha256 != "" {
+		st.eofSeen = true
+		st.total = meta.Offset + int64(len(body))
+		st.sha256 = meta.Sha256
+		fp.TotalBytes = st.total
+	}
+
+	if st.eofSeen && !st.finalized && st.ranges.covered() >= st.total {
+		if st.sha256 != "" {
 			actual, err := computeSHA256(partFile)
 			if err != nil {
 				return err
 			}
-			if !strings.EqualFold(actual, meta.Sha256) {
+			if !strings.EqualFold(actual, st.sha256) {
 				return fmt.Errorf("sha256 mismatch for %s", meta.RelPath)
 			}
 		}
@@ -453,6 +498,8 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 		if err := applyOverwritePolicy(finalFile, partFile, config.OverwritePolicy); err != nil {
 			return err
 		}
+		st.finalized = true
+		fp.Completed = true
 	}
 
 	_ = m.store.saveProgress(taskID, progressValues(rt.progress))
@@ -526,6 +573,10 @@ func (m *Manager) executeSend(ctx context.Context, rt *taskRuntime) error {
 		targets = []TargetConfig{{}}
 	}
 
+	if effectiveParallelism(config.Parallelism) > 1 {
+		return m.sendFilesParallel(ctx, rt, config, targets, manifest, transport)
+	}
+
 	allSuccess := true
 	for _, file := range manifest {
 		if rt.canceled.Load() {
@@ -539,27 +590,11 @@ func (m *Manager) executeSend(ctx context.Context, rt *taskRuntime) error {
 		if fp := m.progressFor(rt, file.RelPath); fp != nil && fp.Completed {
 			continue
 		}
-
-		fileSuccess := false
-		for _, target := range targets {
-			if err := m.sendFileToTarget(ctx, rt, config, target, file, transport); err != nil {
-				if ctx.Err() != nil {
-					return nil // paused/cancelled mid-flight
-				}
-				log.Printf("filetransfer: task %d failed to send %s: %v", rt.taskID, file.RelPath, err)
-				allSuccess = false
-			} else {
-				fileSuccess = true
+		if !m.sendOneFile(ctx, rt, config, targets, file, transport) {
+			if ctx.Err() != nil {
+				return nil // paused/cancelled mid-flight
 			}
-		}
-		if fileSuccess {
-			rt.mu.Lock()
-			if fp := rt.progress[file.RelPath]; fp != nil {
-				fp.Completed = true
-				fp.ReceivedBytes = file.Size
-			}
-			_ = m.store.saveProgress(rt.taskID, progressValues(rt.progress))
-			rt.mu.Unlock()
+			allSuccess = false
 		}
 	}
 
@@ -569,6 +604,89 @@ func (m *Manager) executeSend(ctx context.Context, rt *taskRuntime) error {
 		m.setState(rt, StatePartialFailed)
 	}
 	return nil
+}
+
+// sendFilesParallel delivers the manifest with a worker pool of
+// config.Parallelism goroutines, each sending whole files independently.
+func (m *Manager) sendFilesParallel(ctx context.Context, rt *taskRuntime, config TaskConfig, targets []TargetConfig, manifest []FileEntry, transport RelayTransport) error {
+	workers := effectiveParallelism(config.Parallelism)
+	var allSuccess atomic.Bool
+	allSuccess.Store(true)
+
+	jobs := make(chan FileEntry)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for file := range jobs {
+				if rt.canceled.Load() || rt.paused.Load() {
+					continue
+				}
+				if fp := m.progressFor(rt, file.RelPath); fp != nil && fp.Completed {
+					continue
+				}
+				if !m.sendOneFile(ctx, rt, config, targets, file, transport) {
+					if ctx.Err() != nil {
+						continue // paused/cancelled mid-flight
+					}
+					allSuccess.Store(false)
+				}
+			}
+		}()
+	}
+feed:
+	for _, file := range manifest {
+		select {
+		case jobs <- file:
+		case <-ctx.Done():
+			break feed
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	if rt.canceled.Load() {
+		m.setState(rt, StateCancelled)
+		return nil
+	}
+	if rt.paused.Load() {
+		m.setState(rt, StatePaused)
+		return nil
+	}
+	if allSuccess.Load() {
+		m.setState(rt, StateSuccess)
+	} else {
+		m.setState(rt, StatePartialFailed)
+	}
+	return nil
+}
+
+// sendOneFile delivers one manifest entry to every target and, on success,
+// marks the file completed. It reports whether the file reached at least one
+// target; a false return with ctx cancelled means paused/cancelled mid-flight.
+func (m *Manager) sendOneFile(ctx context.Context, rt *taskRuntime, config TaskConfig, targets []TargetConfig, file FileEntry, transport RelayTransport) bool {
+	fileSuccess := false
+	for _, target := range targets {
+		if err := m.sendFileToTarget(ctx, rt, config, target, file, transport); err != nil {
+			if ctx.Err() != nil {
+				return false
+			}
+			log.Printf("filetransfer: task %d failed to send %s: %v", rt.taskID, file.RelPath, err)
+		} else {
+			fileSuccess = true
+		}
+	}
+	if fileSuccess {
+		rt.mu.Lock()
+		if fp := rt.progress[file.RelPath]; fp != nil {
+			fp.Completed = true
+			fp.ReceivedBytes = file.Size
+		}
+		_ = m.store.saveProgress(rt.taskID, progressValues(rt.progress))
+		rt.mu.Unlock()
+	}
+	return fileSuccess
 }
 
 func (m *Manager) sendFileToTarget(ctx context.Context, rt *taskRuntime, config TaskConfig, target TargetConfig, file FileEntry, transport RelayTransport) error {

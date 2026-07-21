@@ -17,12 +17,15 @@ limitations under the License.
 package filetransfer
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"path/filepath"
 	"sort"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func sha256Hex(b []byte) string {
@@ -247,6 +250,155 @@ func TestReceiveChunkSha256MismatchFails(t *testing.T) {
 	err := m.ReceiveChunk(4, ChunkMeta{RelPath: "a.txt", Offset: 0, Length: 3, Eof: true, Sha256: "deadbeef"}, []byte("abc"))
 	if err == nil {
 		t.Fatal("expected sha256 mismatch error")
+	}
+}
+
+// TestReceiveChunkOutOfOrderFinalizes delivers the EOF chunk first (as can
+// happen with parallel KAFKA sends) and asserts the file is finalised only
+// once the byte ranges cover the whole file.
+func TestReceiveChunkOutOfOrderFinalizes(t *testing.T) {
+	targetDir := t.TempDir()
+	m := newTestManager(t, targetDir)
+	_ = m.CreateTask(TaskConfig{TaskID: 5, Role: RoleRecv, RelayType: RelayKafka, TargetDir: targetDir, OverwritePolicy: Overwrite})
+
+	full := []byte("0123456789")
+	finalPath := filepath.Join(targetDir, "f.bin")
+
+	// EOF chunk arrives first (bytes 6..10).
+	if err := m.ReceiveChunk(5, ChunkMeta{RelPath: "f.bin", Offset: 6, Length: 4, Eof: true, Sha256: sha256Hex(full)}, full[6:]); err != nil {
+		t.Fatalf("eof chunk: %v", err)
+	}
+	if _, err := os.Stat(finalPath); !os.IsNotExist(err) {
+		t.Fatal("file must not be finalised before all chunks arrive")
+	}
+	status, err := m.GetStatus(5)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if status.CompletedFiles != 0 {
+		t.Fatalf("expected 0 completed files, got %+v", status)
+	}
+
+	// Middle chunk: still incomplete.
+	if err := m.ReceiveChunk(5, ChunkMeta{RelPath: "f.bin", Offset: 3, Length: 3}, full[3:6]); err != nil {
+		t.Fatalf("mid chunk: %v", err)
+	}
+	if _, err := os.Stat(finalPath); !os.IsNotExist(err) {
+		t.Fatal("file must not be finalised with a gap")
+	}
+
+	// First chunk closes the gap: finalisation happens now.
+	if err := m.ReceiveChunk(5, ChunkMeta{RelPath: "f.bin", Offset: 0, Length: 3}, full[:3]); err != nil {
+		t.Fatalf("first chunk: %v", err)
+	}
+	got, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatalf("read finalised file: %v", err)
+	}
+	if string(got) != string(full) {
+		t.Fatalf("content mismatch: %q", got)
+	}
+	status, err = m.GetStatus(5)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if status.CompletedFiles != 1 || status.Progress != 100 {
+		t.Fatalf("unexpected status: %+v", status)
+	}
+}
+
+// TestReceiveChunkDuplicateDeliveryCountsOnce ensures redelivered chunks
+// (at-least-once Kafka delivery) do not inflate progress.
+func TestReceiveChunkDuplicateDeliveryCountsOnce(t *testing.T) {
+	targetDir := t.TempDir()
+	m := newTestManager(t, targetDir)
+	_ = m.CreateTask(TaskConfig{TaskID: 6, Role: RoleRecv, RelayType: RelayKafka, TargetDir: targetDir, OverwritePolicy: Overwrite})
+
+	meta := ChunkMeta{RelPath: "f.bin", Offset: 0, Length: 5}
+	for i := 0; i < 3; i++ {
+		if err := m.ReceiveChunk(6, meta, []byte("hello")); err != nil {
+			t.Fatalf("chunk %d: %v", i, err)
+		}
+	}
+	status, err := m.GetStatus(6)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if status.TransferredBytes != 5 {
+		t.Fatalf("TransferredBytes=%d, want 5", status.TransferredBytes)
+	}
+}
+
+// countingTransport records the maximum number of concurrent SendFile calls.
+type countingTransport struct {
+	cur   atomic.Int32
+	max   atomic.Int32
+	delay time.Duration
+}
+
+func (c *countingTransport) Type() RelayType { return RelayDirect }
+func (c *countingTransport) SendFile(_ context.Context, _ TaskConfig, _ TargetConfig, _ FileEntry, _ ChunkReader, _ ProgressSink) error {
+	n := c.cur.Add(1)
+	for {
+		old := c.max.Load()
+		if n <= old || c.max.CompareAndSwap(old, n) {
+			break
+		}
+	}
+	time.Sleep(c.delay)
+	c.cur.Add(-1)
+	return nil
+}
+
+// TestExecuteSendParallelFiles verifies the file-level worker pool actually
+// overlaps sends and completes all files.
+func TestExecuteSendParallelFiles(t *testing.T) {
+	src := t.TempDir()
+	for _, name := range []string{"a.bin", "b.bin", "c.bin", "d.bin"} {
+		if err := os.WriteFile(filepath.Join(src, name), []byte("data-"+name), 0o644); err != nil {
+			t.Fatalf("write source: %v", err)
+		}
+	}
+	m := newTestManager(t, src)
+	ct := &countingTransport{delay: 50 * time.Millisecond}
+	m.registry.register(ct) // replace the real DIRECT transport
+
+	if err := m.CreateTask(TaskConfig{
+		TaskID:      7,
+		Role:        RoleSend,
+		RelayType:   RelayDirect,
+		SourcePaths: []string{src},
+		Parallelism: 4,
+		Targets:     []TargetConfig{{Host: "unused", Port: 1}},
+	}); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	if err := m.Start(7); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		status, err := m.GetStatus(7)
+		if err != nil {
+			t.Fatalf("GetStatus: %v", err)
+		}
+		if status.State == StateSuccess || status.State == StateFailed || status.State == StatePartialFailed {
+			if status.State != StateSuccess {
+				t.Fatalf("unexpected end state: %+v", status)
+			}
+			if status.CompletedFiles != 4 {
+				t.Fatalf("CompletedFiles=%d, want 4", status.CompletedFiles)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("task did not finish in time: %+v", status)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := ct.max.Load(); got < 2 {
+		t.Fatalf("sends were not concurrent: max in-flight = %d", got)
 	}
 }
 
