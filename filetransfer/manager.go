@@ -618,7 +618,9 @@ func (m *Manager) GetProgress(taskID int64) ([]FileProgress, error) {
 //
 // When every file the task knows about is completed the task transitions to
 // SUCCESS; if chunks for a NEW file arrive later (another transfer over the
-// same topic), the task flips back to RUNNING.
+// same topic), the task flips back to RUNNING. For the KAFKA relay this only
+// applies while the task is still RUNNING: on SUCCESS the consume loop exits
+// and closes the consumer connection (see stopConsumerIfComplete).
 func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error {
 	rt, err := m.getRuntime(taskID)
 	if err != nil {
@@ -952,7 +954,11 @@ func (m *Manager) executeRecv(ctx context.Context, rt *taskRuntime) error {
 
 	if config.RelayType == RelayKafka {
 		err := consumeKafka(ctx, config.Kafka, func(meta ChunkMeta, data []byte) error {
-			return m.ReceiveChunk(rt.taskID, meta, data)
+			if err := m.ReceiveChunk(rt.taskID, meta, data); err != nil {
+				return err
+			}
+			m.stopConsumerIfComplete(rt)
+			return nil
 		})
 		// On ctx cancel, reflect the requested pause/cancel state.
 		if rt.paused.Load() {
@@ -967,6 +973,18 @@ func (m *Manager) executeRecv(ctx context.Context, rt *taskRuntime) error {
 	// re-assert the state here: this goroutine races with ReceiveChunk,
 	// which may already have moved the task to SUCCESS.
 	return nil
+}
+
+// stopConsumerIfComplete cancels the task context once a RECV task has
+// reached SUCCESS, so the KAFKA consume loop exits and the consumer-group
+// connection closes instead of polling the topic idly. Chunks for a later
+// transfer over the same topic then require restarting the task.
+func (m *Manager) stopConsumerIfComplete(rt *taskRuntime) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.state == StateSuccess && rt.cancel != nil {
+		rt.cancel()
+	}
 }
 
 // ===================== helpers =====================
@@ -984,6 +1002,37 @@ func (m *Manager) setState(rt *taskRuntime, state TaskState) {
 	rt.mu.Unlock()
 	_ = m.store.saveState(rt.taskID, state)
 	_ = m.store.saveTiming(rt.taskID, timing)
+	if isTerminalState(state) {
+		m.closeKafkaProducerIfIdle()
+	}
+}
+
+// closeKafkaProducerIfIdle closes the cached KAFKA producer once no RUNNING
+// SEND task can still use it, so a finished transfer does not hold broker
+// connections open. RECV tasks consume via a consumer group whose connection
+// closes when its consume loop exits, so they do not keep the producer alive.
+func (m *Manager) closeKafkaProducerIfIdle() {
+	t, ok := m.registry.get(RelayKafka)
+	if !ok {
+		return
+	}
+	closer, ok := t.(io.Closer)
+	if !ok {
+		return
+	}
+	m.mu.RLock()
+	for _, other := range m.runtimes {
+		other.mu.Lock()
+		busy := other.state == StateRunning &&
+			other.config.RelayType == RelayKafka && other.config.Role == RoleSend
+		other.mu.Unlock()
+		if busy {
+			m.mu.RUnlock()
+			return
+		}
+	}
+	m.mu.RUnlock()
+	_ = closer.Close()
 }
 
 func (m *Manager) progressFor(rt *taskRuntime, relPath string) *FileProgress {

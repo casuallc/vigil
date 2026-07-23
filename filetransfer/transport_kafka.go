@@ -48,8 +48,9 @@ const kafkaHeaderMargin = 4096
 
 // kafkaTransport sends file chunks through a Kafka topic (KAFKA relay).
 // Creating a SyncProducer involves broker metadata fetches, so the producer
-// is cached and reused across files/tasks with the same effective config;
-// Manager.Shutdown closes it via io.Closer.
+// is cached and reused across files/tasks with the same effective config.
+// The cache is dropped once the last RUNNING KAFKA SEND task reaches a
+// terminal state (Manager.setState) and at Manager.Shutdown.
 type kafkaTransport struct {
 	mu       sync.Mutex
 	producer kafkaSyncProducer

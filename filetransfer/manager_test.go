@@ -673,3 +673,73 @@ func TestUpdateTaskRejectedWhileRunning(t *testing.T) {
 		t.Fatal("expected update to be rejected while RUNNING")
 	}
 }
+
+// closableKafkaTransport records Close calls so tests can observe when the
+// cached producer is released.
+type closableKafkaTransport struct {
+	stubTransport
+	closed atomic.Bool
+}
+
+func (c *closableKafkaTransport) Close() error {
+	c.closed.Store(true)
+	return nil
+}
+
+func newKafkaSendRuntime(taskID int64, state TaskState) *taskRuntime {
+	return &taskRuntime{
+		taskID:   taskID,
+		config:   TaskConfig{TaskID: taskID, Role: RoleSend, RelayType: RelayKafka},
+		state:    state,
+		progress: make(map[string]*FileProgress),
+	}
+}
+
+func TestTerminalStateClosesIdleKafkaProducer(t *testing.T) {
+	m := newTestManager(t)
+	ct := &closableKafkaTransport{stubTransport: stubTransport{rt: RelayKafka}}
+	m.registry.register(ct) // replace the real KAFKA transport
+
+	rt := newKafkaSendRuntime(1, StateRunning)
+	m.runtimes[1] = rt
+	m.setState(rt, StateSuccess)
+
+	if !ct.closed.Load() {
+		t.Fatal("expected cached kafka producer to close once the last KAFKA SEND task finished")
+	}
+}
+
+func TestTerminalStateKeepsProducerWhileOtherKafkaSendRunning(t *testing.T) {
+	m := newTestManager(t)
+	ct := &closableKafkaTransport{stubTransport: stubTransport{rt: RelayKafka}}
+	m.registry.register(ct)
+
+	busy := newKafkaSendRuntime(1, StateRunning)
+	done := newKafkaSendRuntime(2, StateRunning)
+	m.runtimes[1] = busy
+	m.runtimes[2] = done
+	m.setState(done, StateSuccess)
+
+	if ct.closed.Load() {
+		t.Fatal("producer must stay open while another KAFKA SEND task is RUNNING")
+	}
+}
+
+func TestStopConsumerIfCompleteCancelsOnlyOnSuccess(t *testing.T) {
+	m := newTestManager(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	rt := &taskRuntime{state: StateSuccess, cancel: cancel}
+	m.stopConsumerIfComplete(rt)
+	if ctx.Err() == nil {
+		t.Fatal("expected SUCCESS task context to be cancelled so the consumer closes")
+	}
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	rt2 := &taskRuntime{state: StateRunning, cancel: cancel2}
+	m.stopConsumerIfComplete(rt2)
+	if ctx2.Err() != nil {
+		t.Fatal("RUNNING task context must stay live")
+	}
+}
