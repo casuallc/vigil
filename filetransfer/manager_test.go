@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -78,7 +79,9 @@ func TestBuildManifestWalksDirectoryWithForwardSlashes(t *testing.T) {
 		byRel[e.RelPath] = e
 	}
 	a, ok := byRel["a.txt"]
-	if !ok || a.Size != 3 || a.Sha256 != sha256Hex([]byte("aaa")) {
+	// buildManifest only stats files; the SHA-256 is computed lazily during
+	// the transfer (see hashPool), so entries carry no digest here.
+	if !ok || a.Size != 3 || a.Sha256 != "" {
 		t.Fatalf("bad a.txt entry: %+v", a)
 	}
 	b, ok := byRel["sub/b.txt"] // forward slash regardless of OS
@@ -337,7 +340,7 @@ type countingTransport struct {
 }
 
 func (c *countingTransport) Type() RelayType { return RelayDirect }
-func (c *countingTransport) SendFile(_ context.Context, _ TaskConfig, _ TargetConfig, _ FileEntry, _ ChunkReader, _ ProgressSink) error {
+func (c *countingTransport) SendFile(_ context.Context, _ TaskConfig, _ TargetConfig, _ FileEntry, _ ChunkReader, _ ProgressSink, _ HashFunc) error {
 	n := c.cur.Add(1)
 	for {
 		old := c.max.Load()
@@ -741,5 +744,143 @@ func TestStopConsumerIfCompleteCancelsOnlyOnSuccess(t *testing.T) {
 	m.stopConsumerIfComplete(rt2)
 	if ctx2.Err() != nil {
 		t.Fatal("RUNNING task context must stay live")
+	}
+}
+
+// TestRecoverRefinalizesFullyReceivedFiles simulates a crash after the last
+// chunk landed (and recvstate.json was persisted with Finalized=true) but
+// before the rename completed. Recovery must re-finalise such files itself:
+// no future chunk would trigger it, since finalised files skip chunk writes.
+func TestRecoverRefinalizesFullyReceivedFiles(t *testing.T) {
+	dir := t.TempDir()
+	targetDir := t.TempDir()
+
+	m := NewManager(Options{DataDir: dir, EncryptionKey: testKey})
+	if err := m.CreateTask(TaskConfig{TaskID: 30, Role: RoleRecv, RelayType: RelayDirect, TargetDir: targetDir, OverwritePolicy: Overwrite}); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	// f1: fully received, never renamed (crash before finalise).
+	f1 := []byte("fully-received-1")
+	// f2: fully received AND renamed, but the completion was never persisted.
+	f2 := []byte("fully-received-2")
+	if err := os.WriteFile(filepath.Join(targetDir, "f1.bin.part"), f1, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "f2.bin"), f2, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]recvFileStatePersist{
+		"f1.bin": {Ranges: []interval{{Start: 0, End: int64(len(f1))}}, EofSeen: true, Total: int64(len(f1)), Sha256: sha256Hex(f1), Finalized: true},
+		"f2.bin": {Ranges: []interval{{Start: 0, End: int64(len(f2))}}, EofSeen: true, Total: int64(len(f2)), Sha256: sha256Hex(f2), Finalized: true},
+	}
+	if err := m.store.saveRecvState(30, states); err != nil {
+		t.Fatal(err)
+	}
+	progress := []FileProgress{
+		{RelPath: "f1.bin", ReceivedBytes: int64(len(f1)), TotalBytes: int64(len(f1))},
+		{RelPath: "f2.bin", ReceivedBytes: int64(len(f2)), TotalBytes: int64(len(f2))},
+	}
+	if err := m.store.saveProgress(30, progress); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.store.saveState(30, StateRunning); err != nil {
+		t.Fatal(err)
+	}
+	// No Shutdown: this simulates a crash, and a clean shutdown would flush
+	// the (empty) in-memory state over the handcrafted files above.
+
+	m2 := NewManager(Options{DataDir: dir, EncryptionKey: testKey})
+	t.Cleanup(m2.Shutdown)
+	if err := m2.Recover(); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+
+	// f1 must be re-finalised: renamed away from .part with intact content.
+	got, err := os.ReadFile(filepath.Join(targetDir, "f1.bin"))
+	if err != nil {
+		t.Fatalf("f1 not re-finalised: %v", err)
+	}
+	if string(got) != string(f1) {
+		t.Fatalf("f1 content mismatch: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "f1.bin.part")); !os.IsNotExist(err) {
+		t.Fatal("f1 .part file left behind after re-finalise")
+	}
+
+	st, err := m2.GetStatus(30)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if st.State != StateSuccess || st.CompletedFiles != 2 {
+		t.Fatalf("unexpected status after recovery: %+v", st)
+	}
+}
+
+// shaCapturingTransport resolves the lazy hash like a real transport would
+// for the EOF chunk and records it.
+type shaCapturingTransport struct {
+	mu  sync.Mutex
+	sum map[string]string
+}
+
+func (c *shaCapturingTransport) Type() RelayType { return RelayDirect }
+func (c *shaCapturingTransport) SendFile(ctx context.Context, _ TaskConfig, _ TargetConfig, file FileEntry, _ ChunkReader, _ ProgressSink, sha HashFunc) error {
+	sum, err := resolveSHA256(ctx, file, sha)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.sum[file.RelPath] = sum
+	c.mu.Unlock()
+	return nil
+}
+
+// TestExecuteSendComputesHashLazily verifies a manifest built without digests
+// still delivers the correct SHA-256 on the EOF path, computed during the
+// transfer rather than before it.
+func TestExecuteSendComputesHashLazily(t *testing.T) {
+	src := t.TempDir()
+	content := []byte("lazy-hash-me")
+	if err := os.WriteFile(filepath.Join(src, "h.bin"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestManager(t, src)
+	ct := &shaCapturingTransport{sum: map[string]string{}}
+	m.registry.register(ct)
+
+	if err := m.CreateTask(TaskConfig{
+		TaskID:      31,
+		Role:        RoleSend,
+		RelayType:   RelayDirect,
+		SourcePaths: []string{src},
+		Targets:     []TargetConfig{{Host: "unused", Port: 1}},
+	}); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	if err := m.Start(31); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		st, err := m.GetStatus(31)
+		if err != nil {
+			t.Fatalf("GetStatus: %v", err)
+		}
+		if st.State == StateSuccess {
+			break
+		}
+		if st.State != StateRunning && st.State != StateIdle {
+			t.Fatalf("unexpected state %s: %s", st.State, st.ErrorMsg)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("task did not complete in time")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if got := ct.sum["h.bin"]; got != sha256Hex(content) {
+		t.Fatalf("lazy EOF sha256 = %q, want %q", got, sha256Hex(content))
 	}
 }

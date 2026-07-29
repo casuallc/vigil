@@ -98,7 +98,7 @@ func TestDirectTransferEndToEnd(t *testing.T) {
 
 	dt := newDirectTransport()
 	cfg := TaskConfig{RelayType: RelayDirect, ChunkSize: 1024} // forces multiple chunks
-	if err := dt.SendFile(context.Background(), cfg, target, file, reader, func(int) {}); err != nil {
+	if err := dt.SendFile(context.Background(), cfg, target, file, reader, func(int) {}, nil); err != nil {
 		t.Fatalf("SendFile: %v", err)
 	}
 

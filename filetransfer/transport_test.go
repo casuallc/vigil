@@ -90,7 +90,7 @@ func TestDecodeKafkaMessageRejectsMalformed(t *testing.T) {
 type stubTransport struct{ rt RelayType }
 
 func (s stubTransport) Type() RelayType { return s.rt }
-func (s stubTransport) SendFile(_ context.Context, _ TaskConfig, _ TargetConfig, _ FileEntry, _ ChunkReader, _ ProgressSink) error {
+func (s stubTransport) SendFile(_ context.Context, _ TaskConfig, _ TargetConfig, _ FileEntry, _ ChunkReader, _ ProgressSink, _ HashFunc) error {
 	return nil
 }
 
@@ -142,7 +142,7 @@ func TestSendKafkaChunksSequentialAndParallelEquivalent(t *testing.T) {
 		var sentBytes atomic.Int64
 		sink := func(n int) { sentBytes.Add(int64(n)) }
 
-		err := sendKafkaChunks(context.Background(), fake, "topic", file, sliceReader(payload), sink, 256, parallelism)
+		err := sendKafkaChunks(context.Background(), fake, "topic", file, sliceReader(payload), sink, nil, 256, parallelism)
 		if err != nil {
 			t.Fatalf("parallelism=%d: %v", parallelism, err)
 		}
@@ -197,7 +197,7 @@ func TestSendKafkaChunksPropagatesSendError(t *testing.T) {
 	file := FileEntry{RelPath: "f.bin", Size: int64(len(payload))}
 	fake := &fakeKafkaProducer{failOn: 2}
 
-	err := sendKafkaChunks(context.Background(), fake, "topic", file, sliceReader(payload), nil, 128, 4)
+	err := sendKafkaChunks(context.Background(), fake, "topic", file, sliceReader(payload), nil, nil, 128, 4)
 	if err == nil || !strings.Contains(err.Error(), "broker unavailable") {
 		t.Fatalf("expected broker error, got %v", err)
 	}
@@ -209,7 +209,7 @@ func TestSendKafkaChunksZeroByteFileSendsEmptyEOF(t *testing.T) {
 	fake := &fakeKafkaProducer{}
 	file := FileEntry{RelPath: "empty.bin", Size: 0, Sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
 
-	if err := sendKafkaChunks(context.Background(), fake, "topic", file, sliceReader(nil), nil, 256, 4); err != nil {
+	if err := sendKafkaChunks(context.Background(), fake, "topic", file, sliceReader(nil), nil, nil, 256, 4); err != nil {
 		t.Fatalf("sendKafkaChunks: %v", err)
 	}
 	if len(fake.messages) != 1 {
@@ -247,7 +247,7 @@ func TestKafkaTransportReusesProducer(t *testing.T) {
 	file := FileEntry{RelPath: "a.bin", Size: 10}
 	read := sliceReader([]byte("0123456789"))
 	for i := 0; i < 3; i++ {
-		if err := tr.SendFile(context.Background(), cfg, TargetConfig{}, file, read, nil); err != nil {
+		if err := tr.SendFile(context.Background(), cfg, TargetConfig{}, file, read, nil, nil); err != nil {
 			t.Fatalf("SendFile %d: %v", i, err)
 		}
 	}
@@ -257,7 +257,7 @@ func TestKafkaTransportReusesProducer(t *testing.T) {
 
 	// A config change must build a fresh producer.
 	cfg.Kafka.Compression = "lz4"
-	if err := tr.SendFile(context.Background(), cfg, TargetConfig{}, file, read, nil); err != nil {
+	if err := tr.SendFile(context.Background(), cfg, TargetConfig{}, file, read, nil, nil); err != nil {
 		t.Fatalf("SendFile with new config: %v", err)
 	}
 	if creates != 2 {

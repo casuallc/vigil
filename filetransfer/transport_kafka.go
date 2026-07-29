@@ -103,6 +103,14 @@ func (k *kafkaTransport) getProducer(kafkaCfg *KafkaConfig, parallelism, maxMsgB
 	if parallelism > 1 {
 		// Spread chunks over every partition (see SendFile comment).
 		saramaCfg.Producer.Partitioner = sarama.NewRoundRobinPartitioner
+		// Batch concurrent chunks into fewer, larger produce requests: with
+		// the zero-value Flush config sarama flushes as-fast-as-possible —
+		// one ~1MB chunk per broker round trip, each waiting for WaitForAll
+		// acks. Flush.Frequency must be set, otherwise sarama ignores the
+		// Bytes/Messages triggers.
+		saramaCfg.Producer.Flush.Bytes = 8 * maxMsgBytes
+		saramaCfg.Producer.Flush.Messages = 16
+		saramaCfg.Producer.Flush.Frequency = 20 * time.Millisecond
 	}
 	saramaCfg.Producer.MaxMessageBytes = maxMsgBytes
 	saramaCfg.Producer.Return.Successes = true
@@ -151,7 +159,7 @@ type kafkaSyncProducer interface {
 // a single partition/broker. Order is then no longer guaranteed; the
 // receiver tolerates this by tracking received byte ranges and finalising
 // only once the whole file is present.
-func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetConfig, file FileEntry, read ChunkReader, sink ProgressSink) error {
+func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetConfig, file FileEntry, read ChunkReader, sink ProgressSink, sha HashFunc) error {
 	if cfg.Kafka == nil {
 		return fmt.Errorf("kafka config not set for KAFKA relay type")
 	}
@@ -176,7 +184,7 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 		chunkSize = maxChunk
 	}
 
-	return sendKafkaChunks(ctx, producer, cfg.Kafka.Topic, file, read, sink, chunkSize, parallelism)
+	return sendKafkaChunks(ctx, producer, cfg.Kafka.Topic, file, read, sink, sha, chunkSize, parallelism)
 }
 
 // sendKafkaChunks publishes all chunks of file. With parallelism <= 1 it
@@ -184,7 +192,7 @@ func (k *kafkaTransport) SendFile(ctx context.Context, cfg TaskConfig, _ TargetC
 // partition; otherwise a worker pool sends chunks concurrently with nil keys
 // (round-robin across partitions — order no longer guaranteed, the receiver
 // reassembles by offset).
-func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic string, file FileEntry, read ChunkReader, sink ProgressSink, chunkSize, parallelism int) error {
+func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic string, file FileEntry, read ChunkReader, sink ProgressSink, sha HashFunc, chunkSize, parallelism int) error {
 	totalChunks := int((file.Size + int64(chunkSize) - 1) / int64(chunkSize))
 	// A nil key lets the round-robin partitioner fan chunks across all
 	// partitions; the relPath key is only needed for the ordered sequential
@@ -197,7 +205,11 @@ func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic stri
 	if totalChunks <= 0 {
 		// Zero-byte file: deliver an empty EOF chunk so the receiver still
 		// finalises (creates) the file.
-		msg, err := encodeKafkaMessage(ChunkMeta{RelPath: file.RelPath, Eof: true, Sha256: file.Sha256}, nil)
+		sum, err := resolveSHA256(ctx, file, sha)
+		if err != nil {
+			return fmt.Errorf("sha256 for %s: %w", file.RelPath, err)
+		}
+		msg, err := encodeKafkaMessage(ChunkMeta{RelPath: file.RelPath, Eof: true, Sha256: sum}, nil)
 		if err != nil {
 			return err
 		}
@@ -234,7 +246,11 @@ func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic stri
 			Eof:        eof,
 		}
 		if eof {
-			meta.Sha256 = file.Sha256
+			sum, err := resolveSHA256(ctx, file, sha)
+			if err != nil {
+				return fmt.Errorf("sha256 for %s: %w", file.RelPath, err)
+			}
+			meta.Sha256 = sum
 		}
 		msg, err := encodeKafkaMessage(meta, data)
 		if err != nil {
@@ -301,6 +317,11 @@ func consumeKafka(ctx context.Context, cfg *KafkaConfig, handle func(meta ChunkM
 		return err
 	}
 	saramaCfg.Consumer.Offsets.Initial = sarama.OffsetOldest
+	// Chunk messages are ~1MB, but sarama's default fetch size is also 1MB —
+	// one chunk per broker round trip per partition, i.e. the same
+	// stop-and-wait the parallel send pipeline is trying to avoid. Fetch a
+	// window worth of chunks per request instead.
+	saramaCfg.Consumer.Fetch.Default = 32 << 20
 
 	group, err := sarama.NewConsumerGroup(brokerList(cfg.BootstrapServers), cfg.GroupID, saramaCfg)
 	if err != nil {

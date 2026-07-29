@@ -27,7 +27,10 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // directTransport sends chunks to a peer agent over its REST API (DIRECT
@@ -40,6 +43,9 @@ func newDirectTransport() *directTransport {
 	return &directTransport{client: &http.Client{
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+			// Keep enough idle connections for a full chunk window, otherwise
+			// pipelined sends pay a TCP handshake per chunk.
+			MaxIdleConnsPerHost: maxParallelism,
 		},
 	}}
 }
@@ -47,27 +53,39 @@ func newDirectTransport() *directTransport {
 func (d *directTransport) Type() RelayType { return RelayDirect }
 
 // SendFile streams file in chunkSize pieces to target, resuming from the
-// offset the peer reports.
-func (d *directTransport) SendFile(ctx context.Context, cfg TaskConfig, target TargetConfig, file FileEntry, read ChunkReader, sink ProgressSink) error {
+// offset the peer reports. With cfg.Parallelism > 1 chunks are sent by a
+// worker pool (an in-flight window) instead of stop-and-wait: the receiver
+// reassembles by offset, so out-of-order arrival is safe. This is what makes
+// a single large file fast — file-level parallelism alone cannot help it.
+// directDefaultChunkSizeBytes is the DIRECT-relay fallback chunk size when a
+// task does not specify one. Larger than the generic default: with the chunk
+// pipeline the per-request overhead is amortised, and 4MB measured fastest
+// (see BenchmarkDirectTransfer). The KAFKA relay keeps its own clamp just
+// below the broker message limit.
+const directDefaultChunkSizeBytes = 4 << 20
+
+func (d *directTransport) SendFile(ctx context.Context, cfg TaskConfig, target TargetConfig, file FileEntry, read ChunkReader, sink ProgressSink, sha HashFunc) error {
 	base := fmt.Sprintf("http://%s:%d", target.Host, target.Port)
 	chunkSize := cfg.ChunkSize
 	if chunkSize <= 0 {
-		chunkSize = defaultChunkSizeBytes
+		chunkSize = directDefaultChunkSizeBytes
 	}
 
 	resumeOffset := d.queryResumeOffset(ctx, base, target, file.RelPath)
-	offset := resumeOffset
-	chunkIndex := 0
 	if file.Size == 0 {
 		// Zero-byte file: deliver an empty EOF chunk so the receiver still
 		// finalises (creates) the file.
-		meta := ChunkMeta{RelPath: file.RelPath, Eof: true, Sha256: file.Sha256}
+		sum, err := resolveSHA256(ctx, file, sha)
+		if err != nil {
+			return fmt.Errorf("sha256 for %s: %w", file.RelPath, err)
+		}
+		meta := ChunkMeta{RelPath: file.RelPath, Eof: true, Sha256: sum}
 		return d.postChunk(ctx, base, target, meta, nil)
 	}
-	for offset < file.Size {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
+	totalChunks := int((file.Size - resumeOffset + int64(chunkSize) - 1) / int64(chunkSize))
+
+	sendOne := func(idx int) error {
+		offset := resumeOffset + int64(idx)*int64(chunkSize)
 		length := chunkSize
 		if remaining := file.Size - offset; remaining < int64(length) {
 			length = int(remaining)
@@ -77,30 +95,67 @@ func (d *directTransport) SendFile(ctx context.Context, cfg TaskConfig, target T
 			return fmt.Errorf("read chunk at %d: %w", offset, err)
 		}
 		if len(data) == 0 {
-			break
+			return nil
 		}
 		eof := offset+int64(len(data)) >= file.Size
 		meta := ChunkMeta{
 			RelPath:    file.RelPath,
-			ChunkIndex: chunkIndex,
+			ChunkIndex: idx,
 			Offset:     offset,
 			Length:     len(data),
 			Crc32:      crc32.ChecksumIEEE(data),
 			Eof:        eof,
 		}
 		if eof {
-			meta.Sha256 = file.Sha256
+			// The hash has had the whole transfer to compute; only the EOF
+			// chunk blocks on it (and only if it is not ready yet).
+			sum, err := resolveSHA256(ctx, file, sha)
+			if err != nil {
+				return fmt.Errorf("sha256 for %s: %w", file.RelPath, err)
+			}
+			meta.Sha256 = sum
 		}
 		if err := d.postChunk(ctx, base, target, meta, data); err != nil {
 			return err
 		}
-		offset += int64(len(data))
-		chunkIndex++
 		if sink != nil {
 			sink(len(data))
 		}
+		return nil
 	}
-	return nil
+
+	if effectiveParallelism(cfg.Parallelism) <= 1 {
+		for idx := 0; idx < totalChunks; idx++ {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := sendOne(idx); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	workers := effectiveParallelism(cfg.Parallelism)
+	g, gctx := errgroup.WithContext(ctx)
+	var next atomic.Int64
+	for w := 0; w < workers; w++ {
+		g.Go(func() error {
+			for {
+				if err := gctx.Err(); err != nil {
+					return err
+				}
+				idx := int(next.Add(1) - 1)
+				if idx >= totalChunks {
+					return nil
+				}
+				if err := sendOne(idx); err != nil {
+					return err
+				}
+			}
+		})
+	}
+	return g.Wait()
 }
 
 func (d *directTransport) queryResumeOffset(ctx context.Context, base string, target TargetConfig, relPath string) int64 {

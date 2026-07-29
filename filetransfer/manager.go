@@ -80,6 +80,10 @@ type taskRuntime struct {
 	runStart   time.Time
 	rate       rateWindow
 
+	// lastPersist is the last time progress/recvstate were flushed to disk
+	// (guarded by rt.mu); RECV-side persistence is throttled to this cadence.
+	lastPersist time.Time
+
 	paused   atomic.Bool
 	canceled atomic.Bool
 }
@@ -357,6 +361,7 @@ func (m *Manager) Pause(taskID int64) error {
 	rt.paused.Store(true)
 	rt.state = StatePaused
 	rt.endRunLocked(time.Now(), false)
+	m.persistProgressLocked(rt, taskID)
 	_ = m.store.saveState(taskID, StatePaused)
 	_ = m.store.saveTiming(taskID, rt.timingLocked())
 	if rt.cancel != nil {
@@ -372,8 +377,8 @@ func (m *Manager) Resume(taskID int64) error {
 		return err
 	}
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
 	if rt.state != StatePaused {
+		rt.mu.Unlock()
 		return fmt.Errorf("cannot resume task in state: %s", rt.state)
 	}
 	rt.paused.Store(false)
@@ -382,8 +387,10 @@ func (m *Manager) Resume(taskID int64) error {
 	rt.beginRunLocked(time.Now())
 	_ = m.store.saveState(taskID, StateRunning)
 	_ = m.store.saveTiming(taskID, rt.timingLocked())
-	m.loadProgressLocked(rt)
+	pending := m.loadProgressLocked(rt)
 	m.launch(rt)
+	rt.mu.Unlock()
+	m.finalizePending(rt, pending)
 	return nil
 }
 
@@ -399,6 +406,7 @@ func (m *Manager) Cancel(taskID int64) error {
 	rt.paused.Store(false)
 	rt.state = StateCancelled
 	rt.endRunLocked(time.Now(), true)
+	m.persistProgressLocked(rt, taskID)
 	_ = m.store.saveState(taskID, StateCancelled)
 	_ = m.store.saveTiming(taskID, rt.timingLocked())
 	if rt.cancel != nil {
@@ -427,10 +435,14 @@ func (m *Manager) launch(rt *taskRuntime) {
 	}()
 }
 
-func (m *Manager) loadProgressLocked(rt *taskRuntime) {
+// loadProgressLocked restores persisted per-file progress and reassembly
+// state, and returns finalise operations for files that were fully received
+// but never finalised. Caller holds rt.mu; the returned ops must be run
+// AFTER releasing it (see finalizePending).
+func (m *Manager) loadProgressLocked(rt *taskRuntime) []*finalizeOp {
 	persisted, err := m.store.loadProgress(rt.taskID)
 	if err != nil {
-		return
+		return nil
 	}
 	for i := range persisted {
 		fp := persisted[i]
@@ -451,16 +463,92 @@ func (m *Manager) loadProgressLocked(rt *taskRuntime) {
 			st.sha256 = sp.Sha256
 			st.finalized = sp.Finalized
 		}
+	} else {
+		// Legacy fallback (tasks written before recvstate.json existed):
+		// treat persisted bytes as a contiguous prefix. Exact for sequential
+		// delivery (DIRECT, or KAFKA with parallelism 1).
+		for i := range persisted {
+			fp := persisted[i]
+			if !fp.Completed && fp.ReceivedBytes > 0 {
+				rt.recvStateFor(fp.RelPath).ranges.insert(0, fp.ReceivedBytes)
+			}
+		}
+	}
+
+	// A file can be fully received yet never finalised: recvstate.json is
+	// persisted as soon as the last chunk lands, so a crash before or during
+	// the rename leaves Finalized set with no future chunk to trigger the
+	// rename again (finalised files skip chunk writes). Re-finalise such
+	// files on load instead of leaving them wedged.
+	if rt.config.TargetDir == "" {
+		return nil
+	}
+	targetDir, err := filepath.Abs(filepath.Clean(rt.config.TargetDir))
+	if err != nil {
+		return nil
+	}
+	var pending []*finalizeOp
+	dirty := false
+	for rel, st := range rt.recvFiles {
+		fp := rt.progress[rel]
+		if !st.eofSeen || st.ranges.covered() < st.total || (fp != nil && fp.Completed) {
+			continue
+		}
+		partFile := filepath.Clean(filepath.Join(targetDir, rel+".part"))
+		finalFile := filepath.Clean(filepath.Join(targetDir, rel))
+		if _, err := os.Stat(partFile); os.IsNotExist(err) {
+			if _, ferr := os.Stat(finalFile); ferr == nil {
+				// The rename happened but the completion was never persisted.
+				if fp == nil {
+					fp = &FileProgress{RelPath: rel, TotalBytes: st.total}
+					rt.progress[rel] = fp
+				}
+				fp.Completed = true
+				fp.ReceivedBytes = st.total
+				dirty = true
+			}
+			continue
+		}
+		if fp == nil {
+			fp = &FileProgress{RelPath: rel, TotalBytes: st.total, ReceivedBytes: st.total}
+			rt.progress[rel] = fp
+			dirty = true
+		}
+		st.finalized = true
+		pending = append(pending, &finalizeOp{
+			relPath:   rel,
+			partFile:  partFile,
+			finalFile: finalFile,
+			sha256:    st.sha256,
+			policy:    rt.config.OverwritePolicy,
+		})
+	}
+	if dirty {
+		m.persistProgressLocked(rt, rt.taskID)
+	}
+	return pending
+}
+
+// finalizePending runs the finalise operations recovered by
+// loadProgressLocked (outside rt.mu) and completes the task when nothing
+// remains. Failures roll back the finalized flag so chunk redelivery can
+// retry, and are logged rather than returned: the task itself is running.
+func (m *Manager) finalizePending(rt *taskRuntime, pending []*finalizeOp) {
+	for _, op := range pending {
+		if err := m.finalizeFile(rt, rt.taskID, op); err != nil {
+			log.Printf("filetransfer: task %d cannot re-finalise %s: %v", rt.taskID, op.relPath, err)
+		}
+	}
+	if len(pending) == 0 {
 		return
 	}
-	// Legacy fallback (tasks written before recvstate.json existed): treat
-	// persisted bytes as a contiguous prefix. Exact for sequential delivery
-	// (DIRECT, or KAFKA with parallelism 1).
-	for i := range persisted {
-		fp := persisted[i]
-		if !fp.Completed && fp.ReceivedBytes > 0 {
-			rt.recvStateFor(fp.RelPath).ranges.insert(0, fp.ReceivedBytes)
-		}
+	rt.mu.Lock()
+	allDone := len(rt.progress) > 0 && allFilesCompletedLocked(rt)
+	state := rt.state
+	rt.mu.Unlock()
+	if allDone && state == StateRunning {
+		m.setState(rt, StateSuccess)
+		m.stopConsumerIfComplete(rt)
 	}
 }
 
@@ -491,6 +579,9 @@ func (m *Manager) Shutdown() {
 		if rt.cancel != nil {
 			rt.cancel()
 		}
+		// Flush throttled RECV progress so a resume after restart does not
+		// re-receive up to persistInterval of chunks.
+		m.persistProgressLocked(rt, rt.taskID)
 		rt.mu.Unlock()
 	}
 	m.mu.RUnlock()
@@ -533,9 +624,10 @@ func (m *Manager) Recover() error {
 		if state == StateRunning {
 			rt.mu.Lock()
 			rt.beginRunLocked(time.Now())
-			m.loadProgressLocked(rt)
+			pending := m.loadProgressLocked(rt)
 			m.launch(rt)
 			rt.mu.Unlock()
+			m.finalizePending(rt, pending)
 			log.Printf("filetransfer: resumed task %d from persisted RUNNING state", id)
 		}
 	}
@@ -611,10 +703,27 @@ func (m *Manager) GetProgress(taskID int64) ([]FileProgress, error) {
 
 // ===================== RECV: receive a chunk =====================
 
+// persistInterval bounds how often a RECEIVING task flushes progress and
+// reassembly state to disk. Per-chunk JSON writes used to dominate chunk
+// latency; throttling loses at most this much progress on a crash (resent
+// chunks are deduplicated by the interval set), which is cheap insurance.
+const persistInterval = time.Second
+
+// finalizeOp captures everything needed to verify and move a completed .part
+// file, so the work can run outside rt.mu (see finalizeFile).
+type finalizeOp struct {
+	relPath   string
+	partFile  string
+	finalFile string
+	sha256    string
+	policy    OverwritePolicy
+}
+
 // ReceiveChunk writes one chunk to {targetDir}/{relPath}.part. Chunks may
-// arrive out of order (parallel KAFKA sends): once the EOF chunk has been
-// seen AND the received ranges cover the whole file, the SHA-256 is verified
-// and the overwrite policy applied.
+// arrive out of order (parallel sends): once the EOF chunk has been seen AND
+// the received ranges cover the whole file, the SHA-256 is verified and the
+// overwrite policy applied — outside rt.mu, so hashing a very large file does
+// not stall other in-flight chunks.
 //
 // When every file the task knows about is completed the task transitions to
 // SUCCESS; if chunks for a NEW file arrive later (another transfer over the
@@ -626,12 +735,124 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 	if err != nil {
 		return err
 	}
+
+	// Phase 1 (locked): validate and resolve paths; redeliveries of an
+	// already-finalised file are skipped without touching the disk.
 	rt.mu.Lock()
-	allDone, newFile, err := m.receiveChunkLocked(rt, taskID, meta, body)
+	config := rt.config
+	if config.Role != RoleRecv {
+		rt.mu.Unlock()
+		return fmt.Errorf("task %d is not RECV role", taskID)
+	}
+	if config.TargetDir == "" {
+		rt.mu.Unlock()
+		return fmt.Errorf("targetDir not set for task %d", taskID)
+	}
+	if strings.Contains(meta.RelPath, "..") {
+		rt.mu.Unlock()
+		return fmt.Errorf("path traversal not allowed: %s", meta.RelPath)
+	}
+	targetDir, err := filepath.Abs(filepath.Clean(config.TargetDir))
+	if err != nil {
+		rt.mu.Unlock()
+		return err
+	}
+	partFile := filepath.Clean(filepath.Join(targetDir, meta.RelPath+".part"))
+	if !within(targetDir, partFile) {
+		rt.mu.Unlock()
+		return fmt.Errorf("path escapes target directory: %s", meta.RelPath)
+	}
+	st := rt.recvStateFor(meta.RelPath)
+	skipWrite := st.finalized
+	rt.mu.Unlock()
+
+	// Phase 2 (unlocked): the disk write itself. Concurrent chunks for the
+	// same file land at disjoint offsets, so writers do not conflict — this
+	// is what lets pipelined sends actually overlap on the receiver.
+	wrote := false
+	if !skipWrite {
+		if err := os.MkdirAll(filepath.Dir(partFile), 0o755); err != nil {
+			return err
+		}
+		if err := writeChunkAt(partFile, meta.Offset, body); err != nil {
+			return err
+		}
+		wrote = true
+	}
+
+	// Phase 3 (locked): record coverage and decide on finalisation.
+	rt.mu.Lock()
+	var orphanPart string
+	var newFile bool
+	var pending *finalizeOp
+	if wrote && !st.finalized {
+		fp := rt.progress[meta.RelPath]
+		if fp == nil {
+			fp = &FileProgress{RelPath: meta.RelPath, TotalBytes: -1}
+			rt.progress[meta.RelPath] = fp
+			newFile = true
+		}
+		newly := st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
+		// Report the contiguous prefix rather than total coverage: the
+		// /progress endpoint doubles as the DIRECT resume offset, and
+		// resuming from a coverage figure that includes out-of-order chunks
+		// past a hole would skip the hole and corrupt the file.
+		fp.ReceivedBytes = st.ranges.prefixEnd()
+		rt.rate.add(time.Now(), newly)
+
+		if meta.Eof {
+			st.eofSeen = true
+			st.total = meta.Offset + int64(len(body))
+			st.sha256 = meta.Sha256
+			fp.TotalBytes = st.total
+		}
+
+		if st.eofSeen && st.ranges.covered() >= st.total {
+			// Mark finalized under the lock so concurrent chunks for this
+			// file are skipped as redeliveries while finalizeFile runs
+			// outside it.
+			st.finalized = true
+			pending = &finalizeOp{
+				relPath:   meta.RelPath,
+				partFile:  partFile,
+				finalFile: filepath.Clean(filepath.Join(targetDir, meta.RelPath)),
+				sha256:    st.sha256,
+				policy:    config.OverwritePolicy,
+			}
+		}
+
+		// Throttled persistence: always flush on the first chunk of a file
+		// and when a file completes; otherwise at most once per
+		// persistInterval. Pause/Cancel and terminal states force a flush
+		// via setState.
+		now := time.Now()
+		if newFile || pending != nil || now.Sub(rt.lastPersist) >= persistInterval {
+			m.persistProgressLocked(rt, taskID)
+		}
+	} else if wrote {
+		// The file was finalised while this chunk was being written. Bytes
+		// written before the rename are identical (same source) and harmless;
+		// if the rename already completed, the .part this write recreated is
+		// an orphan and must not be left behind.
+		if fp := rt.progress[meta.RelPath]; fp != nil && fp.Completed {
+			orphanPart = partFile
+		}
+	}
+	allDone := len(rt.progress) > 0 && allFilesCompletedLocked(rt)
 	state := rt.state
 	rt.mu.Unlock()
-	if err != nil {
-		return err
+	if orphanPart != "" {
+		_ = os.Remove(orphanPart)
+	}
+
+	if pending != nil {
+		if err := m.finalizeFile(rt, taskID, pending); err != nil {
+			return err
+		}
+		rt.mu.Lock()
+		allDone = len(rt.progress) > 0 && allFilesCompletedLocked(rt)
+		state = rt.state
+		rt.mu.Unlock()
 	}
 	if newFile && state == StateSuccess {
 		// Another transfer started over the same channel.
@@ -644,84 +865,50 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 	return nil
 }
 
-// receiveChunkLocked is the locked body of ReceiveChunk. It reports whether
-// every known file is now completed (allDone) and whether the chunk belongs
-// to a previously unseen file (newFile).
-func (m *Manager) receiveChunkLocked(rt *taskRuntime, taskID int64, meta ChunkMeta, body []byte) (allDone, newFile bool, err error) {
-	config := rt.config
-	if config.Role != RoleRecv {
-		return false, false, fmt.Errorf("task %d is not RECV role", taskID)
-	}
-	if config.TargetDir == "" {
-		return false, false, fmt.Errorf("targetDir not set for task %d", taskID)
-	}
-	if strings.Contains(meta.RelPath, "..") {
-		return false, false, fmt.Errorf("path traversal not allowed: %s", meta.RelPath)
-	}
-
-	targetDir, err := filepath.Abs(filepath.Clean(config.TargetDir))
-	if err != nil {
-		return false, false, err
-	}
-	partFile := filepath.Clean(filepath.Join(targetDir, meta.RelPath+".part"))
-	if !within(targetDir, partFile) {
-		return false, false, fmt.Errorf("path escapes target directory: %s", meta.RelPath)
-	}
-
-	st := rt.recvStateFor(meta.RelPath)
-	if st.finalized {
-		// Redelivery of an already-completed file (at-least-once): skip the
-		// write entirely so no orphan .part file is recreated.
-		return len(rt.progress) > 0 && allFilesCompletedLocked(rt), false, nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(partFile), 0o755); err != nil {
-		return false, false, err
-	}
-	if err := writeChunkAt(partFile, meta.Offset, body); err != nil {
-		return false, false, err
-	}
-
-	fp := rt.progress[meta.RelPath]
-	if fp == nil {
-		fp = &FileProgress{RelPath: meta.RelPath, TotalBytes: -1}
-		rt.progress[meta.RelPath] = fp
-		newFile = true
-	}
-	newly := st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
-	// Derive progress from actual coverage rather than accumulating deltas:
-	// self-consistent even if chunks are duplicated or arrive out of order.
-	fp.ReceivedBytes = st.ranges.covered()
-	rt.rate.add(time.Now(), newly)
-
-	if meta.Eof {
-		st.eofSeen = true
-		st.total = meta.Offset + int64(len(body))
-		st.sha256 = meta.Sha256
-		fp.TotalBytes = st.total
-	}
-
-	if st.eofSeen && !st.finalized && st.ranges.covered() >= st.total {
-		if st.sha256 != "" {
-			actual, err := computeSHA256(partFile)
-			if err != nil {
-				return false, false, err
-			}
-			if !strings.EqualFold(actual, st.sha256) {
-				return false, false, fmt.Errorf("sha256 mismatch for %s", meta.RelPath)
-			}
-		}
-		finalFile := filepath.Clean(filepath.Join(targetDir, meta.RelPath))
-		if err := applyOverwritePolicy(finalFile, partFile, config.OverwritePolicy); err != nil {
-			return false, false, err
-		}
-		st.finalized = true
-		fp.Completed = true
-	}
-
+// persistProgressLocked forces a progress/recvstate flush. Caller holds rt.mu.
+func (m *Manager) persistProgressLocked(rt *taskRuntime, taskID int64) {
 	_ = m.store.saveProgress(taskID, progressValues(rt.progress))
 	m.saveRecvStateLocked(rt)
-	return len(rt.progress) > 0 && allFilesCompletedLocked(rt), newFile, nil
+	rt.lastPersist = time.Now()
+}
+
+// finalizeFile verifies the completed .part file and moves it to its final
+// destination. It runs outside rt.mu: hashing a very large file would
+// otherwise stall every other in-flight chunk of the task. On failure the
+// finalized flag is rolled back so a redelivered chunk retries finalisation
+// (matching the previous at-least-once semantics).
+func (m *Manager) finalizeFile(rt *taskRuntime, taskID int64, op *finalizeOp) error {
+	if op.sha256 != "" {
+		actual, err := computeSHA256(op.partFile)
+		if err == nil && !strings.EqualFold(actual, op.sha256) {
+			err = fmt.Errorf("sha256 mismatch for %s", op.relPath)
+		}
+		if err != nil {
+			m.rollbackFinalize(rt, op.relPath)
+			return err
+		}
+	}
+	if err := applyOverwritePolicy(op.finalFile, op.partFile, op.policy); err != nil {
+		m.rollbackFinalize(rt, op.relPath)
+		return err
+	}
+	rt.mu.Lock()
+	if fp := rt.progress[op.relPath]; fp != nil {
+		fp.Completed = true
+	}
+	m.persistProgressLocked(rt, taskID)
+	rt.mu.Unlock()
+	return nil
+}
+
+// rollbackFinalize clears the finalized flag after a failed finalizeFile so
+// the file can be finalised again on chunk redelivery.
+func (m *Manager) rollbackFinalize(rt *taskRuntime, relPath string) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if st, ok := rt.recvFiles[relPath]; ok {
+		st.finalized = false
+	}
 }
 
 // allFilesCompletedLocked reports whether every known file is completed.
@@ -752,6 +939,7 @@ func (m *Manager) executeTask(ctx context.Context, rt *taskRuntime) {
 		rt.mu.Lock()
 		rt.errMsg = err.Error()
 		rt.state = StateFailed
+		m.persistProgressLocked(rt, rt.taskID)
 		rt.mu.Unlock()
 		_ = m.store.saveState(rt.taskID, StateFailed)
 		log.Printf("filetransfer: task %d failed: %v", rt.taskID, err)
@@ -795,6 +983,30 @@ func (m *Manager) executeSend(ctx context.Context, rt *taskRuntime) error {
 	}
 	rt.mu.Unlock()
 
+	// Lazily hash files the manifest does not carry a digest for: the pool
+	// overlaps hashing with the transfer and the EOF chunk blocks on the
+	// result (see resolveSHA256). Files without a resolvable local source
+	// keep the legacy behaviour (no digest; receiver skips verification).
+	hashCtx, stopHash := context.WithCancel(ctx)
+	defer stopHash()
+	futures := make(map[string]*hashFuture)
+	var pool *hashPool
+	for _, e := range manifest {
+		if e.Sha256 != "" {
+			continue
+		}
+		src := findSourcePath(config, e.RelPath)
+		if src == "" {
+			continue
+		}
+		fut := &hashFuture{done: make(chan struct{})}
+		futures[e.RelPath] = fut
+		if pool == nil {
+			pool = newHashPool(hashCtx, hashWorkers, len(manifest))
+		}
+		pool.submit(src, fut)
+	}
+
 	// KAFKA relay sends to the topic once (no per-target fan-out); DIRECT
 	// fans out to each target.
 	targets := config.Targets
@@ -803,7 +1015,7 @@ func (m *Manager) executeSend(ctx context.Context, rt *taskRuntime) error {
 	}
 
 	if effectiveParallelism(config.Parallelism) > 1 {
-		return m.sendFilesParallel(ctx, rt, config, targets, manifest, transport)
+		return m.sendFilesParallel(ctx, rt, config, targets, manifest, transport, futures)
 	}
 
 	allSuccess := true
@@ -819,7 +1031,7 @@ func (m *Manager) executeSend(ctx context.Context, rt *taskRuntime) error {
 		if fp := m.progressFor(rt, file.RelPath); fp != nil && fp.Completed {
 			continue
 		}
-		if !m.sendOneFile(ctx, rt, config, targets, file, transport) {
+		if !m.sendOneFile(ctx, rt, config, targets, file, transport, futures) {
 			if ctx.Err() != nil {
 				return nil // paused/cancelled mid-flight
 			}
@@ -837,7 +1049,7 @@ func (m *Manager) executeSend(ctx context.Context, rt *taskRuntime) error {
 
 // sendFilesParallel delivers the manifest with a worker pool of
 // config.Parallelism goroutines, each sending whole files independently.
-func (m *Manager) sendFilesParallel(ctx context.Context, rt *taskRuntime, config TaskConfig, targets []TargetConfig, manifest []FileEntry, transport RelayTransport) error {
+func (m *Manager) sendFilesParallel(ctx context.Context, rt *taskRuntime, config TaskConfig, targets []TargetConfig, manifest []FileEntry, transport RelayTransport, futures map[string]*hashFuture) error {
 	workers := effectiveParallelism(config.Parallelism)
 	var allSuccess atomic.Bool
 	allSuccess.Store(true)
@@ -855,7 +1067,7 @@ func (m *Manager) sendFilesParallel(ctx context.Context, rt *taskRuntime, config
 				if fp := m.progressFor(rt, file.RelPath); fp != nil && fp.Completed {
 					continue
 				}
-				if !m.sendOneFile(ctx, rt, config, targets, file, transport) {
+				if !m.sendOneFile(ctx, rt, config, targets, file, transport, futures) {
 					if ctx.Err() != nil {
 						continue // paused/cancelled mid-flight
 					}
@@ -894,10 +1106,10 @@ feed:
 // sendOneFile delivers one manifest entry to every target and, on success,
 // marks the file completed. It reports whether the file reached at least one
 // target; a false return with ctx cancelled means paused/cancelled mid-flight.
-func (m *Manager) sendOneFile(ctx context.Context, rt *taskRuntime, config TaskConfig, targets []TargetConfig, file FileEntry, transport RelayTransport) bool {
+func (m *Manager) sendOneFile(ctx context.Context, rt *taskRuntime, config TaskConfig, targets []TargetConfig, file FileEntry, transport RelayTransport, futures map[string]*hashFuture) bool {
 	fileSuccess := false
 	for _, target := range targets {
-		if err := m.sendFileToTarget(ctx, rt, config, target, file, transport); err != nil {
+		if err := m.sendFileToTarget(ctx, rt, config, target, file, transport, futures); err != nil {
 			if ctx.Err() != nil {
 				return false
 			}
@@ -918,19 +1130,21 @@ func (m *Manager) sendOneFile(ctx context.Context, rt *taskRuntime, config TaskC
 	return fileSuccess
 }
 
-func (m *Manager) sendFileToTarget(ctx context.Context, rt *taskRuntime, config TaskConfig, target TargetConfig, file FileEntry, transport RelayTransport) error {
+func (m *Manager) sendFileToTarget(ctx context.Context, rt *taskRuntime, config TaskConfig, target TargetConfig, file FileEntry, transport RelayTransport, futures map[string]*hashFuture) error {
 	source := findSourcePath(config, file.RelPath)
 	if source == "" {
 		return fmt.Errorf("source file not found: %s", file.RelPath)
 	}
+	src, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	// One handle for the whole file: ReadAt is safe for concurrent use, so
+	// the chunk-level worker pool can share it.
 	reader := func(offset int64, length int) ([]byte, error) {
-		f, err := os.Open(source)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
 		buf := make([]byte, length)
-		n, err := f.ReadAt(buf, offset)
+		n, err := src.ReadAt(buf, offset)
 		if err != nil && err != io.EOF {
 			return nil, err
 		}
@@ -944,7 +1158,11 @@ func (m *Manager) sendFileToTarget(ctx context.Context, rt *taskRuntime, config 
 		rt.rate.add(time.Now(), int64(n))
 		rt.mu.Unlock()
 	}
-	return transport.SendFile(ctx, config, target, file, reader, sink)
+	var sha HashFunc
+	if fut := futures[file.RelPath]; fut != nil {
+		sha = fut.get
+	}
+	return transport.SendFile(ctx, config, target, file, reader, sink, sha)
 }
 
 func (m *Manager) executeRecv(ctx context.Context, rt *taskRuntime) error {
@@ -999,6 +1217,11 @@ func (m *Manager) setState(rt *taskRuntime, state TaskState) {
 	}
 	rt.state = state
 	timing := rt.timingLocked()
+	if state == StatePaused || isTerminalState(state) {
+		// Force a progress flush: RECV-side persistence is otherwise
+		// throttled, and resume correctness depends on these files.
+		m.persistProgressLocked(rt, rt.taskID)
+	}
 	rt.mu.Unlock()
 	_ = m.store.saveState(rt.taskID, state)
 	_ = m.store.saveTiming(rt.taskID, timing)
@@ -1076,9 +1299,12 @@ func computeSHA256(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// buildManifest expands SourcePaths into file entries with size and SHA-256.
-// Directory entries use forward-slash relative paths; a single file uses its
-// base name.
+// buildManifest expands SourcePaths into file entries with sizes. It only
+// stats files — deliberately no content reads: hashing a large tree up front
+// delayed the first chunk by minutes (a 100GB file = one full disk pass).
+// The SHA-256 is computed lazily by a hashPool while the transfer runs and
+// attached to the EOF chunk (see resolveSHA256). Directory entries use
+// forward-slash relative paths; a single file uses its base name.
 func buildManifest(config TaskConfig) []FileEntry {
 	var manifest []FileEntry
 	for _, sp := range config.SourcePaths {
@@ -1099,30 +1325,88 @@ func buildManifest(config TaskConfig) []FileEntry {
 				if err != nil {
 					return nil
 				}
-				sha, err := computeSHA256(path)
-				if err != nil {
-					return nil
-				}
 				manifest = append(manifest, FileEntry{
 					RelPath: filepath.ToSlash(rel),
 					Size:    fi.Size(),
-					Sha256:  sha,
 				})
 				return nil
 			})
 		} else {
-			sha, err := computeSHA256(abs)
-			if err != nil {
-				continue
-			}
 			manifest = append(manifest, FileEntry{
 				RelPath: filepath.Base(abs),
 				Size:    info.Size(),
-				Sha256:  sha,
 			})
 		}
 	}
 	return manifest
+}
+
+// hashFuture is the pending result of a lazily computed SHA-256: computed
+// once by a hashPool, waitable by any number of consumers (multiple targets,
+// or a retried EOF chunk).
+type hashFuture struct {
+	done chan struct{}
+	sum  string
+	err  error
+}
+
+// get blocks until the hash is ready or ctx is done.
+func (f *hashFuture) get(ctx context.Context) (string, error) {
+	select {
+	case <-f.done:
+		return f.sum, f.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// hashWorkers bounds concurrent digest computations: hashing already reads
+// the whole file once, and more readers mostly thrash the disk the transfer
+// is also reading from.
+const hashWorkers = 2
+
+// hashPool computes file SHA-256 digests with bounded concurrency so hashing
+// overlaps the transfer instead of blocking task start. Workers stop picking
+// up new jobs when ctx is done (an in-progress hash runs to completion —
+// harmless read-only work); jobs never picked leave their future pending, so
+// get must only be called with a cancellable ctx.
+type hashPool struct {
+	ctx  context.Context
+	jobs chan hashJob
+}
+
+type hashJob struct {
+	path string
+	fut  *hashFuture
+}
+
+// newHashPool starts the workers. capacity must cover every submit so
+// submission never blocks task startup.
+func newHashPool(ctx context.Context, workers, capacity int) *hashPool {
+	p := &hashPool{ctx: ctx, jobs: make(chan hashJob, capacity)}
+	for i := 0; i < workers; i++ {
+		go p.work()
+	}
+	return p
+}
+
+func (p *hashPool) work() {
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case j, ok := <-p.jobs:
+			if !ok {
+				return
+			}
+			j.fut.sum, j.fut.err = computeSHA256(j.path)
+			close(j.fut.done)
+		}
+	}
+}
+
+func (p *hashPool) submit(path string, fut *hashFuture) {
+	p.jobs <- hashJob{path: path, fut: fut}
 }
 
 // findSourcePath resolves a manifest relPath back to an on-disk source file.

@@ -90,3 +90,14 @@ func (s *intervalSet) covered() int64 {
 	}
 	return n
 }
+
+// prefixEnd returns the end of the contiguous received prefix (0 when the
+// first bytes have not landed). Unlike covered it never counts holes, so it
+// is safe to use as a resume offset: anything beyond it is re-sent and
+// re-written idempotently.
+func (s *intervalSet) prefixEnd() int64 {
+	if len(s.intervals) == 0 || s.intervals[0].Start > 0 {
+		return 0
+	}
+	return s.intervals[0].End
+}
