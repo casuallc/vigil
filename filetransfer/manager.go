@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"os"
@@ -95,6 +96,22 @@ type recvFileState struct {
 	total     int64
 	sha256    string
 	finalized bool
+
+	// Incremental SHA-256 of the received bytes, folded in offset order as
+	// chunks land so finalise does not re-read the whole file from disk (a
+	// multi-minute stall for very large files). Out-of-order chunks are
+	// buffered up to maxHashBufferBytes; past the cap, or after a restart
+	// restore, incremental hashing is abandoned (hashBroken) and finalise
+	// falls back to hashing the finished .part file.
+	// Guarded by hashMu (NOT rt.mu): hashing a chunk costs about as much as
+	// writing it, and serialising it across all files/partitions would cap
+	// receiver throughput.
+	hashMu     sync.Mutex
+	hasher     hash.Hash
+	hashNext   int64
+	hashBuf    map[int64][]byte
+	hashBufLen int64
+	hashBroken bool
 }
 
 // recvStateFor returns the reassembly state for relPath, creating the map
@@ -475,6 +492,14 @@ func (m *Manager) loadProgressLocked(rt *taskRuntime) []*finalizeOp {
 		}
 	}
 
+	// Files restored from disk keep their bytes but not their incremental
+	// hash state: finalise falls back to hashing the .part file from disk.
+	for _, st := range rt.recvFiles {
+		st.hashMu.Lock()
+		st.hashBroken = true
+		st.hashMu.Unlock()
+	}
+
 	// A file can be fully received yet never finalised: recvstate.json is
 	// persisted as soon as the last chunk lands, so a crash before or during
 	// the rename leaves Finalized set with no future chunk to trigger the
@@ -650,12 +675,21 @@ func (m *Manager) GetStatus(taskID int64) (TaskStatus, error) {
 	var totalBytes, transferredBytes int64
 	var completedFiles int
 	for _, fp := range rt.progress {
-		files = append(files, *fp)
-		if fp.TotalBytes > 0 {
-			totalBytes += fp.TotalBytes
+		disp := *fp
+		if st := rt.recvFiles[fp.RelPath]; st != nil {
+			// Display true coverage (out-of-order arrivals included); the
+			// plain ReceivedBytes is the contiguous prefix reserved for
+			// DIRECT resume via the /progress endpoint.
+			if c := st.ranges.covered(); c > disp.ReceivedBytes {
+				disp.ReceivedBytes = c
+			}
 		}
-		transferredBytes += fp.ReceivedBytes
-		if fp.Completed {
+		files = append(files, disp)
+		if disp.TotalBytes > 0 {
+			totalBytes += disp.TotalBytes
+		}
+		transferredBytes += disp.ReceivedBytes
+		if disp.Completed {
 			completedFiles++
 		}
 	}
@@ -717,6 +751,9 @@ type finalizeOp struct {
 	finalFile string
 	sha256    string
 	policy    OverwritePolicy
+	// receivedSHA is the incremental digest of the received bytes when
+	// available; empty means finalise must hash the .part file from disk.
+	receivedSHA string
 }
 
 // ReceiveChunk writes one chunk to {targetDir}/{relPath}.part. Chunks may
@@ -768,7 +805,10 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 
 	// Phase 2 (unlocked): the disk write itself. Concurrent chunks for the
 	// same file land at disjoint offsets, so writers do not conflict — this
-	// is what lets pipelined sends actually overlap on the receiver.
+	// is what lets pipelined sends actually overlap on the receiver. The
+	// incremental hash is fed here too (before this chunk's coverage is
+	// recorded in phase 3), so a completing chunk always finds its own bytes
+	// already folded in.
 	wrote := false
 	if !skipWrite {
 		if err := os.MkdirAll(filepath.Dir(partFile), 0o755); err != nil {
@@ -777,6 +817,7 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 		if err := writeChunkAt(partFile, meta.Offset, body); err != nil {
 			return err
 		}
+		st.feedHasher(meta.Offset, body)
 		wrote = true
 	}
 
@@ -791,6 +832,12 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 			fp = &FileProgress{RelPath: meta.RelPath, TotalBytes: -1}
 			rt.progress[meta.RelPath] = fp
 			newFile = true
+		}
+		// The sender reports the total size on every chunk, so progress is
+		// computable from the first chunk instead of only once the EOF
+		// chunk arrives (with pipelined sends, that is near the very end).
+		if meta.Size > 0 && fp.TotalBytes <= 0 {
+			fp.TotalBytes = meta.Size
 		}
 		newly := st.ranges.insert(meta.Offset, meta.Offset+int64(len(body)))
 		// Report the contiguous prefix rather than total coverage: the
@@ -819,6 +866,16 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 				sha256:    st.sha256,
 				policy:    config.OverwritePolicy,
 			}
+			// Full coverage means every chunk has been folded in order, so
+			// the incremental digest is final and finalise needs no disk
+			// re-read at all. A chunk still feeding its bytes (between the
+			// phase-2 write and here) leaves hashNext short of total, which
+			// safely falls back to hashing from disk.
+			st.hashMu.Lock()
+			if st.hasher != nil && !st.hashBroken && st.hashNext == st.total {
+				pending.receivedSHA = hex.EncodeToString(st.hasher.Sum(nil))
+			}
+			st.hashMu.Unlock()
 		}
 
 		// Throttled persistence: always flush on the first chunk of a file
@@ -865,6 +922,54 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 	return nil
 }
 
+// maxHashBufferBytes caps out-of-order chunks retained for incremental
+// hashing; past the cap the receiver abandons it and finalise falls back to
+// hashing the finished file from disk.
+const maxHashBufferBytes = 64 << 20
+
+// feedHasher folds a newly written chunk into the file's incremental
+// SHA-256 in offset order, buffering out-of-order arrivals. It runs outside
+// rt.mu, guarded by st.hashMu, so hashing never serialises concurrent chunk
+// handlers across files or partitions. Chunks redelivered past the drain
+// point are ignored; a redelivery of a buffered chunk simply replaces it
+// (same source, same bytes).
+func (st *recvFileState) feedHasher(offset int64, body []byte) {
+	st.hashMu.Lock()
+	defer st.hashMu.Unlock()
+	if st.hashBroken || offset < st.hashNext {
+		return
+	}
+	if st.hasher == nil {
+		st.hasher = sha256.New()
+	}
+	if st.hashBuf == nil {
+		st.hashBuf = make(map[int64][]byte)
+	}
+	if _, exists := st.hashBuf[offset]; !exists {
+		st.hashBufLen += int64(len(body))
+	}
+	st.hashBuf[offset] = body
+	if st.hashBufLen > maxHashBufferBytes {
+		// An early chunk is holding back too much memory: give up on
+		// incremental hashing, finalise will read the file from disk.
+		st.hashBroken = true
+		st.hasher = nil
+		st.hashBuf = nil
+		st.hashBufLen = 0
+		return
+	}
+	for {
+		data, ok := st.hashBuf[st.hashNext]
+		if !ok {
+			break
+		}
+		delete(st.hashBuf, st.hashNext)
+		st.hashBufLen -= int64(len(data))
+		_, _ = st.hasher.Write(data)
+		st.hashNext += int64(len(data))
+	}
+}
+
 // persistProgressLocked forces a progress/recvstate flush. Caller holds rt.mu.
 func (m *Manager) persistProgressLocked(rt *taskRuntime, taskID int64) {
 	_ = m.store.saveProgress(taskID, progressValues(rt.progress))
@@ -873,19 +978,25 @@ func (m *Manager) persistProgressLocked(rt *taskRuntime, taskID int64) {
 }
 
 // finalizeFile verifies the completed .part file and moves it to its final
-// destination. It runs outside rt.mu: hashing a very large file would
-// otherwise stall every other in-flight chunk of the task. On failure the
-// finalized flag is rolled back so a redelivered chunk retries finalisation
-// (matching the previous at-least-once semantics).
+// destination. It runs outside rt.mu. The digest normally comes from the
+// incremental hasher (computed while chunks landed); without it (restart or
+// buffer overflow) the file is hashed from disk — slow for very large files
+// but correct. On failure the finalized flag is rolled back so a redelivered
+// chunk retries finalisation (matching the previous at-least-once semantics).
 func (m *Manager) finalizeFile(rt *taskRuntime, taskID int64, op *finalizeOp) error {
 	if op.sha256 != "" {
-		actual, err := computeSHA256(op.partFile)
-		if err == nil && !strings.EqualFold(actual, op.sha256) {
-			err = fmt.Errorf("sha256 mismatch for %s", op.relPath)
+		actual := op.receivedSHA
+		if actual == "" {
+			sum, err := computeSHA256(op.partFile)
+			if err != nil {
+				m.rollbackFinalize(rt, op.relPath)
+				return err
+			}
+			actual = sum
 		}
-		if err != nil {
+		if !strings.EqualFold(actual, op.sha256) {
 			m.rollbackFinalize(rt, op.relPath)
-			return err
+			return fmt.Errorf("sha256 mismatch for %s", op.relPath)
 		}
 	}
 	if err := applyOverwritePolicy(op.finalFile, op.partFile, op.policy); err != nil {

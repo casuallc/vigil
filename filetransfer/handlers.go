@@ -184,6 +184,7 @@ func (m *Manager) handleChunks(w http.ResponseWriter, r *http.Request) {
 	length, _ := strconv.Atoi(q.Get("length"))
 	crc, _ := strconv.ParseUint(q.Get("crc32"), 10, 32)
 	eof, _ := strconv.ParseBool(q.Get("eof"))
+	size, _ := strconv.ParseInt(q.Get("size"), 10, 64)
 
 	meta := ChunkMeta{
 		RelPath:    q.Get("relPath"),
@@ -193,6 +194,7 @@ func (m *Manager) handleChunks(w http.ResponseWriter, r *http.Request) {
 		Crc32:      uint32(crc),
 		Eof:        eof,
 		Sha256:     q.Get("sha256"),
+		Size:       size,
 	}
 
 	// Raw octet-stream body — do not parse as multipart.

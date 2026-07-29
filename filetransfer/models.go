@@ -93,6 +93,12 @@ type KafkaConfig struct {
 	// "none", "snappy" (default), "zstd", "lz4", "gzip". Brokers decompress
 	// transparently, so consumers need no configuration.
 	Compression string `json:"compression,omitempty"`
+	// RequiredAcks selects the broker acknowledgement level for produces:
+	// "all" (default, wait for every in-sync replica) or "local" (leader
+	// only). With replication, "all" puts cross-broker ack latency on the
+	// produce path; "local" removes it and is reasonable for bulk transfers
+	// that can simply be re-run on failure. "all" is the safe default.
+	RequiredAcks string `json:"requiredAcks,omitempty"`
 }
 
 // ChunkMeta is the per-chunk header. Crc32 is the IEEE checksum of the chunk
@@ -105,6 +111,10 @@ type ChunkMeta struct {
 	Crc32      uint32 `json:"crc32"`
 	Eof        bool   `json:"eof"`
 	Sha256     string `json:"sha256,omitempty"`
+	// Size is the total file size, carried on every chunk so the receiver
+	// can report progress from the first chunk instead of only learning the
+	// total when the EOF chunk arrives. 0/omitted = unknown (legacy peer).
+	Size int64 `json:"size,omitempty"`
 }
 
 // FileProgress tracks received bytes for one file (RECV side, also returned by

@@ -98,7 +98,11 @@ func (k *kafkaTransport) getProducer(kafkaCfg *KafkaConfig, parallelism, maxMsgB
 	if err != nil {
 		return nil, err
 	}
-	saramaCfg.Producer.RequiredAcks = sarama.WaitForAll
+	acks, err := kafkaRequiredAcks(kafkaCfg.RequiredAcks)
+	if err != nil {
+		return nil, err
+	}
+	saramaCfg.Producer.RequiredAcks = acks
 	saramaCfg.Producer.Retry.Max = 3
 	if parallelism > 1 {
 		// Spread chunks over every partition (see SendFile comment).
@@ -135,6 +139,7 @@ func kafkaProducerKey(cfg *KafkaConfig, parallelism, maxMsgBytes int) string {
 		cfg.SaslMechanism,
 		cfg.SecurityProtocol,
 		cfg.Compression,
+		cfg.RequiredAcks,
 		strconv.Itoa(maxMsgBytes),
 		strconv.Itoa(parallelism),
 	}, "|")
@@ -244,6 +249,7 @@ func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic stri
 			Length:     len(data),
 			Crc32:      crc32.ChecksumIEEE(data),
 			Eof:        eof,
+			Size:       file.Size,
 		}
 		if eof {
 			sum, err := resolveSHA256(ctx, file, sha)
@@ -439,6 +445,19 @@ func brokerList(bootstrap string) []string {
 		}
 	}
 	return brokers
+}
+
+// kafkaRequiredAcks maps the configured acknowledgement level. Empty
+// defaults to "all" (safest).
+func kafkaRequiredAcks(name string) (sarama.RequiredAcks, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "all":
+		return sarama.WaitForAll, nil
+	case "local":
+		return sarama.WaitForLocal, nil
+	default:
+		return sarama.WaitForAll, fmt.Errorf("unsupported kafka requiredAcks: %q (want all|local)", name)
+	}
 }
 
 // kafkaCompressionCodec maps the configured compression name to a sarama

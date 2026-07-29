@@ -368,3 +368,30 @@ func TestTransportRegistryGet(t *testing.T) {
 		t.Fatal("did not expect KAFKA transport")
 	}
 }
+
+func TestKafkaRequiredAcks(t *testing.T) {
+	cases := []struct {
+		name    string
+		want    sarama.RequiredAcks
+		wantErr bool
+	}{
+		{"", sarama.WaitForAll, false},
+		{"all", sarama.WaitForAll, false},
+		{"ALL", sarama.WaitForAll, false},
+		{"local", sarama.WaitForLocal, false},
+		{"none", 0, true},
+		{"bogus", 0, true},
+	}
+	for _, c := range cases {
+		got, err := kafkaRequiredAcks(c.name)
+		if c.wantErr {
+			if err == nil {
+				t.Fatalf("requiredAcks=%q: expected error, got %v", c.name, got)
+			}
+			continue
+		}
+		if err != nil || got != c.want {
+			t.Fatalf("requiredAcks=%q: got %v, %v; want %v", c.name, got, err, c.want)
+		}
+	}
+}

@@ -82,6 +82,18 @@ func (d *directTransport) SendFile(ctx context.Context, cfg TaskConfig, target T
 		meta := ChunkMeta{RelPath: file.RelPath, Eof: true, Sha256: sum}
 		return d.postChunk(ctx, base, target, meta, nil)
 	}
+	if resumeOffset >= file.Size {
+		// The peer already has every byte but never finalised (an earlier
+		// finalise failed, e.g. hash mismatch or rename error): send a
+		// zero-length EOF chunk to retrigger finalisation, otherwise the
+		// receiver would wait forever with nothing left to send.
+		sum, err := resolveSHA256(ctx, file, sha)
+		if err != nil {
+			return fmt.Errorf("sha256 for %s: %w", file.RelPath, err)
+		}
+		meta := ChunkMeta{RelPath: file.RelPath, Offset: file.Size, Eof: true, Sha256: sum, Size: file.Size}
+		return d.postChunk(ctx, base, target, meta, nil)
+	}
 	totalChunks := int((file.Size - resumeOffset + int64(chunkSize) - 1) / int64(chunkSize))
 
 	sendOne := func(idx int) error {
@@ -105,6 +117,7 @@ func (d *directTransport) SendFile(ctx context.Context, cfg TaskConfig, target T
 			Length:     len(data),
 			Crc32:      crc32.ChecksumIEEE(data),
 			Eof:        eof,
+			Size:       file.Size,
 		}
 		if eof {
 			// The hash has had the whole transfer to compute; only the EOF
@@ -197,6 +210,9 @@ func (d *directTransport) postChunk(ctx context.Context, base string, target Tar
 	q.Set("eof", strconv.FormatBool(meta.Eof))
 	if meta.Sha256 != "" {
 		q.Set("sha256", meta.Sha256)
+	}
+	if meta.Size > 0 {
+		q.Set("size", strconv.FormatInt(meta.Size, 10))
 	}
 	if target.RecvToken != "" {
 		q.Set("recvToken", target.RecvToken)

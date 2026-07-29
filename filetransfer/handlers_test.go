@@ -167,3 +167,72 @@ func splitHostPort(t *testing.T, rawURL string) (string, int) {
 	}
 	return u.Hostname(), port
 }
+
+// TestReceiveChunkSetsTotalFromChunkMetaSize verifies the receiver learns the
+// file size from the first chunk (meta.Size), so progress is computable long
+// before the EOF chunk arrives.
+func TestReceiveChunkSetsTotalFromChunkMetaSize(t *testing.T) {
+	targetDir := t.TempDir()
+	m := newTestManager(t, targetDir)
+	_ = m.CreateTask(TaskConfig{TaskID: 32, Role: RoleRecv, RelayType: RelayDirect, TargetDir: targetDir, OverwritePolicy: Overwrite})
+
+	if err := m.ReceiveChunk(32, ChunkMeta{RelPath: "a.bin", Offset: 0, Length: 4, Size: 10}, []byte("abcd")); err != nil {
+		t.Fatalf("ReceiveChunk: %v", err)
+	}
+	st, err := m.GetStatus(32)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if st.TotalBytes != 10 || st.TransferredBytes != 4 || st.Progress != 40 {
+		t.Fatalf("unexpected status: %+v", st)
+	}
+}
+
+// TestDirectSendFileSendsEofWhenPeerAlreadyHasAllBytes covers the stuck-task
+// unwedge: the peer reports a complete prefix (all bytes received) but never
+// finalised, so a resumed send must deliver a zero-length EOF chunk to
+// retrigger finalisation instead of sending nothing.
+func TestDirectSendFileSendsEofWhenPeerAlreadyHasAllBytes(t *testing.T) {
+	targetDir := t.TempDir()
+	m, srv := newReceiverServer(t, targetDir)
+	if err := m.CreateTask(TaskConfig{TaskID: 33, Role: RoleRecv, RelayType: RelayDirect, TargetDir: targetDir, OverwritePolicy: Overwrite}); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	if err := m.Start(33); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Deliver every byte as a NON-EOF chunk: coverage is complete but the
+	// file is not finalised, and progress reports the full prefix.
+	content := []byte("full-content-here")
+	if err := m.ReceiveChunk(33, ChunkMeta{RelPath: "f.bin", Offset: 0, Length: len(content), Size: int64(len(content))}, content); err != nil {
+		t.Fatalf("ReceiveChunk: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "f.bin")); !os.IsNotExist(err) {
+		t.Fatal("file must not be finalised yet")
+	}
+
+	host, port := splitHostPort(t, srv.URL)
+	target := TargetConfig{Host: host, Port: port, AuthUser: itAuthUser, AuthPass: itAuthPass, AgentTaskID: 33}
+	file := FileEntry{RelPath: "f.bin", Size: int64(len(content)), Sha256: sha256Hex(content)}
+	dt := newDirectTransport()
+	cfg := TaskConfig{RelayType: RelayDirect, ChunkSize: 1024}
+	if err := dt.SendFile(context.Background(), cfg, target, file, sliceReader(content), nil, nil); err != nil {
+		t.Fatalf("SendFile: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(targetDir, "f.bin"))
+	if err != nil {
+		t.Fatalf("file not finalised after EOF retrigger: %v", err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Fatalf("content mismatch: got %q", got)
+	}
+	st, err := m.GetStatus(33)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if st.CompletedFiles != 1 || st.State != StateSuccess {
+		t.Fatalf("unexpected status after EOF retrigger: %+v", st)
+	}
+}
