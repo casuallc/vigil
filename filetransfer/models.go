@@ -138,7 +138,10 @@ type TaskConfig struct {
 	// default (defaultParallelism); 1 forces strictly sequential,
 	// in-order sends; values >1 enable a file-level worker pool and a
 	// chunk-level in-flight window per file (chunks may arrive out of
-	// order; the receiver reassembles by offset). Clamped to
+	// order; the receiver reassembles by offset). On a KAFKA RECV task it
+	// bounds how many chunks are written/hashed concurrently — otherwise
+	// receive concurrency is capped at the topic's partition count and
+	// the receiver falls behind the parallel sender. Clamped to
 	// maxParallelism.
 	Parallelism     int             `json:"parallelism,omitempty"`
 	OverwritePolicy OverwritePolicy `json:"overwritePolicy"`

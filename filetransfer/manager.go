@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -112,6 +113,16 @@ type recvFileState struct {
 	hashBuf    map[int64][]byte
 	hashBufLen int64
 	hashBroken bool
+
+	// file is the cached write handle for the .part file, opened lazily on
+	// the first chunk and closed at finalise/cancel/shutdown. Open+close per
+	// chunk measurably capped receive throughput (especially on Windows).
+	// Open/close are guarded by rt.mu; os.File.WriteAt is safe for concurrent
+	// use, so pipelined chunk handlers write through it at disjoint offsets
+	// without a lock. writeWG tracks in-flight writes so finalise can drain
+	// them before renaming the file.
+	file    *os.File
+	writeWG sync.WaitGroup
 }
 
 // recvStateFor returns the reassembly state for relPath, creating the map
@@ -424,6 +435,7 @@ func (m *Manager) Cancel(taskID int64) error {
 	rt.state = StateCancelled
 	rt.endRunLocked(time.Now(), true)
 	m.persistProgressLocked(rt, taskID)
+	m.closeRecvFilesLocked(rt)
 	_ = m.store.saveState(taskID, StateCancelled)
 	_ = m.store.saveTiming(taskID, rt.timingLocked())
 	if rt.cancel != nil {
@@ -436,6 +448,12 @@ func (rt *taskRuntime) requestCancel() {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.canceled.Store(true)
+	for _, st := range rt.recvFiles {
+		if st.file != nil {
+			_ = st.file.Close()
+			st.file = nil
+		}
+	}
 	if rt.cancel != nil {
 		rt.cancel()
 	}
@@ -607,6 +625,7 @@ func (m *Manager) Shutdown() {
 		// Flush throttled RECV progress so a resume after restart does not
 		// re-receive up to persistInterval of chunks.
 		m.persistProgressLocked(rt, rt.taskID)
+		m.closeRecvFilesLocked(rt)
 		rt.mu.Unlock()
 	}
 	m.mu.RUnlock()
@@ -801,6 +820,24 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 	}
 	st := rt.recvStateFor(meta.RelPath)
 	skipWrite := st.finalized
+	var f *os.File
+	if !skipWrite {
+		// Open the .part handle once per file; subsequent chunks reuse it.
+		if st.file == nil {
+			if err := os.MkdirAll(filepath.Dir(partFile), 0o755); err != nil {
+				rt.mu.Unlock()
+				return err
+			}
+			nf, err := os.OpenFile(partFile, os.O_RDWR|os.O_CREATE, 0o644)
+			if err != nil {
+				rt.mu.Unlock()
+				return err
+			}
+			st.file = nf
+		}
+		f = st.file
+		st.writeWG.Add(1)
+	}
 	rt.mu.Unlock()
 
 	// Phase 2 (unlocked): the disk write itself. Concurrent chunks for the
@@ -811,13 +848,24 @@ func (m *Manager) ReceiveChunk(taskID int64, meta ChunkMeta, body []byte) error 
 	// already folded in.
 	wrote := false
 	if !skipWrite {
-		if err := os.MkdirAll(filepath.Dir(partFile), 0o755); err != nil {
-			return err
-		}
-		if err := writeChunkAt(partFile, meta.Offset, body); err != nil {
+		if _, err := f.WriteAt(body, meta.Offset); err != nil {
+			st.writeWG.Done()
+			if errors.Is(err, os.ErrClosed) {
+				// The handle was closed by a concurrent finalise — the file
+				// is already complete and on disk — or by a pause/cancel,
+				// which redelivers the chunk. Treat the finalise race like
+				// any other redelivery of a finished file.
+				rt.mu.Lock()
+				fin := st.finalized
+				rt.mu.Unlock()
+				if fin {
+					return nil
+				}
+			}
 			return err
 		}
 		st.feedHasher(meta.Offset, body)
+		st.writeWG.Done()
 		wrote = true
 	}
 
@@ -977,6 +1025,18 @@ func (m *Manager) persistProgressLocked(rt *taskRuntime, taskID int64) {
 	rt.lastPersist = time.Now()
 }
 
+// closeRecvFilesLocked closes every cached .part write handle, releasing the
+// files (Windows locks open files). In-flight chunk writes racing this fail
+// with os.ErrClosed and are retried via redelivery. Caller holds rt.mu.
+func (m *Manager) closeRecvFilesLocked(rt *taskRuntime) {
+	for _, st := range rt.recvFiles {
+		if st.file != nil {
+			_ = st.file.Close()
+			st.file = nil
+		}
+	}
+}
+
 // finalizeFile verifies the completed .part file and moves it to its final
 // destination. It runs outside rt.mu. The digest normally comes from the
 // incremental hasher (computed while chunks landed); without it (restart or
@@ -984,6 +1044,25 @@ func (m *Manager) persistProgressLocked(rt *taskRuntime, taskID int64) {
 // but correct. On failure the finalized flag is rolled back so a redelivered
 // chunk retries finalisation (matching the previous at-least-once semantics).
 func (m *Manager) finalizeFile(rt *taskRuntime, taskID int64, op *finalizeOp) error {
+	// Drain in-flight writes and close the cached .part handle before
+	// hashing/renaming: finalized was set under rt.mu before this op was
+	// created, so no new writes can start (their Add happens under the same
+	// lock). An open file cannot be renamed on Windows, and a racing write
+	// must land before the hash below reads the file.
+	rt.mu.Lock()
+	st := rt.recvFiles[op.relPath]
+	var f *os.File
+	if st != nil {
+		f = st.file
+		st.file = nil
+	}
+	rt.mu.Unlock()
+	if st != nil {
+		st.writeWG.Wait()
+		if f != nil {
+			_ = f.Close()
+		}
+	}
 	if op.sha256 != "" {
 		actual := op.receivedSHA
 		if actual == "" {
@@ -1051,6 +1130,7 @@ func (m *Manager) executeTask(ctx context.Context, rt *taskRuntime) {
 		rt.errMsg = err.Error()
 		rt.state = StateFailed
 		m.persistProgressLocked(rt, rt.taskID)
+		m.closeRecvFilesLocked(rt)
 		rt.mu.Unlock()
 		_ = m.store.saveState(rt.taskID, StateFailed)
 		log.Printf("filetransfer: task %d failed: %v", rt.taskID, err)
@@ -1282,7 +1362,7 @@ func (m *Manager) executeRecv(ctx context.Context, rt *taskRuntime) error {
 	rt.mu.Unlock()
 
 	if config.RelayType == RelayKafka {
-		err := consumeKafka(ctx, config.Kafka, func(meta ChunkMeta, data []byte) error {
+		err := consumeKafka(ctx, config.Kafka, effectiveParallelism(config.Parallelism), func(meta ChunkMeta, data []byte) error {
 			if err := m.ReceiveChunk(rt.taskID, meta, data); err != nil {
 				return err
 			}
@@ -1381,19 +1461,6 @@ func progressValues(progress map[string]*FileProgress) []FileProgress {
 		out = append(out, *fp)
 	}
 	return out
-}
-
-// writeChunkAt writes body at offset in path, creating/extending the file.
-func writeChunkAt(path string, offset int64, body []byte) error {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if _, err := f.WriteAt(body, offset); err != nil {
-		return err
-	}
-	return nil
 }
 
 // computeSHA256 streams the file and returns the lowercase hex digest.

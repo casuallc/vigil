@@ -23,6 +23,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -149,6 +151,98 @@ func BenchmarkDirectTransfer(b *testing.B) {
 	for _, cs := range []int{4 << 20, 8 << 20} {
 		b.Run(fmt.Sprintf("chunk=%dMB/p=8", cs>>20), func(b *testing.B) {
 			benchTransfer(b, size, cs, 8)
+		})
+	}
+}
+
+// benchReceive feeds one file of size bytes straight into a RECV task's
+// ReceiveChunk — the hot path every relay lands in — with `concurrency`
+// goroutines delivering chunks, and reports wall time.
+func benchReceive(b *testing.B, size int64, concurrency int) {
+	dir := b.TempDir()
+	mgr := NewManager(Options{DataDir: filepath.Join(dir, "data")})
+	defer mgr.Shutdown()
+	const taskID = 1
+	// DIRECT keeps executeTask inert (no broker needed); ReceiveChunk is the
+	// same code path the KAFKA consumer invokes per chunk.
+	if err := mgr.CreateTask(TaskConfig{
+		TaskID:    taskID,
+		Role:      RoleRecv,
+		RelayType: RelayDirect,
+		TargetDir: filepath.Join(dir, "dst"),
+	}); err != nil {
+		b.Fatal(err)
+	}
+	if err := mgr.Start(taskID); err != nil {
+		b.Fatal(err)
+	}
+
+	chunk := make([]byte, defaultChunkSizeBytes)
+	totalChunks := int((size + int64(len(chunk)) - 1) / int64(len(chunk)))
+	deliver := func(idx int) error {
+		off := int64(idx) * int64(len(chunk))
+		n := int64(len(chunk))
+		if off+n > size {
+			n = size - off
+		}
+		meta := ChunkMeta{
+			RelPath:    "big.bin",
+			ChunkIndex: idx,
+			Offset:     off,
+			Length:     int(n),
+			Eof:        off+n >= size,
+			Size:       size,
+		}
+		return mgr.ReceiveChunk(taskID, meta, chunk[:n])
+	}
+
+	b.ResetTimer()
+	start := time.Now()
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	errs := make(chan error, concurrency)
+	for w := 0; w < concurrency; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				idx := int(next.Add(1) - 1)
+				if idx >= totalChunks {
+					return
+				}
+				if err := deliver(idx); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		b.Fatal(err)
+	}
+	elapsed := time.Since(start)
+	b.StopTimer()
+
+	got, err := os.Stat(filepath.Join(dir, "dst", "big.bin"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	if got.Size() != size {
+		b.Fatalf("size mismatch: got %d want %d", got.Size(), size)
+	}
+	mbs := float64(size) / 1024 / 1024 / elapsed.Seconds()
+	b.ReportMetric(mbs, "MB/s")
+	b.Logf("size=%dMB concurrency=%d elapsed=%s rate=%.1fMB/s",
+		size/1024/1024, concurrency, elapsed.Round(time.Millisecond), mbs)
+}
+
+func BenchmarkReceiveChunks(b *testing.B) {
+	const size = 256 << 20 // 256MB
+	for _, c := range []int{1, 4, 8} {
+		b.Run(fmt.Sprintf("concurrency=%d", c), func(b *testing.B) {
+			benchReceive(b, size, c)
 		})
 	}
 }

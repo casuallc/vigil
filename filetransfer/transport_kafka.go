@@ -309,12 +309,14 @@ func sendKafkaChunks(ctx context.Context, producer kafkaSyncProducer, topic stri
 }
 
 // consumeKafka runs a consumer-group loop, invoking handle for each chunk
-// message until ctx is cancelled. When handle rejects a chunk, ConsumeClaim
+// message until ctx is cancelled. workers bounds how many chunks are handled
+// concurrently (see consumePipelined); <= 1 handles chunks strictly
+// sequentially per partition. When handle rejects a chunk, ConsumeClaim
 // returns an error which ends the consumer-group session; the loop then
 // rejoins so the group rebalances and consumption resumes from the last
 // committed offset, redelivering the failed chunk instead of leaving a
 // permanent hole in the received file.
-func consumeKafka(ctx context.Context, cfg *KafkaConfig, handle func(meta ChunkMeta, data []byte) error) error {
+func consumeKafka(ctx context.Context, cfg *KafkaConfig, workers int, handle func(meta ChunkMeta, data []byte) error) error {
 	if cfg == nil {
 		return fmt.Errorf("kafka config not set for KAFKA relay type")
 	}
@@ -335,7 +337,13 @@ func consumeKafka(ctx context.Context, cfg *KafkaConfig, handle func(meta ChunkM
 	}
 	defer group.Close()
 
-	handler := &chunkConsumerHandler{handle: handle}
+	handler := &chunkConsumerHandler{handle: handle, workers: workers}
+	if workers > 1 {
+		// The window is shared across all claims of this session, so total
+		// in-flight chunk handlers never exceed workers no matter how many
+		// partitions the topic has.
+		handler.sem = make(chan struct{}, workers)
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil
@@ -363,12 +371,25 @@ func consumeKafka(ctx context.Context, cfg *KafkaConfig, handle func(meta ChunkM
 // chunkConsumerHandler adapts the chunk handler to sarama's consumer-group API.
 type chunkConsumerHandler struct {
 	handle func(meta ChunkMeta, data []byte) error
+	// workers bounds concurrent in-flight chunk handlers; <= 1 keeps strictly
+	// sequential, in-order handling. sem is the shared in-flight window (one
+	// slot per in-progress chunk), created when workers > 1.
+	workers int
+	sem     chan struct{}
 }
 
 func (h *chunkConsumerHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
 func (h *chunkConsumerHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 
 func (h *chunkConsumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	if h.workers <= 1 {
+		return h.consumeSequential(session, claim)
+	}
+	return h.consumePipelined(session, claim)
+}
+
+// consumeSequential handles chunks one at a time, in claim order.
+func (h *chunkConsumerHandler) consumeSequential(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for {
 		select {
 		case <-session.Context().Done():
@@ -394,6 +415,111 @@ func (h *chunkConsumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 			}
 			session.MarkMessage(msg, "")
 		}
+	}
+}
+
+// consumePipelined overlaps chunk handling (disk writes, hashing) across a
+// bounded in-flight window: this goroutine drains the claim while up to
+// workers chunks are handled concurrently. Without it, receive concurrency is
+// capped at the topic's partition count while the send side runs a whole
+// worker pool per partition — the receiver falls behind.
+//
+// Offsets are still marked strictly in claim order by a single marker
+// goroutine: a failed chunk is never committed past — it ends the session and
+// is redelivered after the rebalance, preserving the at-least-once semantics
+// of the sequential path. Chunks after a failure may already have been
+// written; redelivery rewrites identical bytes, which the receiver
+// deduplicates by offset range.
+func (h *chunkConsumerHandler) consumePipelined(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	type inFlight struct {
+		msg  *sarama.ConsumerMessage
+		done chan error
+	}
+	// Per-claim ordered completion queue; the marker goroutine is the only
+	// reader. A claim can hold at most len(h.sem) window slots, so its queue
+	// never holds more entries than workers and the dispatch below never
+	// blocks on it.
+	queue := make(chan inFlight, h.workers)
+	markErr := make(chan error, 1)
+	var marker sync.WaitGroup
+	marker.Add(1)
+	go func() {
+		defer marker.Done()
+		for f := range queue {
+			if err := <-f.done; err != nil {
+				log.Printf("filetransfer: chunk handle failed (partition=%d offset=%d), restarting session for redelivery: %v",
+					f.msg.Partition, f.msg.Offset, err)
+				select {
+				case markErr <- err:
+				default:
+				}
+				// Keep draining until the queue closes so a blocked dispatch
+				// never deadlocks.
+				for f := range queue {
+					<-f.done
+				}
+				return
+			}
+			session.MarkMessage(f.msg, "")
+		}
+	}()
+
+	// dispatch queues one message for concurrent handling. skip messages are
+	// marked without invoking the handler (undecodable frames), enqueued like
+	// everything else so marking stays in claim order. Returns false when the
+	// session ended while waiting for a window slot.
+	dispatch := func(msg *sarama.ConsumerMessage, meta ChunkMeta, data []byte, skip bool) bool {
+		select {
+		case h.sem <- struct{}{}:
+		case <-session.Context().Done():
+			return false
+		}
+		f := inFlight{msg: msg, done: make(chan error, 1)}
+		queue <- f
+		go func() {
+			defer func() { <-h.sem }()
+			if skip {
+				f.done <- nil
+				return
+			}
+			f.done <- h.handle(meta, data)
+		}()
+		return true
+	}
+
+loop:
+	for {
+		select {
+		case <-session.Context().Done():
+			break loop
+		case err := <-markErr:
+			close(queue)
+			marker.Wait()
+			return err
+		case msg, ok := <-claim.Messages():
+			if !ok {
+				break loop
+			}
+			meta, data, err := decodeKafkaMessage(msg.Value)
+			if err != nil {
+				log.Printf("filetransfer: skipping undecodable kafka message (topic=%s partition=%d offset=%d): %v", msg.Topic, msg.Partition, msg.Offset, err)
+				if !dispatch(msg, ChunkMeta{}, nil, true) {
+					break loop
+				}
+				continue
+			}
+			if !dispatch(msg, meta, data, false) {
+				break loop
+			}
+		}
+	}
+	close(queue)
+	marker.Wait()
+	select {
+	case err := <-markErr:
+		return err
+	default:
+		return nil
 	}
 }
 

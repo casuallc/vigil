@@ -25,6 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/IBM/sarama"
 )
@@ -354,6 +355,128 @@ func TestConsumeClaimHandleErrorStopsSession(t *testing.T) {
 	}
 	if len(session.marked) != 0 {
 		t.Fatalf("failed message must not be marked, got %d", len(session.marked))
+	}
+}
+
+// feedClaim builds a claim channel of n framed chunk messages (chunk i at
+// file offset i), injecting an undecodable message at badIdx when >= 0.
+func feedClaim(t *testing.T, n, badIdx int) chan *sarama.ConsumerMessage {
+	t.Helper()
+	ch := make(chan *sarama.ConsumerMessage, n)
+	for i := 0; i < n; i++ {
+		value := []byte("not-a-frame")
+		if i != badIdx {
+			msg, err := encodeKafkaMessage(ChunkMeta{RelPath: "f.bin", Offset: int64(i), Length: 1}, []byte("x"))
+			if err != nil {
+				t.Fatalf("encode: %v", err)
+			}
+			value = msg
+		}
+		ch <- &sarama.ConsumerMessage{Topic: "t", Partition: 0, Offset: int64(i), Value: value}
+	}
+	close(ch)
+	return ch
+}
+
+func markedOffsets(session *fakeConsumerSession) []int64 {
+	out := make([]int64, 0, len(session.marked))
+	for _, m := range session.marked {
+		out = append(out, m.Offset)
+	}
+	return out
+}
+
+// TestConsumeClaimPipelinedMarksInOrder ensures the pipelined claim handler
+// overlaps chunk handling yet still marks offsets strictly in claim order.
+func TestConsumeClaimPipelinedMarksInOrder(t *testing.T) {
+	const n = 20
+	session := &fakeConsumerSession{ctx: context.Background()}
+
+	var cur, maxConc atomic.Int32
+	h := &chunkConsumerHandler{
+		workers: 4,
+		sem:     make(chan struct{}, 4),
+		handle: func(ChunkMeta, []byte) error {
+			c := cur.Add(1)
+			for {
+				m := maxConc.Load()
+				if c <= m || maxConc.CompareAndSwap(m, c) {
+					break
+				}
+			}
+			time.Sleep(time.Millisecond)
+			cur.Add(-1)
+			return nil
+		},
+	}
+	if err := h.ConsumeClaim(session, fakeConsumerClaim{ch: feedClaim(t, n, -1)}); err != nil {
+		t.Fatalf("ConsumeClaim: %v", err)
+	}
+	got := markedOffsets(session)
+	if len(got) != n {
+		t.Fatalf("expected %d marked messages, got %d", n, len(got))
+	}
+	for i, off := range got {
+		if off != int64(i) {
+			t.Fatalf("marked out of order at position %d: offset %d", i, off)
+		}
+	}
+	if maxConc.Load() < 2 {
+		t.Fatalf("expected concurrent chunk handling, max concurrency = %d", maxConc.Load())
+	}
+}
+
+// TestConsumeClaimPipelinedFailureNotMarked ensures a failed chunk and every
+// message after it stay uncommitted (later chunks may already be handled, but
+// must not be marked) so the session restart redelivers them.
+func TestConsumeClaimPipelinedFailureNotMarked(t *testing.T) {
+	session := &fakeConsumerSession{ctx: context.Background()}
+	h := &chunkConsumerHandler{
+		workers: 4,
+		sem:     make(chan struct{}, 4),
+		handle: func(meta ChunkMeta, _ []byte) error {
+			if meta.Offset == 5 {
+				return errors.New("disk full")
+			}
+			return nil
+		},
+	}
+	if err := h.ConsumeClaim(session, fakeConsumerClaim{ch: feedClaim(t, 10, -1)}); err == nil {
+		t.Fatal("expected ConsumeClaim to return the handle error")
+	}
+	got := markedOffsets(session)
+	want := []int64{0, 1, 2, 3, 4}
+	if len(got) != len(want) {
+		t.Fatalf("marked offsets = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("marked offsets = %v, want %v", got, want)
+		}
+	}
+}
+
+// TestConsumeClaimPipelinedSkipsUndecodable ensures undecodable frames are
+// skipped through the same ordered pipeline, keeping marks contiguous.
+func TestConsumeClaimPipelinedSkipsUndecodable(t *testing.T) {
+	const n = 10
+	session := &fakeConsumerSession{ctx: context.Background()}
+	h := &chunkConsumerHandler{
+		workers: 4,
+		sem:     make(chan struct{}, 4),
+		handle:  func(ChunkMeta, []byte) error { return nil },
+	}
+	if err := h.ConsumeClaim(session, fakeConsumerClaim{ch: feedClaim(t, n, 3)}); err != nil {
+		t.Fatalf("ConsumeClaim: %v", err)
+	}
+	got := markedOffsets(session)
+	if len(got) != n {
+		t.Fatalf("expected %d marked messages (bad frame included), got %v", n, got)
+	}
+	for i, off := range got {
+		if off != int64(i) {
+			t.Fatalf("marked out of order at position %d: offset %d", i, off)
+		}
 	}
 }
 
