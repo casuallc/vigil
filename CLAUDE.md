@@ -22,6 +22,13 @@ go build -o bbx-server ./cmd/bbx-server
 .\build-wsl.ps1
 .\build-wsl.ps1 -Version 2.1.0
 
+# loongarch64 旧世界构建（麒麟 V10 / Loongnix 20 / UOS V20，ABI1.0）
+# 上游 Go 编出的 loong64 二进制是「新世界」，在旧世界内核（4.19/5.4/5.10）上启动即段错误。
+# build_all.sh 检测到龙芯 abi1.0 工具链（默认 ~/toolchains/go-abi1.0/bin/go，
+# 可用 LOONGSON_GO 环境变量覆盖）时会额外产出 linux-loong64-abi1 构建，
+# package.sh / push.sh 会生成对应的 *-linux-loong64-abi1.tar.gz / *.loongarch64-abi1.rpm / *.loong64-abi1.deb。
+# 工具链下载: http://ftp.loongnix.cn/toolchain/golang/go-1.25/abi1.0/
+
 # Run tests
 go test ./...
 

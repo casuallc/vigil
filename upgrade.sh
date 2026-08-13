@@ -25,22 +25,33 @@ done
 echo "🚀 开始执行智能更新流程..."
 
 # === 自动检测架构 ===
-ARCH=""
-case "$(uname -m)" in
-    x86_64|amd64)
-        ARCH="amd64"
-        ;;
-    aarch64|arm64)
-        ARCH="arm64"
-        ;;
-    loongarch64|loong64)
-        ARCH="loong64"
-        ;;
-    *)
-        echo "❌ 不支持的 CPU 架构: $(uname -m)"
-        exit 1
-        ;;
-esac
+# 可用 BBX_ARCH 环境变量强制指定（如 BBX_ARCH=loong64-abi1）
+ARCH="${BBX_ARCH:-}"
+if [ -z "$ARCH" ]; then
+    case "$(uname -m)" in
+        x86_64|amd64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        loongarch64|loong64)
+            ARCH="loong64"
+            # 龙芯 LoongArch 分新旧世界两个互不兼容的 ABI：
+            #   旧世界（麒麟 V10 / Loongnix 20 / UOS V20，内核 4.19/5.4/5.10）
+            #   只能运行 abi1.0 工具链编译的二进制；新世界反之。
+            # 通过动态加载器路径区分：旧世界为 /lib64/ld.so.1，
+            # 新世界为 /lib64/ld-linux-loongarch-lp64d.so.1。
+            if [ -e /lib64/ld.so.1 ] && [ ! -e /lib64/ld-linux-loongarch-lp64d.so.1 ]; then
+                ARCH="loong64-abi1"
+            fi
+            ;;
+        *)
+            echo "❌ 不支持的 CPU 架构: $(uname -m)"
+            exit 1
+            ;;
+    esac
+fi
 
 echo "🔧 检测到系统架构: $ARCH"
 

@@ -169,6 +169,61 @@ main() {
         done
     done
 
+    # ========== Old-world (ABI1.0) loong64 build ==========
+    # 龙芯 LoongArch 分「旧世界」(麒麟 V10 / Loongnix 20 / UOS V20，内核 4.19/5.4/5.10)
+    # 与「新世界」(上游 ABI2.0，内核 ≥5.19) 两个互不兼容的 ABI。
+    # 上游 Go 编出的 loong64 二进制是新世界，在旧世界系统上启动即段错误
+    # （runtime 初始化时 rt_sigprocmask 因 NSIG 不一致失败，Go 故意崩溃）。
+    # 旧世界必须使用龙芯 abi1.0 工具链构建：
+    #   http://ftp.loongnix.cn/toolchain/golang/go-1.25/abi1.0/go1.25.11.linux-amd64.tar.gz
+    # 可通过环境变量覆盖：
+    #   LOONGSON_GO    abi1.0 工具链的 go 可执行文件路径
+    #   ABI1_GOPROXY   模块代理（默认 ${GOPROXY:-https://goproxy.cn,direct}）。
+    #                  上游模块即可，因为新旧世界绝大多数系统调用编号一致，差异
+    #                  集中在信号处理且已由工具链 runtime 修补。若能访问龙芯源可设为
+    #                  http://goproxy.loongnix.cn:3000，但需先执行
+    #                  GOSUMDB=off go mod tidy 重新生成 go.sum（龙芯源模块为
+    #                  魔改版，与上游校验和不一致）。
+    #   ABI1_GOMODCACHE 旧世界构建使用的独立模块缓存（避免龙芯源魔改包污染正常缓存）
+    LOONGSON_GO="${LOONGSON_GO:-$HOME/toolchains/go-abi1.0/bin/go}"
+    if [ -x "$LOONGSON_GO" ]; then
+        log "========== Building old-world (ABI1.0) linux/loong64 =========="
+        ABI1_ENV=(GOOS=linux GOARCH=loong64 CGO_ENABLED=0
+                  "GOPROXY=${ABI1_GOPROXY:-${GOPROXY:-https://goproxy.cn,direct}}"
+                  "GOMODCACHE=${ABI1_GOMODCACHE:-$HOME/gopath-abi1/pkg/mod}")
+
+        mkdir -p "$RELEASE_DIR/linux-loong64-abi1"
+        for CMD in "${CMD_LIST[@]}"; do
+            OUTPUT_NAME="$CMD-$VERSION-linux-loong64-abi1"
+            OUTPUT_PATH="$BUILD_DIR/$OUTPUT_NAME"
+
+            log "→ linux/loong64-abi1"
+
+            env "${ABI1_ENV[@]}" "$LOONGSON_GO" build \
+                -ldflags "-s -w \
+                -X 'github.com/casuallc/vigil/version.Version=$VERSION' \
+                -X 'github.com/casuallc/vigil/version.BuildTime=$BUILD_TIME' \
+                -X 'github.com/casuallc/vigil/version.GitCommit=$GIT_COMMIT' \
+                -X 'github.com/casuallc/vigil/version.GitBranch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")'" \
+                -o "$OUTPUT_PATH" \
+                "./$CMD_DIR/$CMD"
+
+            if [ $? -ne 0 ]; then
+                error "Build failed: $CMD (linux/loong64-abi1)"
+                exit 1
+            fi
+            success "✔ $OUTPUT_NAME"
+
+            cp "$OUTPUT_PATH" "$RELEASE_DIR/linux-loong64-abi1/" || {
+                error "Copy failed: $OUTPUT_NAME"
+                exit 1
+            }
+        done
+    else
+        warn "未找到龙芯 abi1.0 工具链 ($LOONGSON_GO)，跳过旧世界 loong64 构建"
+        warn "下载地址: http://ftp.loongnix.cn/toolchain/golang/go-1.25/abi1.0/"
+    fi
+
     # ========== Create Unified Release ==========
     log "📦 Creating unified release package..."
 

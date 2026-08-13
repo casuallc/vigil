@@ -5,7 +5,7 @@ set -e  # 出错立即退出
 VERSION="${VERSION:-$(git describe --tags --exact-match 2>/dev/null || echo '1.0.0')}"
 
 # 检查必要目录是否存在
-for dir in conf scripts/appctl.sh release/linux-amd64 release/linux-arm64 release/linux-loong64; do
+for dir in conf scripts/appctl.sh release/linux-amd64 release/linux-arm64 release/linux-loong64 release/linux-loong64-abi1; do
     if [ ! -e "$dir" ]; then
         echo "错误: $dir 不存在，请检查项目结构。"
         exit 1
@@ -52,23 +52,31 @@ package_arch() {
 
     # 使用 nfpm 打包 RPM 和 DEB
     if command -v nfpm >/dev/null 2>&1; then
-        local rpm_arch
-        if [ "$arch" = "amd64" ]; then
-            rpm_arch="x86_64"
+        # pkg_arch: 写入包元数据的架构名（deb 风格，nfpm 会为 rpm 自动转换）。
+        # loong64-abi1 (龙芯旧世界) 元数据架构同为 loong64，仅输出文件名加以区分。
+        local pkg_arch rpm_name
+        if [ "$arch" = "loong64-abi1" ]; then
+            pkg_arch="loong64"
+            rpm_name="loongarch64-abi1"
+        elif [ "$arch" = "amd64" ]; then
+            pkg_arch="amd64"
+            rpm_name="x86_64"
         elif [ "$arch" = "arm64" ]; then
-            rpm_arch="aarch64"
+            pkg_arch="arm64"
+            rpm_name="aarch64"
         else
-            rpm_arch="loongarch64"
+            pkg_arch="$arch"
+            rpm_name="loongarch64"
         fi
 
         # 生成临时 nfpm 配置
-        sed -e "s|{{ARCH}}|$arch|g" \
+        sed -e "s|{{ARCH}}|$pkg_arch|g" \
             -e "s|{{VERSION}}|$VERSION|g" \
             nfpm.template.yaml > "/tmp/nfpm-$arch.yaml"
 
         # RPM
-        nfpm package -f "/tmp/nfpm-$arch.yaml" -p rpm -t "release/bbx-${VERSION}.${rpm_arch}.rpm"
-        echo "✅ bbx-${VERSION}.${rpm_arch}.rpm 生成完成"
+        nfpm package -f "/tmp/nfpm-$arch.yaml" -p rpm -t "release/bbx-${VERSION}.${rpm_name}.rpm"
+        echo "✅ bbx-${VERSION}.${rpm_name}.rpm 生成完成"
 
         # DEB (架构名与 Go 一致: amd64 / arm64 / loong64)
         nfpm package -f "/tmp/nfpm-$arch.yaml" -p deb -t "release/bbx-${VERSION}.${arch}.deb"
@@ -84,9 +92,10 @@ package_arch() {
     rm -rf "$temp_pkg"
 }
 
-# 分别打包 amd64、arm64 和 loong64
-package_arch "amd64"   "release/linux-amd64"   "bbx-${VERSION}-linux-amd64.tar.gz"
-package_arch "arm64"   "release/linux-arm64"   "bbx-${VERSION}-linux-arm64.tar.gz"
-package_arch "loong64" "release/linux-loong64" "bbx-${VERSION}-linux-loong64.tar.gz"
+# 分别打包 amd64、arm64、loong64（新世界）和 loong64-abi1（龙芯旧世界）
+package_arch "amd64"        "release/linux-amd64"         "bbx-${VERSION}-linux-amd64.tar.gz"
+package_arch "arm64"        "release/linux-arm64"         "bbx-${VERSION}-linux-arm64.tar.gz"
+package_arch "loong64"      "release/linux-loong64"       "bbx-${VERSION}-linux-loong64.tar.gz"
+package_arch "loong64-abi1" "release/linux-loong64-abi1"  "bbx-${VERSION}-linux-loong64-abi1.tar.gz"
 
 echo "🎉 所有架构打包完成！"
