@@ -178,19 +178,51 @@ main() {
     #   http://ftp.loongnix.cn/toolchain/golang/go-1.25/abi1.0/go1.25.11.linux-amd64.tar.gz
     # 可通过环境变量覆盖：
     #   LOONGSON_GO    abi1.0 工具链的 go 可执行文件路径
-    #   ABI1_GOPROXY   模块代理（默认 ${GOPROXY:-https://goproxy.cn,direct}）。
-    #                  上游模块即可，因为新旧世界绝大多数系统调用编号一致，差异
-    #                  集中在信号处理且已由工具链 runtime 修补。若能访问龙芯源可设为
-    #                  http://goproxy.loongnix.cn:3000，但需先执行
+    #                  上游模块即可：新旧世界绝大多数系统调用编号一致，信号 ABI
+    #                  差异中 runtime 部分由工具链修补，x/sys 部分由下方的就地
+    #                  补丁处理（打在 ABI1_GOMODCACHE 独立缓存里）。若能访问龙芯源
+    #                  也可设为 http://goproxy.loongnix.cn:3000，但需先执行
     #                  GOSUMDB=off go mod tidy 重新生成 go.sum（龙芯源模块为
     #                  魔改版，与上游校验和不一致）。
-    #   ABI1_GOMODCACHE 旧世界构建使用的独立模块缓存（避免龙芯源魔改包污染正常缓存）
+    #   ABI1_GOMODCACHE 旧世界构建使用的独立模块缓存（x/sys 旧世界补丁就地打在
+    #                  这里，避免污染正常构建的模块缓存）
     LOONGSON_GO="${LOONGSON_GO:-$HOME/toolchains/go-abi1.0/bin/go}"
     if [ -x "$LOONGSON_GO" ]; then
         log "========== Building old-world (ABI1.0) linux/loong64 =========="
         ABI1_ENV=(GOOS=linux GOARCH=loong64 CGO_ENABLED=0
                   "GOPROXY=${ABI1_GOPROXY:-${GOPROXY:-https://goproxy.cn,direct}}"
                   "GOMODCACHE=${ABI1_GOMODCACHE:-$HOME/gopath-abi1/pkg/mod}")
+
+        # ========== Patch x/sys for the old-world signal ABI ==========
+        # 旧世界内核 NSIG=128，rt_sigprocmask / signalfd4 / pselect6 等调用
+        # 要求 sigsetsize=16；上游 x/sys 对 loong64 硬编码 _C__NSIG=0x41
+        # （新世界，size=8），导致 cilium/ebpf 的 PthreadSigmask 直接 EINVAL
+        # panic（龙芯 abi1.0 工具链只修补了 Go runtime，管不到第三方模块）。
+        # 这里在 abi1 专用的独立模块缓存里把 x/sys 的 _C__NSIG 改为 0x80
+        # （0x80/8=16，PthreadSigmask/Pselect/Signalfd 的 size 随之变为 16）。
+        # 信号编号新旧世界一致（SIGPROF=27），无需其它改动。
+        # 注意：go build -overlay 不允许替换模块缓存内的文件，故直接就地补丁；
+        # 独立的 ABI1_GOMODCACHE 保证不会污染正常构建的模块缓存。
+        env "${ABI1_ENV[@]}" "$LOONGSON_GO" mod download golang.org/x/sys || {
+            error "下载 golang.org/x/sys 失败"
+            exit 1
+        }
+        XSYS_DIR=$(env "${ABI1_ENV[@]}" "$LOONGSON_GO" list -m -f '{{.Dir}}' golang.org/x/sys 2>/dev/null)
+        if [ -n "$XSYS_DIR" ] && [ -f "$XSYS_DIR/unix/ztypes_linux_loong64.go" ]; then
+            # 模块缓存的目录和文件默认只读，sed -i 需要在同目录创建临时文件
+            chmod -R u+w "$XSYS_DIR" 2>/dev/null
+            sed -i 's/const _C__NSIG = 0x41/const _C__NSIG = 0x80/' \
+                "$XSYS_DIR/unix/ztypes_linux_loong64.go"
+            if ! grep -q "const _C__NSIG = 0x80" "$XSYS_DIR/unix/ztypes_linux_loong64.go"; then
+                error "生成 x/sys 旧世界补丁失败：$XSYS_DIR 中未找到 _C__NSIG = 0x41"
+                error "x/sys 版本可能已变更，请检查 ztypes_linux_loong64.go"
+                exit 1
+            fi
+            log "Applied x/sys old-world signal ABI patch (sigsetsize 8→16)"
+        else
+            warn "无法定位 golang.org/x/sys 模块目录，未应用旧世界信号补丁"
+            warn "cilium/ebpf 在旧世界内核上会 panic（exporter 已有 recover 兜底）"
+        fi
 
         mkdir -p "$RELEASE_DIR/linux-loong64-abi1"
         for CMD in "${CMD_LIST[@]}"; do

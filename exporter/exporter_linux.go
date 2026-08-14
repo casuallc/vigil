@@ -14,6 +14,7 @@ package exporter
 
 import (
 	"errors"
+	"fmt"
 	"log"
 )
 
@@ -35,7 +36,7 @@ func NewNodeExporter() (*NodeExporter, error) {
 func defaultLinuxCollectors() map[string]Collector {
 	out := make(map[string]Collector, len(linuxCollectorFactories))
 	for name, factory := range linuxCollectorFactories {
-		c, err := factory()
+		c, err := safeFactory(factory)
 		if err != nil {
 			// A factory failure usually means the collector cannot read its
 			// data source on this kernel/build. We log and skip rather than
@@ -46,6 +47,21 @@ func defaultLinuxCollectors() map[string]Collector {
 		out[name] = c
 	}
 	return out
+}
+
+// safeFactory runs a collector factory, converting panics into errors.
+// Some collectors (e.g. cilium/ebpf) panic instead of returning errors on
+// incompatible kernels/ABIs — e.g. raw rt_sigprocmask with a mismatched
+// sigset size on LoongArch old-world kernels. A metrics collector must
+// never take down the whole server.
+func safeFactory(factory func() (Collector, error)) (c Collector, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			c = nil
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return factory()
 }
 
 // linuxCollectorFactories is populated by individual collector init()s.
