@@ -28,6 +28,7 @@ go build -o bbx-server ./cmd/bbx-server
 # 可用 LOONGSON_GO 环境变量覆盖）时会额外产出 linux-loong64-abi1 构建，
 # package.sh / push.sh 会生成对应的 *-linux-loong64-abi1.tar.gz / *.loongarch64-abi1.rpm / *.loong64-abi1.deb。
 # 工具链下载: http://ftp.loongnix.cn/toolchain/golang/go-1.25/abi1.0/
+# 完整背景、排错手册与新依赖审计清单见 docs/loongarch-old-world.md
 
 # Run tests
 go test ./...
