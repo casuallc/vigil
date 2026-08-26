@@ -29,14 +29,23 @@ import (
 // ExecuteCommand 辅助函数：执行命令
 // 执行命令
 func ExecuteCommand(command string, envVars []string) (string, error) {
-  output, _, err := ExecuteCommandWithExitCode(command, envVars)
+  stdout, stderr, _, err := ExecuteCommandWithExitCode(command, envVars)
+
+  // 合并输出
+  output := stdout
+  if stderr != "" {
+    if output != "" {
+      output += "\n"
+    }
+    output += stderr
+  }
   return output, err
 }
 
-// ExecuteCommandWithExitCode 辅助函数：执行命令并返回退出码
+// ExecuteCommandWithExitCode 辅助函数：执行命令并分流返回 stdout、stderr 与退出码
 // exitCode 为 0 表示成功；命令以非零状态退出时返回其实际退出码；
 // 命令无法启动（err 非 *exec.ExitError）时返回 -1。
-func ExecuteCommandWithExitCode(command string, envVars []string) (output string, exitCode int, err error) {
+func ExecuteCommandWithExitCode(command string, envVars []string) (stdout, stderr string, exitCode int, err error) {
   // 只使用bash执行命令
   cmd := exec.Command("/bin/bash", "-c", command)
 
@@ -47,9 +56,9 @@ func ExecuteCommandWithExitCode(command string, envVars []string) (output string
   }
 
   // 捕获输出
-  var stdout, stderr bytes.Buffer
-  cmd.Stdout = &stdout
-  cmd.Stderr = &stderr
+  var stdoutBuf, stderrBuf bytes.Buffer
+  cmd.Stdout = &stdoutBuf
+  cmd.Stderr = &stderrBuf
 
   // 执行命令
   err = cmd.Run()
@@ -67,17 +76,9 @@ func ExecuteCommandWithExitCode(command string, envVars []string) (output string
     }
   }
 
-  // 合并输出
-  output = stdout.String()
-  if stderr.Len() > 0 {
-    if output != "" {
-      output += "\n"
-    }
-    output += stderr.String()
-  }
-
-  output = strings.TrimSpace(output)
-  return output, exitCode, err
+  stdout = strings.TrimSpace(stdoutBuf.String())
+  stderr = strings.TrimSpace(stderrBuf.String())
+  return stdout, stderr, exitCode, err
 }
 
 // ExecuteScriptFile 辅助函数：执行脚本文件

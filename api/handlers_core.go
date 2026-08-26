@@ -200,12 +200,13 @@ func (s *Server) handleExecuteCommandV2(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Execute command and capture exit code
-	output, exitCode, err := common.ExecuteCommandWithExitCode(req.Command, req.Env)
+	// Execute command, capturing stdout/stderr separately and the exit code
+	stdout, stderr, exitCode, err := common.ExecuteCommandWithExitCode(req.Command, req.Env)
 
 	resp := map[string]interface{}{
 		"exit_code": exitCode,
-		"output":    output,
+		"stdout":    stdout,
+		"stderr":    stderr,
 	}
 	if err != nil && exitCode == -1 {
 		// 命令未能启动（如 bash 不存在），附带错误信息
