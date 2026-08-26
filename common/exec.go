@@ -18,6 +18,7 @@ package common
 
 import (
   "bytes"
+  "errors"
   "fmt"
   "os"
   "os/exec"
@@ -28,6 +29,14 @@ import (
 // ExecuteCommand 辅助函数：执行命令
 // 执行命令
 func ExecuteCommand(command string, envVars []string) (string, error) {
+  output, _, err := ExecuteCommandWithExitCode(command, envVars)
+  return output, err
+}
+
+// ExecuteCommandWithExitCode 辅助函数：执行命令并返回退出码
+// exitCode 为 0 表示成功；命令以非零状态退出时返回其实际退出码；
+// 命令无法启动（err 非 *exec.ExitError）时返回 -1。
+func ExecuteCommandWithExitCode(command string, envVars []string) (output string, exitCode int, err error) {
   // 只使用bash执行命令
   cmd := exec.Command("/bin/bash", "-c", command)
 
@@ -43,10 +52,23 @@ func ExecuteCommand(command string, envVars []string) (string, error) {
   cmd.Stderr = &stderr
 
   // 执行命令
-  err := cmd.Run()
+  err = cmd.Run()
+
+  // 解析退出码
+  switch {
+  case err == nil:
+    exitCode = 0
+  default:
+    var exitErr *exec.ExitError
+    if errors.As(err, &exitErr) {
+      exitCode = exitErr.ExitCode()
+    } else {
+      exitCode = -1
+    }
+  }
 
   // 合并输出
-  output := stdout.String()
+  output = stdout.String()
   if stderr.Len() > 0 {
     if output != "" {
       output += "\n"
@@ -55,7 +77,7 @@ func ExecuteCommand(command string, envVars []string) (string, error) {
   }
 
   output = strings.TrimSpace(output)
-  return output, err
+  return output, exitCode, err
 }
 
 // ExecuteScriptFile 辅助函数：执行脚本文件

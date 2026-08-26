@@ -181,6 +181,40 @@ func (s *Server) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(output))
 }
 
+// handleExecuteCommandV2 handles the POST /api/v2/exec endpoint.
+// 与 /api/exec 不同，无论命令退出码如何都返回 200，退出码与输出以 JSON 返回。
+func (s *Server) handleExecuteCommandV2(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Command string   `json:"command"`
+		Env     []string `json:"env"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Validate command is not empty
+	if req.Command == "" {
+		writeError(w, http.StatusBadRequest, "Command cannot be empty")
+		return
+	}
+
+	// Execute command and capture exit code
+	output, exitCode, err := common.ExecuteCommandWithExitCode(req.Command, req.Env)
+
+	resp := map[string]interface{}{
+		"exit_code": exitCode,
+		"output":    output,
+	}
+	if err != nil && exitCode == -1 {
+		// 命令未能启动（如 bash 不存在），附带错误信息
+		resp["error"] = err.Error()
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // handleUpdateHosts handles POST /api/hosts to update /etc/hosts entries
 func (s *Server) handleUpdateHosts(w http.ResponseWriter, r *http.Request) {
 	var entries []HostEntry

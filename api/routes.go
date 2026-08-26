@@ -69,6 +69,9 @@ func (s *Server) Router() *mux.Router {
 	// Execute command endpoint
 	r.HandleFunc("/api/exec", s.handleExecuteCommand).Methods("POST")
 
+	// Execute command endpoint (v2: returns exit code and output as JSON)
+	r.HandleFunc("/api/v2/exec", s.handleExecuteCommandV2).Methods("POST")
+
 	// Cosmic inspection endpoint
 	r.HandleFunc("/api/inspect", s.handleCosmicInspect).Methods("POST")
 
