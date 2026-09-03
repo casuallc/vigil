@@ -165,6 +165,18 @@ func (s *Server) Router() *mux.Router {
 	// Network endpoints
 	r.HandleFunc("/api/network/probe", s.handleNetworkProbe).Methods("POST")
 
+	// Proxy management endpoints (registered when the proxy feature is enabled)
+	if s.proxyManager != nil {
+		r.HandleFunc("/api/proxy/instances", s.handleProxyList).Methods("GET")
+		r.HandleFunc("/api/proxy/instances", s.handleProxyCreate).Methods("POST")
+		r.HandleFunc("/api/proxy/instances/{name}", s.handleProxyGet).Methods("GET")
+		r.HandleFunc("/api/proxy/instances/{name}", s.handleProxyUpdate).Methods("PUT")
+		r.HandleFunc("/api/proxy/instances/{name}", s.handleProxyDelete).Methods("DELETE")
+		r.HandleFunc("/api/proxy/instances/{name}/start", s.handleProxyStart).Methods("POST")
+		r.HandleFunc("/api/proxy/instances/{name}/stop", s.handleProxyStop).Methods("POST")
+		r.HandleFunc("/api/proxy/instances/{name}/status", s.handleProxyStatus).Methods("GET")
+	}
+
 	// Auth endpoints
 	r.HandleFunc("/api/auth/change-password", s.handleChangePassword).Methods("POST")
 

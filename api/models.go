@@ -1,6 +1,10 @@
 package api
 
-import "time"
+import (
+	"time"
+
+	"github.com/casuallc/vigil/proxy"
+)
 
 // NetworkInterface represents a network interface with its MAC, network, and IP
 type NetworkInterface struct {
@@ -272,4 +276,10 @@ type NetworkProbeResponse struct {
 	Reachable bool   `json:"reachable"`
 	LatencyMs int64  `json:"latencyMs"`
 	Error     string `json:"error"`
+}
+
+// ProxyCreateRequest 创建代理实例请求
+type ProxyCreateRequest struct {
+	Config    proxy.InstanceConfig `json:"config"`
+	Autostart bool                 `json:"autostart"`
 }

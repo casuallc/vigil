@@ -24,6 +24,7 @@ import (
 
   "github.com/casuallc/vigil/common"
   "github.com/casuallc/vigil/poll"
+  "github.com/casuallc/vigil/proxy"
 
   "gopkg.in/yaml.v3"
 )
@@ -44,6 +45,7 @@ type Config struct {
   Docker       DockerConfig       `yaml:"docker"`
   DockerRegistry DockerRegistryConfig `yaml:"docker_registry"`
   Poll         poll.PollConfig    `yaml:"poll"`
+  Proxy        proxy.ProxyConfig  `yaml:"proxy"`
 }
 
 type BasicAuth struct {

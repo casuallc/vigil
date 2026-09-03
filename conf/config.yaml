@@ -78,3 +78,25 @@ poll:
   #   endpoint: https://10.0.0.12:8080
   #   auth: {username: bbx, password: yyy}
   #   tls: {insecure_skip_verify: true}
+
+# HTTP reverse proxy: static instances start with the server; instances
+# created via the API/CLI are persisted in the database and restored on
+# restart when their desired state is running.
+proxy:
+  enabled: false
+  instances: []                       # static reverse proxy instances, e.g.:
+  # - name: web-internal
+  #   listen: 127.0.0.1:8080
+  #   target: http://10.0.0.5:9000    # http(s)://host[:port]
+  #   whitelist: ["10.0.0.0/8"]       # CIDR | *.suffix | host[:port]; target host is always implied
+  #   allow_private: true             # required for loopback/RFC1918/link-local targets
+  #   max_body_mb: 0                  # 0 = unlimited request body
+  #   header_set: {X-Real-IP: ""}
+  #   tls: {enabled: false, cert_path: "", key_path: ""}
+  tunnel:                             # poll-mode proxy_session tunnel (see docs/poll-mode.md)
+    enabled: false
+    allowed_targets: []               # local policy for tunnel targets, e.g. ["127.0.0.1:9000", "10.0.0.0/8"]
+                                      # empty = tunneling refused; the upstream cannot broaden this
+    max_sessions: 8
+    max_duration_sec: 3600            # hard cap per tunnel session
+    max_body_mb: 64

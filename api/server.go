@@ -45,6 +45,7 @@ import (
 	"github.com/casuallc/vigil/models"
 	"github.com/casuallc/vigil/poll"
 	"github.com/casuallc/vigil/proc"
+	"github.com/casuallc/vigil/proxy"
 	dbsql "github.com/casuallc/vigil/sql"
 	"github.com/casuallc/vigil/vm"
 	_ "modernc.org/sqlite"
@@ -84,6 +85,8 @@ type Server struct {
 	dockerRegistryManager *dockerregistry.Manager
 	// Internal token authenticating loopback calls made by the poll agent.
 	internalToken string
+	// Reverse proxy manager (nil when disabled)
+	proxyManager *proxy.Manager
 	// Poll-mode agent (nil when disabled)
 	pollAgent *poll.Agent
 }
@@ -263,6 +266,21 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
 	// Generate the internal token used by the poll agent's loopback calls.
 	server.internalToken = generateInternalToken()
 
+	// Initialize the reverse proxy manager when enabled. This must happen
+	// before the poll agent so the agent can be handed the tunnel core.
+	if config.Proxy.Enabled {
+		pm, err := proxy.NewManager(&config.Proxy, dbPath, server.proxyAccessHook())
+		if err != nil {
+			log.Printf("Warning: failed to initialize proxy manager: %v", err)
+		} else {
+			if err := pm.Recover(context.Background()); err != nil {
+				log.Printf("Warning: proxy instance recovery failed: %v", err)
+			}
+			server.proxyManager = pm
+			log.Printf("Proxy manager initialized")
+		}
+	}
+
 	// Start the poll-mode agent when enabled. It runs in the background,
 	// pulling tasks from upstream services like the scheduler does.
 	if config.Poll.Enabled {
@@ -290,6 +308,25 @@ func generateInternalToken() string {
 		return ""
 	}
 	return hex.EncodeToString(buf)
+}
+
+// proxyAccessHook fans proxy access records out to the per-instance access
+// log file and (for whitelist rejections only) the audit log. Forwarded
+// request details deliberately stay out of the audit log to keep its
+// volume bounded; they land in logs/proxy/<instance>_YYYY-MM-DD.log.
+func (s *Server) proxyAccessHook() proxy.AccessHook {
+	fileHook := proxy.FileAccessHook(filepath.Join("logs", "proxy"))
+	return func(rec proxy.AccessRecord) {
+		fileHook(rec)
+		if rec.Denied && s.auditLogger != nil {
+			entry := audit.NewLogEntry(
+				"proxy", rec.ClientIP, audit.ActionProxyDenied, rec.Instance,
+				audit.StatusFailed, "target rejected by whitelist policy",
+				map[string]interface{}{"method": rec.Method, "path": rec.Path, "via": rec.Via},
+			)
+			s.auditLogger.Log(entry)
+		}
+	}
 }
 
 // loopbackAddr derives the local API address (host:port) from config.Addr.
@@ -481,6 +518,36 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 			action = audit.ActionCommandExecute
 		case strings.HasPrefix(path, "/api/network/probe"):
 			action = audit.ActionNetworkProbe
+		case strings.HasPrefix(path, "/api/proxy/instances"):
+			resource = strings.TrimPrefix(path, "/api/proxy/instances")
+			resource = strings.TrimPrefix(resource, "/")
+			// Strip action suffixes so "web/start" maps to proxy_start on "web".
+			switch {
+			case strings.HasSuffix(resource, "/start"):
+				action = audit.ActionProxyStart
+				resource = strings.TrimSuffix(resource, "/start")
+			case strings.HasSuffix(resource, "/stop"):
+				action = audit.ActionProxyStop
+				resource = strings.TrimSuffix(resource, "/stop")
+			case strings.HasSuffix(resource, "/status"):
+				action = audit.ActionProxyGet
+				resource = strings.TrimSuffix(resource, "/status")
+			default:
+				switch r.Method {
+				case http.MethodPost:
+					action = audit.ActionProxyCreate
+				case http.MethodPut:
+					action = audit.ActionProxyUpdate
+				case http.MethodDelete:
+					action = audit.ActionProxyDelete
+				case http.MethodGet:
+					if resource == "" {
+						action = audit.ActionProxyList
+					} else {
+						action = audit.ActionProxyGet
+					}
+				}
+			}
 		case strings.HasPrefix(path, "/api/docker"):
 			switch {
 			case path == "/api/docker/ping":
@@ -945,8 +1012,15 @@ func (s *Server) Stop() {
 	}
 
 	// Stop the poll-mode agent (drains in-flight tasks and NACKs the rest).
+	// This runs before the proxy shutdown because poll proxy_session
+	// tunnels borrow the proxy tunnel core.
 	if s.pollAgent != nil {
 		s.pollAgent.Stop()
+	}
+
+	// Stop reverse proxy listeners and close the instance store.
+	if s.proxyManager != nil {
+		s.proxyManager.Shutdown(context.Background())
 	}
 }
 

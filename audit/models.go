@@ -54,6 +54,16 @@ const (
 	ActionCommandExecute   ActionType = "command_exec"
 	ActionNetworkProbe     ActionType = "network_probe"
 
+	ActionProxyCreate        ActionType = "proxy_create"
+	ActionProxyUpdate        ActionType = "proxy_update"
+	ActionProxyDelete        ActionType = "proxy_delete"
+	ActionProxyStart         ActionType = "proxy_start"
+	ActionProxyStop          ActionType = "proxy_stop"
+	ActionProxyList          ActionType = "proxy_list"
+	ActionProxyGet           ActionType = "proxy_get"
+	ActionProxyDenied        ActionType = "proxy_denied"         // whitelist rejection (listen + tunnel)
+	ActionProxyTunnelSession ActionType = "proxy_tunnel_session" // tunnel session summary
+
 	ActionDockerContainerList    ActionType = "docker_container_list"
 	ActionDockerContainerInspect ActionType = "docker_container_inspect"
 	ActionDockerContainerStart   ActionType = "docker_container_start"
