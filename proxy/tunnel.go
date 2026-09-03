@@ -275,7 +275,7 @@ func (tc *TunnelCore) executeRequest(ctx context.Context, client *http.Client, t
 	req.URL.Host = targetURL.Host
 	req.Host = targetURL.Host
 	req.RequestURI = ""
-	stripHopByHop(req.Header)
+	req.Header = stripHopByHop(req.Header)
 	req = req.WithContext(ctx)
 
 	resp, err := client.Do(req)
@@ -369,8 +369,36 @@ var hopHeaders = []string{
 	"Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade",
 }
 
-func stripHopByHop(h http.Header) {
-	for _, k := range hopHeaders {
-		h.Del(k)
+// stripHopByHop returns a copy of h without connection-scoped headers,
+// including the extra tokens named by the Connection header.
+func stripHopByHop(h http.Header) http.Header {
+	out := make(http.Header, len(h))
+	extra := h.Values("Connection")
+	for k, vv := range h {
+		skip := false
+		for _, hb := range hopHeaders {
+			if strings.EqualFold(k, hb) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			for _, connVal := range extra {
+				for _, token := range strings.Split(connVal, ",") {
+					if strings.EqualFold(strings.TrimSpace(token), k) {
+						skip = true
+						break
+					}
+				}
+				if skip {
+					break
+				}
+			}
+		}
+		if skip {
+			continue
+		}
+		out[k] = append([]string(nil), vv...)
 	}
+	return out
 }

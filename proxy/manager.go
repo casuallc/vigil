@@ -46,7 +46,7 @@ type AccessRecord struct {
 	Status     int    `json:"status"`
 	BytesOut   int    `json:"bytes_out"`
 	DurationMs int64  `json:"duration_ms"`
-	Via        string `json:"via"` // "listen" | "tunnel"
+	Via        string `json:"via"` // "listen" | "forward" | "tunnel"
 	Denied     bool   `json:"denied,omitempty"`
 }
 
@@ -60,6 +60,7 @@ type Manager struct {
 	cfg  *ProxyConfig
 	st   *store
 	hook AccessHook
+	auth AuthFunc // validates forward-proxy client credentials
 
 	mu   sync.RWMutex
 	inst map[string]*Instance
@@ -84,6 +85,10 @@ func NewManager(cfg *ProxyConfig, dbPath string, hook AccessHook) (*Manager, err
 	m.tunnel = newTunnelCore(cfg.Tunnel, hook)
 	return m, nil
 }
+
+// SetAuthFunc installs the credential validator used by forward-mode
+// instances. Call it before Recover so recovered instances see it too.
+func (m *Manager) SetAuthFunc(fn AuthFunc) { m.auth = fn }
 
 // Recover starts config-defined instances and restarts API-created
 // instances whose desired state is "running". A single failing instance
@@ -117,7 +122,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 // startInstance creates (replacing any existing entry) and starts one
 // instance. Failures are logged, not propagated.
 func (m *Manager) startInstance(cfg InstanceConfig, origin string) {
-	inst, err := NewInstance(cfg, origin, m.hook)
+	inst, err := NewInstance(cfg, origin, m.hook, m.auth)
 	if err != nil {
 		log.Printf("proxy: instance %q: %v", cfg.Name, err)
 		return
@@ -133,7 +138,15 @@ func (m *Manager) startInstance(cfg InstanceConfig, origin string) {
 		log.Printf("proxy: %v", err)
 		return
 	}
-	log.Printf("proxy: instance %q listening on %s -> %s", cfg.Name, cfg.Listen, cfg.Target)
+	log.Printf("proxy: instance %q listening on %s%s", cfg.Name, cfg.Listen, targetSuffix(cfg))
+}
+
+// targetSuffix renders the " -> target" log suffix (empty for forward mode).
+func targetSuffix(cfg InstanceConfig) string {
+	if cfg.Target == "" {
+		return " (mode=" + cfg.Mode + ")"
+	}
+	return " -> " + cfg.Target
 }
 
 // Create registers a new API-managed instance and optionally starts it.
@@ -145,7 +158,7 @@ func (m *Manager) Create(cfg InstanceConfig, autostart bool) error {
 		return fmt.Errorf("proxy: instance %q already exists", cfg.Name)
 	}
 	// Validate eagerly so bad configs never reach the store.
-	if _, err := NewInstance(cfg, OriginAPI, nil); err != nil {
+	if _, err := NewInstance(cfg, OriginAPI, nil, m.auth); err != nil {
 		return err
 	}
 
@@ -157,7 +170,7 @@ func (m *Manager) Create(cfg InstanceConfig, autostart bool) error {
 		return err
 	}
 	if autostart {
-		inst, _ := NewInstance(cfg, OriginAPI, m.hook)
+		inst, _ := NewInstance(cfg, OriginAPI, m.hook, m.auth)
 		m.mu.Lock()
 		m.inst[cfg.Name] = inst
 		m.mu.Unlock()
@@ -165,9 +178,9 @@ func (m *Manager) Create(cfg InstanceConfig, autostart bool) error {
 			_ = m.st.setDesired(cfg.Name, desiredStopped)
 			return err
 		}
-		log.Printf("proxy: instance %q listening on %s -> %s", cfg.Name, cfg.Listen, cfg.Target)
+		log.Printf("proxy: instance %q listening on %s%s", cfg.Name, cfg.Listen, targetSuffix(cfg))
 	} else {
-		inst, _ := NewInstance(cfg, OriginAPI, m.hook)
+		inst, _ := NewInstance(cfg, OriginAPI, m.hook, m.auth)
 		m.mu.Lock()
 		m.inst[cfg.Name] = inst
 		m.mu.Unlock()
@@ -186,7 +199,7 @@ func (m *Manager) Update(name string, cfg InstanceConfig) error {
 	}
 	cfg.Name = name
 
-	inst, err := NewInstance(cfg, old.Origin(), m.hook)
+	inst, err := NewInstance(cfg, old.Origin(), m.hook, m.auth)
 	if err != nil {
 		return err
 	}

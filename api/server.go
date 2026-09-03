@@ -274,6 +274,12 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
 		if err != nil {
 			log.Printf("Warning: failed to initialize proxy manager: %v", err)
 		} else {
+			// Forward-mode instances authenticate clients (Proxy-Authorization)
+			// against the super admin account from config.yaml only.
+			pm.SetAuthFunc(func(u, p string) bool {
+				return config.BasicAuth.Enabled &&
+					u == config.BasicAuth.Username && p == config.BasicAuth.Password
+			})
 			if err := pm.Recover(context.Background()); err != nil {
 				log.Printf("Warning: proxy instance recovery failed: %v", err)
 			}

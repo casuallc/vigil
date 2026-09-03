@@ -34,8 +34,15 @@ import (
 // loopback port and returns the instance plus its base URL.
 func startInstanceForTest(t *testing.T, cfg InstanceConfig, hook AccessHook) (*Instance, string) {
 	t.Helper()
+	return startAuthInstanceForTest(t, cfg, hook, nil)
+}
+
+// startAuthInstanceForTest is startInstanceForTest with an explicit
+// AuthFunc for forward-mode instances.
+func startAuthInstanceForTest(t *testing.T, cfg InstanceConfig, hook AccessHook, auth AuthFunc) (*Instance, string) {
+	t.Helper()
 	cfg.Listen = "127.0.0.1:0"
-	inst, err := NewInstance(cfg, OriginAPI, hook)
+	inst, err := NewInstance(cfg, OriginAPI, hook, auth)
 	if err != nil {
 		t.Fatalf("NewInstance: %v", err)
 	}
@@ -206,8 +213,11 @@ func TestInstanceInvalidConfig(t *testing.T) {
 		{Name: "a", Listen: ":0", Target: "not-a-url"},
 		{Name: "a", Listen: ":0", Target: "ftp://x"},
 		{Name: "a", Listen: ":0", Target: "http://x", TLS: TLSConfig{Enabled: true}},
+		{Name: "a", Listen: ":0", Mode: "bogus", Target: "http://x"},
+		{Name: "a", Listen: ":0", Mode: ModeForward, Target: "http://x", Whitelist: []string{"x"}},
+		{Name: "a", Listen: ":0", Mode: ModeForward}, // forward without whitelist
 	} {
-		if _, err := NewInstance(cfg, OriginAPI, nil); err == nil {
+		if _, err := NewInstance(cfg, OriginAPI, nil, nil); err == nil {
 			t.Errorf("NewInstance(%+v) should fail", cfg)
 		}
 	}

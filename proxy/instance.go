@@ -87,17 +87,20 @@ type InstanceStatus struct {
 	LastError string         `json:"last_error,omitempty"`
 }
 
-// Instance is one reverse proxy listener. It owns a dedicated http.Server
-// and never passes through the API server's logging middleware, which would
-// buffer whole request/response bodies.
+// Instance is one proxy listener (reverse or forward mode). It owns a
+// dedicated http.Server and never passes through the API server's logging
+// middleware, which would buffer whole request/response bodies.
 type Instance struct {
 	cfg    InstanceConfig
 	origin string
 
+	mode          string
 	wl            *Whitelist
 	targetURL     *url.URL
 	targetAllowed bool
 	rp            *httputil.ReverseProxy
+	transport     *http.Transport // forward mode: shared checking transport
+	auth          AuthFunc
 	hook          AccessHook
 
 	mu   sync.Mutex // guards srv/ln across Start/Stop
@@ -111,24 +114,59 @@ type Instance struct {
 	stats     counters
 }
 
-// NewInstance builds an instance from its config. The whitelist always
-// implicitly contains the target host itself; cfg.Whitelist can broaden it.
-func NewInstance(cfg InstanceConfig, origin string, hook AccessHook) (*Instance, error) {
+// NewInstance builds an instance from its config. In reverse mode the
+// whitelist always implicitly contains the target host itself; in forward
+// mode the whitelist is mandatory and gates every client-named destination.
+// auth validates forward-proxy credentials (Proxy-Authorization); a nil
+// auth fails closed.
+func NewInstance(cfg InstanceConfig, origin string, hook AccessHook, auth AuthFunc) (*Instance, error) {
 	if cfg.Name == "" {
 		return nil, fmt.Errorf("proxy: instance name is required")
 	}
 	if cfg.Listen == "" {
 		return nil, fmt.Errorf("proxy: instance %q: listen address is required", cfg.Name)
 	}
+	mode := cfg.Mode
+	if mode == "" {
+		mode = ModeReverse
+	}
+	if mode != ModeReverse && mode != ModeForward {
+		return nil, fmt.Errorf("proxy: instance %q: invalid mode %q (want reverse|forward)", cfg.Name, cfg.Mode)
+	}
+	if cfg.TLS.Enabled && (cfg.TLS.CertPath == "" || cfg.TLS.KeyPath == "") {
+		return nil, fmt.Errorf("proxy: instance %q: tls.enabled requires cert_path and key_path", cfg.Name)
+	}
+
+	i := &Instance{
+		cfg:    cfg,
+		origin: origin,
+		mode:   mode,
+		auth:   auth,
+		hook:   hook,
+	}
+
+	if mode == ModeForward {
+		if cfg.Target != "" {
+			return nil, fmt.Errorf("proxy: instance %q: forward mode does not take a target", cfg.Name)
+		}
+		if len(cfg.Whitelist) == 0 {
+			return nil, fmt.Errorf("proxy: instance %q: forward mode requires an explicit whitelist (empty = deny all)", cfg.Name)
+		}
+		wl, err := ParseWhitelist(cfg.Whitelist, cfg.AllowPrivate)
+		if err != nil {
+			return nil, err
+		}
+		i.wl = wl
+		i.transport = newCheckingTransport(wl)
+		return i, nil
+	}
+
 	targetURL, err := url.Parse(cfg.Target)
 	if err != nil || targetURL.Scheme == "" || targetURL.Host == "" {
 		return nil, fmt.Errorf("proxy: instance %q: invalid target %q (want http(s)://host[:port])", cfg.Name, cfg.Target)
 	}
 	if targetURL.Scheme != "http" && targetURL.Scheme != "https" {
 		return nil, fmt.Errorf("proxy: instance %q: unsupported target scheme %q", cfg.Name, targetURL.Scheme)
-	}
-	if cfg.TLS.Enabled && (cfg.TLS.CertPath == "" || cfg.TLS.KeyPath == "") {
-		return nil, fmt.Errorf("proxy: instance %q: tls.enabled requires cert_path and key_path", cfg.Name)
 	}
 
 	entries := append([]string{}, cfg.Whitelist...)
@@ -137,14 +175,8 @@ func NewInstance(cfg InstanceConfig, origin string, hook AccessHook) (*Instance,
 	if err != nil {
 		return nil, err
 	}
-
-	i := &Instance{
-		cfg:       cfg,
-		origin:    origin,
-		wl:        wl,
-		targetURL: targetURL,
-		hook:      hook,
-	}
+	i.wl = wl
+	i.targetURL = targetURL
 	// The target is static, so the whitelist verdict is computed once.
 	i.targetAllowed = wl.Allowed(targetURL.Host) || wl.Allowed(targetURL.Hostname())
 
@@ -180,7 +212,12 @@ func newCheckingTransport(wl *Whitelist) *http.Transport {
 
 // ServeHTTP handles one proxied request: whitelist precheck, body limit,
 // then the reverse proxy, recording an AccessRecord on the way out.
+// Forward-mode instances dispatch to serveForward instead.
 func (i *Instance) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if i.mode == ModeForward {
+		i.serveForward(w, r)
+		return
+	}
 	start := time.Now()
 	rec := AccessRecord{
 		Instance: i.cfg.Name,

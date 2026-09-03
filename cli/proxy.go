@@ -47,7 +47,7 @@ func (c *CLI) setupProxyCommands() *cobra.Command {
 
 // setupProxyAddCommand 设置 proxy add 命令
 func (c *CLI) setupProxyAddCommand() *cobra.Command {
-	var name, listen, target string
+	var name, listen, target, mode string
 	var whitelist []string
 	var allowPrivate bool
 	var maxBodyMB int64
@@ -59,17 +59,34 @@ func (c *CLI) setupProxyAddCommand() *cobra.Command {
 	addCmd := &cobra.Command{
 		Use:   "add",
 		Short: "Create a proxy instance",
-		Long: "Create a reverse proxy instance that forwards listen -> target.\n" +
-			"Whitelist entries: CIDR (10.0.0.0/8), domain suffix (*.corp.local) or host[:port].\n" +
-			"The target host itself is always allowed; --allow-private is required for\n" +
-			"loopback/RFC1918/link-local targets. Cloud metadata endpoints are always denied.",
+		Long: "Create a proxy instance.\n\n" +
+			"Reverse mode (default): forward listen -> target. Whitelist entries:\n" +
+			"CIDR (10.0.0.0/8), domain suffix (*.corp.local) or host[:port]. The target\n" +
+			"host itself is always allowed.\n\n" +
+			"Forward mode (--mode forward): classic forward proxy, the client names the\n" +
+			"destination (absolute URI / CONNECT). Clients must authenticate with the\n" +
+			"server's super admin credentials via Proxy-Authorization. --whitelist is\n" +
+			"required and gates every destination.\n\n" +
+			"--allow-private is required for loopback/RFC1918/link-local destinations.\n" +
+			"Cloud metadata endpoints are always denied.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			headerSet, err := parseHeaderSet(headers)
 			if err != nil {
 				return err
 			}
+			if mode == proxy.ModeForward {
+				if target != "" {
+					return fmt.Errorf("--target is not used in forward mode; destinations come from the client")
+				}
+				if len(whitelist) == 0 {
+					return fmt.Errorf("forward mode requires at least one --whitelist entry (empty = deny all)")
+				}
+			} else if target == "" {
+				return fmt.Errorf("--target is required in reverse mode")
+			}
 			return c.handleProxyAdd(proxy.InstanceConfig{
 				Name:         name,
+				Mode:         mode,
 				Listen:       listen,
 				Target:       target,
 				Whitelist:    whitelist,
@@ -82,12 +99,13 @@ func (c *CLI) setupProxyAddCommand() *cobra.Command {
 	}
 
 	addCmd.Flags().StringVar(&name, "name", "", "Instance name (unique)")
+	addCmd.Flags().StringVar(&mode, "mode", "", "Instance mode: reverse (default) | forward")
 	addCmd.Flags().StringVar(&listen, "listen", "", "Listen address, e.g. 127.0.0.1:8080")
-	addCmd.Flags().StringVar(&target, "target", "", "Upstream target, e.g. http://10.0.0.5:9000")
+	addCmd.Flags().StringVar(&target, "target", "", "Reverse mode: upstream target, e.g. http://10.0.0.5:9000")
 	addCmd.Flags().StringArrayVar(&whitelist, "whitelist", nil, "Allowed target entry (repeatable)")
 	addCmd.Flags().BoolVar(&allowPrivate, "allow-private", false, "Allow loopback/private/link-local targets")
 	addCmd.Flags().Int64Var(&maxBodyMB, "max-body-mb", 0, "Max request body in MB (0 = unlimited)")
-	addCmd.Flags().StringArrayVar(&headers, "header", nil, "Extra header injected upstream, Key:Value (repeatable)")
+	addCmd.Flags().StringArrayVar(&headers, "header", nil, "Reverse mode: extra header injected upstream, Key:Value (repeatable)")
 	addCmd.Flags().BoolVar(&start, "start", false, "Start the instance immediately")
 	addCmd.Flags().BoolVar(&tlsEnabled, "tls", false, "Terminate TLS on the listener")
 	addCmd.Flags().StringVar(&tlsCert, "cert", "", "TLS certificate path (with --tls)")
@@ -95,7 +113,6 @@ func (c *CLI) setupProxyAddCommand() *cobra.Command {
 
 	_ = addCmd.MarkFlagRequired("name")
 	_ = addCmd.MarkFlagRequired("listen")
-	_ = addCmd.MarkFlagRequired("target")
 
 	return addCmd
 }
@@ -170,6 +187,11 @@ func (c *CLI) handleProxyAdd(cfg proxy.InstanceConfig, start bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to create proxy instance %s: %v", cfg.Name, err)
 	}
+	if status.Config.Mode == proxy.ModeForward {
+		fmt.Printf("Proxy instance %s created (%s): forward proxy on %s (whitelist: %s)\n",
+			status.Name, status.State, status.Config.Listen, strings.Join(status.Config.Whitelist, ", "))
+		return nil
+	}
 	fmt.Printf("Proxy instance %s created (%s): %s -> %s\n",
 		status.Name, status.State, status.Config.Listen, status.Config.Target)
 	return nil
@@ -186,14 +208,23 @@ func (c *CLI) handleProxyList() error {
 		return nil
 	}
 
-	table := pterm.TableData{{"NAME", "STATE", "ORIGIN", "LISTEN", "TARGET", "REQUESTS", "BYTES OUT"}}
+	table := pterm.TableData{{"NAME", "MODE", "STATE", "ORIGIN", "LISTEN", "TARGET", "REQUESTS", "BYTES OUT"}}
 	for _, inst := range instances {
+		mode := inst.Config.Mode
+		if mode == "" {
+			mode = proxy.ModeReverse
+		}
+		target := inst.Config.Target
+		if target == "" {
+			target = "-"
+		}
 		table = append(table, []string{
 			inst.Name,
+			mode,
 			inst.State,
 			inst.Origin,
 			inst.Config.Listen,
-			inst.Config.Target,
+			target,
 			fmt.Sprintf("%d", inst.Stats.Requests),
 			fmt.Sprintf("%d", inst.Stats.BytesOut),
 		})
@@ -209,10 +240,17 @@ func (c *CLI) handleProxyGet(name string) error {
 	}
 
 	fmt.Printf("Name:      %s\n", status.Name)
+	mode := status.Config.Mode
+	if mode == "" {
+		mode = proxy.ModeReverse
+	}
+	fmt.Printf("Mode:      %s\n", mode)
 	fmt.Printf("State:     %s\n", status.State)
 	fmt.Printf("Origin:    %s\n", status.Origin)
 	fmt.Printf("Listen:    %s\n", status.Config.Listen)
-	fmt.Printf("Target:    %s\n", status.Config.Target)
+	if status.Config.Target != "" {
+		fmt.Printf("Target:    %s\n", status.Config.Target)
+	}
 	if len(status.Config.Whitelist) > 0 {
 		fmt.Printf("Whitelist: %s\n", strings.Join(status.Config.Whitelist, ", "))
 	}

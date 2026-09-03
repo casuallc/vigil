@@ -14,11 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package proxy implements HTTP reverse proxy instances for bbx-server:
-// static instances from config.yaml, dynamic instances managed over the
-// REST API (persisted in SQLite), and the tunnel core used by poll-mode
+// Package proxy implements HTTP proxy instances for bbx-server: reverse
+// proxy and forward proxy listeners from config.yaml or the REST API
+// (persisted in SQLite), plus the tunnel core used by poll-mode
 // proxy_session tasks.
 package proxy
+
+// Instance modes.
+const (
+	// ModeReverse forwards one listen address to a single fixed target.
+	ModeReverse = "reverse"
+	// ModeForward is a classic forward proxy: the client names the
+	// destination (absolute URI or CONNECT), the whitelist gates it.
+	ModeForward = "forward"
+)
 
 // TLSConfig configures optional TLS termination of one proxy listener.
 type TLSConfig struct {
@@ -27,16 +36,17 @@ type TLSConfig struct {
 	KeyPath  string `yaml:"key_path" json:"key_path"`
 }
 
-// InstanceConfig describes one reverse proxy instance.
+// InstanceConfig describes one proxy instance.
 type InstanceConfig struct {
 	Name         string            `yaml:"name" json:"name"`
+	Mode         string            `yaml:"mode" json:"mode"`                         // "" / "reverse" (default) | "forward"
 	Listen       string            `yaml:"listen" json:"listen"`                     // ":8080" / "127.0.0.1:8080"
-	Target       string            `yaml:"target" json:"target"`                     // "http://10.0.0.5:9000"
-	Whitelist    []string          `yaml:"whitelist" json:"whitelist"`               // empty = only the target host itself
+	Target       string            `yaml:"target" json:"target"`                     // reverse mode: "http://10.0.0.5:9000"; forward mode: must be empty
+	Whitelist    []string          `yaml:"whitelist" json:"whitelist"`               // reverse: empty = only the target host; forward: required, gates every destination
 	AllowPrivate bool              `yaml:"allow_private" json:"allow_private"`       // default false: SSRF guard
 	TLS          TLSConfig         `yaml:"tls" json:"tls"`
-	MaxBodyMB    int64             `yaml:"max_body_mb" json:"max_body_mb"`           // 0 = unlimited request body
-	HeaderSet    map[string]string `yaml:"header_set" json:"header_set"`             // extra headers injected upstream
+	MaxBodyMB    int64             `yaml:"max_body_mb" json:"max_body_mb"`           // 0 = unlimited request body (CONNECT tunnels are not capped)
+	HeaderSet    map[string]string `yaml:"header_set" json:"header_set"`             // reverse mode: extra headers injected upstream
 }
 
 // TunnelConfig gates poll-mode proxy_session tunnel tasks.
