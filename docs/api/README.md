@@ -26,6 +26,7 @@
 | 命令模板与历史 | [commands.md](commands.md) | `/api/commands/*` |
 | 定时任务 | [schedules.md](schedules.md) | `/api/schedules/*` |
 | AI 命令助手 | [ai.md](ai.md) | `/api/ai/*` |
+| Poll Mode 上游协议 | [poll.md](poll.md) | （出方向模式：bbx 主动轮询上游） |
 
 ## 快速导航
 
@@ -63,6 +64,7 @@
 ### 系统运维
 - [巡检检查](inspect.md) - 系统巡检检查
 - [网络诊断](network.md) - 网络端口连通性探测
+- [Poll Mode 上游协议](poll.md) - 出方向受限网络下 bbx 主动拉取任务的协议（上游服务实现）
 
 ### 用户管理
 - [用户管理](users.md) - 用户注册、登录、配置管理
@@ -164,6 +166,10 @@ func main() {
 ```
 
 ## 变更日志
+
+### v1.5.0
+
+- 新增 Poll Mode 上游协议（[poll.md](poll.md)）：出方向受限网络下 bbx 长轮询上游拉取任务，支持 api / push_file / tail_file / ws_bridge 四种任务类型
 
 ### v1.4.0
 
