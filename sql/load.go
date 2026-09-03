@@ -74,6 +74,11 @@ func LoadScheduleExecutionsSchema() (string, error) {
 	return LoadSchema("schedule_executions.sql")
 }
 
+// LoadProxyInstancesSchema 加载代理实例表 schema
+func LoadProxyInstancesSchema() (string, error) {
+	return LoadSchema("proxy_instances.sql")
+}
+
 // SplitStatements 将 SQL 内容分割成单独的语句
 func SplitStatements(sql string) []string {
 	// 按分号分割 SQL 语句
