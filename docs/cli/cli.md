@@ -101,6 +101,26 @@ bbx-cli network [subcommand] [flags]
 |------|------|----------|
 | `probe` | 探测目标 IP 和端口的连通性 | [cli_network.md](./cli_network.md#network-probe) |
 
+## HTTP 反向代理命令
+
+### 命令格式
+
+```
+bbx-cli proxy [subcommand] [flags]
+```
+
+### 子命令列表
+
+| 命令 | 说明 | 详细文档 |
+|------|------|----------|
+| `add` | 创建代理实例（白名单/私网放行/TLS 终止） | [cli_proxy.md](./cli_proxy.md#proxy-add) |
+| `list` | 列出所有代理实例及流量统计 | [cli_proxy.md](./cli_proxy.md#proxy-list) |
+| `get` | 查看实例配置与状态 | [cli_proxy.md](./cli_proxy.md#proxy-get--status) |
+| `status` | 查看实例运行状态与统计 | [cli_proxy.md](./cli_proxy.md#proxy-get--status) |
+| `start` | 启动实例（持久化期望状态） | [cli_proxy.md](./cli_proxy.md#proxy-start--stop) |
+| `stop` | 停止实例 | [cli_proxy.md](./cli_proxy.md#proxy-start--stop) |
+| `delete` | 删除 API 创建的实例 | [cli_proxy.md](./cli_proxy.md#proxy-delete) |
+
 ## 文件传输 Agent 命令
 
 ### 命令格式
