@@ -71,6 +71,7 @@ Vigil is a Go-based process management and message queue client tool (module: `g
 ├── docs/             # Documentation (CLI references, testing guides, API docs)
 ├── inspection/       # Cosmic inspection rules and evaluation engine
 ├── poll/             # Poll-mode agent: outbound task pulling from upstream services
+├── proxy/            # HTTP reverse proxy: listeners, target whitelist, tunnel core
 ├── proc/             # Process management (scan, create, lifecycle, mounts)
 ├── vm/               # VM management (SSH, file transfer, groups, permissions)
 ├── audit/            # Audit logging for API requests
@@ -94,6 +95,7 @@ Vigil is a Go-based process management and message queue client tool (module: `g
 - **Docker Manager**: `docker.Manager` wraps the official Docker SDK to manage local containers (list, inspect, create, start/stop/restart, pause/unpause, exec, logs, stats) and compose projects. Exposes `/api/docker/*` REST and WebSocket endpoints.
 - **Docker Registry**: Embedded Docker Registry HTTP API V2 implementation (`api/handlers_docker_registry.go`) backed by local filesystem storage, enabling `docker login / tag / push / pull` against the server.
 - **Poll Mode**: `poll.Agent` runs as a background goroutine (like `api.Scheduler`) for egress-only networks — it long-polls configured upstreams for tasks, executes them serially per topic / parallel across topics (`poll.Dispatcher`), and posts results back. Local `api` tasks call back into the server's own handlers via loopback with an internal token (`poll.InternalTokenHeader`, generated per startup). See `docs/poll-mode.md`.
+- **HTTP Reverse Proxy**: `proxy.Manager` runs per-instance listeners on `httputil.ReverseProxy` (WS upgrade passthrough), each with its own `http.Server` bypassing `LoggingMiddleware` (which buffers whole bodies). Instances come from `proxy.instances` in config or the `/api/proxy/instances` API (SQLite-persisted, restored on restart). Target access is gated by a deny-by-default whitelist with SSRF guards (private ranges need `allow_private`, cloud metadata endpoints always denied, post-dial IP re-check). Poll-mode `proxy_session` tasks reuse the same whitelist-checked transport through `proxy.TunnelCore`. See `docs/proxy.md`.
 
 ## Key Configuration Files
 
