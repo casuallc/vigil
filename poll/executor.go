@@ -27,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -94,6 +95,8 @@ func (e *Executor) Execute(ctx context.Context, t *Task) (json.RawMessage, error
 		return e.execAPI(ctx, t)
 	case "push_file":
 		return e.execPushFile(ctx, t)
+	case "pull_file":
+		return e.execPullFile(ctx, t)
 	case "tail_file":
 		return e.execTailFile(ctx, t)
 	case "ws_bridge":
@@ -219,6 +222,90 @@ func (e *Executor) execPushFile(ctx context.Context, t *Task) (json.RawMessage, 
 	return json.Marshal(map[string]interface{}{
 		"size":   fi.Size(),
 		"sha256": hex.EncodeToString(hash.Sum(nil)),
+	})
+}
+
+// --- pull_file: download a remote file to a local path ----------------------
+
+type pullFileAction struct {
+	URL     string            `json:"url"`
+	Path    string            `json:"path"`
+	Headers map[string]string `json:"headers"`
+	SHA256  string            `json:"sha256"` // optional integrity check (hex)
+}
+
+// execPullFile downloads a task-provided URL to a local path. This covers
+// the console->bbx direction: deployment package distribution, frontend
+// file delivery and agent upgrade package transfer. The file is streamed
+// to a temporary sibling first and renamed into place, so a failed or
+// aborted download never leaves a partial file at the target path.
+func (e *Executor) execPullFile(ctx context.Context, t *Task) (json.RawMessage, error) {
+	var a pullFileAction
+	if err := json.Unmarshal(t.Action, &a); err != nil {
+		return nil, fmt.Errorf("invalid pull_file action: %w", err)
+	}
+	if a.URL == "" || a.Path == "" {
+		return nil, fmt.Errorf("pull_file requires url and path")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range a.Headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := e.pushClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("pull failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("pull returned status %d", resp.StatusCode)
+	}
+
+	if dir := filepath.Dir(a.Path); dir != "" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create target dir: %w", err)
+		}
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(a.Path), ".pull-*")
+	if err != nil {
+		return nil, fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath) // no-op after a successful rename
+
+	hash := sha256.New()
+	size, err := io.Copy(io.MultiWriter(tmp, hash), resp.Body)
+	if err != nil {
+		tmp.Close()
+		return nil, fmt.Errorf("write file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return nil, err
+	}
+
+	sum := hex.EncodeToString(hash.Sum(nil))
+	if a.SHA256 != "" && !strings.EqualFold(sum, a.SHA256) {
+		return nil, fmt.Errorf("sha256 mismatch: got %s, want %s", sum, a.SHA256)
+	}
+
+	if err := os.Rename(tmpPath, a.Path); err != nil {
+		// Windows cannot rename over an existing file; replace explicitly.
+		if rerr := os.Remove(a.Path); rerr != nil {
+			return nil, fmt.Errorf("move into place: %w", err)
+		}
+		if err := os.Rename(tmpPath, a.Path); err != nil {
+			return nil, fmt.Errorf("move into place: %w", err)
+		}
+	}
+
+	return json.Marshal(map[string]interface{}{
+		"path":   a.Path,
+		"size":   size,
+		"sha256": sum,
 	})
 }
 

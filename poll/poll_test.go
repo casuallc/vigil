@@ -282,6 +282,75 @@ func TestExecPushFile(t *testing.T) {
 	}
 }
 
+func TestExecPullFile(t *testing.T) {
+	content := []byte("deployment package payload\n")
+	sum := sha256.Sum256(content)
+
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(content)
+	}))
+	defer src.Close()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sub", "pkg.tar.gz") // parent dir does not exist yet
+
+	e := newExecutor(Options{LoopbackAddr: "127.0.0.1:1"}, 5*time.Second)
+	task := &Task{Action: json.RawMessage(fmt.Sprintf(
+		`{"type":"pull_file","url":%q,"path":%q,"sha256":%q}`,
+		src.URL, path, hex.EncodeToString(sum[:])))}
+	res, err := e.Execute(context.Background(), task)
+	if err != nil {
+		t.Fatalf("execPullFile failed: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("target file missing: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Errorf("target file got %q, want %q", got, content)
+	}
+	var out struct {
+		Path   string `json:"path"`
+		Size   int64  `json:"size"`
+		SHA256 string `json:"sha256"`
+	}
+	if err := json.Unmarshal(res, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Path != path || out.Size != int64(len(content)) || out.SHA256 != hex.EncodeToString(sum[:]) {
+		t.Errorf("unexpected result: %+v", out)
+	}
+}
+
+func TestExecPullFileSHA256Mismatch(t *testing.T) {
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("tampered"))
+	}))
+	defer src.Close()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pkg.tar.gz")
+
+	e := newExecutor(Options{LoopbackAddr: "127.0.0.1:1"}, 5*time.Second)
+	task := &Task{Action: json.RawMessage(fmt.Sprintf(
+		`{"type":"pull_file","url":%q,"path":%q,"sha256":%q}`,
+		src.URL, path, strings.Repeat("0", 64)))}
+	if _, err := e.Execute(context.Background(), task); err == nil ||
+		!strings.Contains(err.Error(), "sha256 mismatch") {
+		t.Fatalf("expected sha256 mismatch error, got %v", err)
+	}
+
+	// Neither the target nor the temp file may be left behind.
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("target file should not exist after failed verification")
+	}
+	leftovers, _ := filepath.Glob(filepath.Join(dir, ".pull-*"))
+	if len(leftovers) != 0 {
+		t.Errorf("temp files left behind: %v", leftovers)
+	}
+}
+
 func TestExecTailFileNoFollow(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")

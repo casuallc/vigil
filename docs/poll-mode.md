@@ -66,6 +66,7 @@ POST {endpoint}/ack
 |---|---|---|---|
 | `api`（默认） | 本地 API 回环调用，复用现有全部 handler | 无 | 内嵌结果（≤64KB） |
 | `push_file` | 把本地文件流式推送到任务给定的 `push_url` | bbx → push_url | size / sha256 |
+| `pull_file` | 从任务给定的 `url` 下载文件落盘（管控台→bbx：部署包分发、前端下发、升级包传输），临时文件 + rename 就位，支持 sha256 校验 | url → bbx | path / size / sha256 |
 | `tail_file` | tail 本地日志，持续推增量到 `push_url`（chunked POST） | bbx → push_url | lines / bytes / end_reason |
 | `ws_bridge` | bbx 主动外拨 WS（`connect_url`）并与本地 WS handler 桥接 | bbx 外拨 WS | duration_ms / end_reason |
 | `proxy_session` | HTTP 反向代理隧道：bbx 外拨 WS 后按帧协议逐请求代理到本地 target | bbx 外拨 WS | requests / bytes / duration_ms / end_reason |

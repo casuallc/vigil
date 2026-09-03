@@ -94,6 +94,23 @@ bbx 向自身 API 发起 loopback 调用（复用 bbx 全部 REST handler、鉴�
 {"type": "push_file", "path": "/data/pkg.tar.gz", "push_url": "https://svc-a/upload/abc", "timeout_sec": 600}
 ```
 
+### action.type = `pull_file`
+
+管控台 → bbx 方向的文件下发：部署包分发、前端文件下发、代理升级包传输等。bbx 主动外拨下载任务给定的地址并落盘；先写同目录临时文件再 rename 就位，失败/中断不会在目标路径留下半截文件。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| url | string | 下载地址（`http://` / `https://`），bbx 以 `GET` 拉取 |
+| path | string | bbx 本地目标路径，父目录不存在时自动创建；已存在同名文件时覆盖 |
+| headers | object | 可选，附加请求头（凭据等，bbx 透传） |
+| sha256 | string | 可选，期望的文件摘要（hex）；不一致则任务失败且不落盘 |
+
+```json
+{"type": "pull_file", "url": "https://svc-a/packages/app-2.1.0.tar.gz", "path": "/data/packages/app-2.1.0.tar.gz", "sha256": "9f2c...", "timeout_sec": 600}
+```
+
+典型的升级流程：`pull_file` 拉升级包 → `api` 任务调 `/api/system/upgrade`（topic 相同即串行，保证先下载后升级）。
+
 ### action.type = `tail_file`
 
 bbx tail 本地日志，持续向任务给定地址推送增量（chunked POST 长连接）。
@@ -159,6 +176,7 @@ bbx 作为 WS client 主动外拨 `connect_url`，同时连接本地 WS handler�
 |------|------------|
 | `api` | `status_code`：bbx API 响应码；`body`：响应体字符串；`truncated`：是否被 64KB 截断 |
 | `push_file` | `size`：推送字节数；`sha256`：文件摘要（hex） |
+| `pull_file` | `path`：落盘路径；`size`：下载字节数；`sha256`：实际摘要（hex，供上游核对） |
 | `tail_file` | `lines`：推送行数；`bytes`：推送字节数；`end_reason`：`completed` / `timeout` / `peer_closed` / `read_error` |
 | `ws_bridge` | `duration_ms`：桥接时长；`end_reason`：`closed` / `timeout` |
 
