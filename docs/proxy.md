@@ -1,6 +1,11 @@
-# HTTP 反向代理（proxy）
+# HTTP 代理（proxy）
 
-bbx-server 内置的 HTTP 反向代理功能，支持三种使用方式：
+bbx-server 内置的 HTTP 代理功能，每个实例有两种模式：
+
+- **反向代理**（`mode: reverse`，默认）：监听地址固定转发到一个上游 target，等价于 nginx 的 `proxy_pass`；
+- **正向代理**（`mode: forward`）：经典正向代理，客户端在请求里指定目的地（绝对 URI 或 `CONNECT`），白名单逐目标管控。
+
+支持三种使用方式：
 
 1. **静态实例**：写在 `conf/config.yaml` 的 `proxy.instances`，随服务启动；
 2. **动态实例**：通过 REST API / `bbx-cli proxy` 创建，持久化到 SQLite，重启后自动恢复 `running` 状态的实例；
@@ -14,7 +19,7 @@ bbx-server 内置的 HTTP 反向代理功能，支持三种使用方式：
 proxy:
   enabled: true
   instances:
-    - name: web-internal
+    - name: web-internal            # 反向代理实例
       listen: 127.0.0.1:8080        # 监听地址
       target: http://10.0.0.5:9000  # 上游目标，http(s)://host[:port]
       whitelist: ["10.0.0.0/8"]     # 目标白名单（见下）
@@ -22,6 +27,11 @@ proxy:
       max_body_mb: 0                # 请求体上限 MB，0 = 不限
       header_set: {X-Real-IP: ""}   # 注入到上游请求的额外头
       tls: {enabled: false, cert_path: "", key_path: ""}  # 监听侧 TLS 终止
+    - name: egress                  # 正向代理实例
+      mode: forward
+      listen: 127.0.0.1:3128
+      whitelist: ["*.corp.local", "10.0.0.0/8"]  # 正向模式必填，管控每个客户端指定的目的地
+      allow_private: true
   tunnel:                           # poll 隧道策略
     enabled: false
     allowed_targets: []             # 隧道目标白名单（本机策略，上游不可扩大）；空 = 禁止隧道
@@ -29,6 +39,25 @@ proxy:
     max_duration_sec: 3600          # 单会话硬上限
     max_body_mb: 64
 ```
+
+## 正向代理（mode: forward）
+
+客户端把实例当作标准 HTTP 代理使用：
+
+- **普通 HTTP**：请求行为绝对 URI（`GET http://目标/path`），代理校验白名单后转发；
+- **HTTPS 及其他协议**：`CONNECT 目标:443`，代理建立到目标的 TCP 隧道后双向透传原始字节；
+- **认证**：客户端必须通过标准 `Proxy-Authorization: Basic ...` 头提供 **config.yaml 里 `auth.username` / `auth.password` 超管账号**（仅校验超管，不查用户库），失败返回 407；`auth.enabled: false` 时正向实例拒绝一切请求（fail closed）；
+- **白名单必填**：正向实例的目标由客户端指定，白名单是唯一授权边界，空白名单 = 拒绝一切（创建时直接报错）；
+- `target` / `header_set` 在正向模式下不可用；`max_body_mb` 只约束普通 HTTP 请求体，`CONNECT` 隧道是原始字节流不受其限。
+
+用法示例（curl 经正向代理访问，`-x` 指定代理地址，凭据放代理 URL 里）：
+
+```bash
+curl -x http://admin:password@127.0.0.1:3128 http://internal.corp/        # 普通转发
+curl -x http://admin:password@127.0.0.1:3128 https://10.0.0.5:8443/ -k     # 自动走 CONNECT
+```
+
+正向实例同样支持 `--tls` 监听侧加密（客户端与代理之间 TLS）。
 
 ## 白名单语法与 SSRF 防护
 
@@ -42,7 +71,7 @@ proxy:
 
 规则要点：
 
-- **默认拒绝**：白名单为空时仅允许 target 主机本身（隧道模式下空 `allowed_targets` = 完全禁止）；
+- **默认拒绝**：反向模式白名单为空时仅允许 target 主机本身；正向模式白名单必填；隧道模式下空 `allowed_targets` = 完全禁止；
 - **私网防护**：`allow_private: false`（默认）时回环、RFC1918、链路本地、ULA 地址一律拒绝，即使命中白名单条目；
 - **云元数据永远拒绝**：`169.254.169.254` 与 `metadata.google.internal` 不受任何配置影响；
 - **DNS rebinding 缓解**：连接建立后对实际连接的 IP 再校验一次；白名单全部为 CIDR 时，连接 IP 必须落在 CIDR 内。这只能缓解不能根除（TOCTOU），高安全场景建议白名单只使用 CIDR。
@@ -67,10 +96,14 @@ proxy:
 ## CLI
 
 ```bash
-# 创建并立即启动
+# 反向代理：创建并立即启动
 bbx-cli proxy add --name web --listen 127.0.0.1:8080 \
   --target http://10.0.0.5:9000 --whitelist 10.0.0.0/8 \
   --allow-private --header 'X-Real-IP:' --start
+
+# 正向代理：白名单必填，客户端用超管账号认证
+bbx-cli proxy add --name egress --mode forward --listen 127.0.0.1:3128 \
+  --whitelist '*.corp.local' --whitelist 10.0.0.0/8 --allow-private --start
 
 bbx-cli proxy list            # 表格列出实例
 bbx-cli proxy status web      # 状态与统计
@@ -82,8 +115,8 @@ bbx-cli proxy delete web
 ## 审计与访问日志
 
 - **管控操作**（create/update/delete/start/stop/list/get）由全局 `LoggingMiddleware` 记录到 `logs/audit/`；
-- **白名单拒绝**记 `proxy_denied` 审计条目；
-- **每条被转发请求的明细不进审计主日志**（量太大），写入 `logs/proxy/<instance>_YYYY-MM-DD.log`（JSON 行：client_ip、method、path、status、bytes_out、duration_ms、via）。
+- **白名单拒绝**记 `proxy_denied` 审计条目（正向模式记客户端请求的方法与目标）；
+- **每条被转发请求的明细不进审计主日志**（量太大），写入 `logs/proxy/<instance>_YYYY-MM-DD.log`（JSON 行：client_ip、method、path、status、bytes_out、duration_ms、via=`listen|forward|tunnel`）；正向模式的 407 认证失败也记在这里。
 
 ## 实现说明
 
