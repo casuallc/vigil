@@ -95,6 +95,10 @@ OS/Arch:   %s/%s
   networkCmd := c.setupNetworkCommands()
   rootCmd.AddCommand(networkCmd)
 
+  // Add Proxy commands
+  proxyCmd := c.setupProxyCommands()
+  rootCmd.AddCommand(proxyCmd)
+
   // Add Transfer (file-transfer agent) commands
   transferCmd := c.setupTransferCommands()
   rootCmd.AddCommand(transferCmd)
@@ -122,6 +126,7 @@ OS/Arch:   %s/%s
         currentCmd == licenseCmd ||
         currentCmd == logCmd ||
         currentCmd == networkCmd ||
+        currentCmd == proxyCmd ||
         currentCmd == transferCmd ||
         currentCmd == dockerCmd {
         c.client = api.NewClient(apiHost, insecureSkipVerify)
