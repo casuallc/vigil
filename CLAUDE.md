@@ -70,6 +70,7 @@ Vigil is a Go-based process management and message queue client tool (module: `g
 ├── docker/           # Docker container, compose, and registry management
 ├── docs/             # Documentation (CLI references, testing guides, API docs)
 ├── inspection/       # Cosmic inspection rules and evaluation engine
+├── poll/             # Poll-mode agent: outbound task pulling from upstream services
 ├── proc/             # Process management (scan, create, lifecycle, mounts)
 ├── vm/               # VM management (SSH, file transfer, groups, permissions)
 ├── audit/            # Audit logging for API requests
@@ -92,6 +93,7 @@ Vigil is a Go-based process management and message queue client tool (module: `g
 - **Persistence**: Server uses `modernc.org/sqlite` for multiple features (users, login logs, command templates/history, schedules, VM data).
 - **Docker Manager**: `docker.Manager` wraps the official Docker SDK to manage local containers (list, inspect, create, start/stop/restart, pause/unpause, exec, logs, stats) and compose projects. Exposes `/api/docker/*` REST and WebSocket endpoints.
 - **Docker Registry**: Embedded Docker Registry HTTP API V2 implementation (`api/handlers_docker_registry.go`) backed by local filesystem storage, enabling `docker login / tag / push / pull` against the server.
+- **Poll Mode**: `poll.Agent` runs as a background goroutine (like `api.Scheduler`) for egress-only networks — it long-polls configured upstreams for tasks, executes them serially per topic / parallel across topics (`poll.Dispatcher`), and posts results back. Local `api` tasks call back into the server's own handlers via loopback with an internal token (`poll.InternalTokenHeader`, generated per startup). See `docs/poll-mode.md`.
 
 ## Key Configuration Files
 

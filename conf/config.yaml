@@ -51,3 +51,30 @@ docker:
 docker_registry:
   enabled: true
   storage_path: ./data/docker/registry
+
+# Poll mode: outbound-only task pulling for networks that block inbound
+# connections. bbx long-polls each upstream, executes tasks (same topic
+# serial, different topics parallel) and posts results back.
+poll:
+  enabled: false
+  agent_id: ""                        # defaults to hostname
+  defaults:
+    long_poll_wait: 25s               # upstream hold time (< gateway idle timeout)
+    busy_interval: 500ms
+    idle_backoff_max: 10s
+    busy_to_idle_empty_polls: 3
+    task_timeout: 120s
+    max_topics: 32
+    queue_buffer: 64
+    topic_idle_ttl: 10m
+    tls:
+      insecure_skip_verify: false
+      ca_file: ""
+  upstreams: []                       # independent upstream services, e.g.:
+  # - name: svc-a
+  #   endpoint: https://10.0.0.11:9000  # http:// requires allow_http: true
+  #   auth: {username: bbx, password: xxx}
+  # - name: svc-b
+  #   endpoint: https://10.0.0.12:8080
+  #   auth: {username: bbx, password: yyy}
+  #   tls: {insecure_skip_verify: true}

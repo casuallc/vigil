@@ -23,6 +23,7 @@ import (
   "os"
 
   "github.com/casuallc/vigil/common"
+  "github.com/casuallc/vigil/poll"
 
   "gopkg.in/yaml.v3"
 )
@@ -42,6 +43,7 @@ type Config struct {
   Filetransfer FiletransferConfig `yaml:"filetransfer"`
   Docker       DockerConfig       `yaml:"docker"`
   DockerRegistry DockerRegistryConfig `yaml:"docker_registry"`
+  Poll         poll.PollConfig    `yaml:"poll"`
 }
 
 type BasicAuth struct {

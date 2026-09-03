@@ -20,8 +20,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,6 +43,7 @@ import (
 	"github.com/casuallc/vigil/exporter"
 	"github.com/casuallc/vigil/filetransfer"
 	"github.com/casuallc/vigil/models"
+	"github.com/casuallc/vigil/poll"
 	"github.com/casuallc/vigil/proc"
 	dbsql "github.com/casuallc/vigil/sql"
 	"github.com/casuallc/vigil/vm"
@@ -79,6 +82,10 @@ type Server struct {
 	loadImageTasks *loadImageTaskStore
 	// Docker Registry HTTP API V2 sub-feature (nil when disabled)
 	dockerRegistryManager *dockerregistry.Manager
+	// Internal token authenticating loopback calls made by the poll agent.
+	internalToken string
+	// Poll-mode agent (nil when disabled)
+	pollAgent *poll.Agent
 }
 
 // SSHConnectionInfo represents an active SSH connection
@@ -253,7 +260,64 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
 		}
 	}
 
+	// Generate the internal token used by the poll agent's loopback calls.
+	server.internalToken = generateInternalToken()
+
+	// Start the poll-mode agent when enabled. It runs in the background,
+	// pulling tasks from upstream services like the scheduler does.
+	if config.Poll.Enabled {
+		agent, err := poll.NewAgent(&config.Poll, poll.Options{
+			InternalToken: server.internalToken,
+			LoopbackAddr:  server.loopbackAddr(),
+			LoopbackTLS:   server.loopbackTLS(),
+		})
+		if err != nil {
+			log.Printf("Warning: failed to initialize poll agent: %v", err)
+		} else if agent != nil {
+			server.pollAgent = agent
+			agent.Start(context.Background())
+			log.Printf("Poll-mode agent started")
+		}
+	}
+
 	return server
+}
+
+// generateInternalToken creates a random token for loopback authentication.
+func generateInternalToken() string {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(buf)
+}
+
+// loopbackAddr derives the local API address (host:port) from config.Addr.
+func (s *Server) loopbackAddr() string {
+	addr := s.config.Addr
+	if addr == "" {
+		addr = ":57575"
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return "127.0.0.1:57575"
+	}
+	return "127.0.0.1:" + port
+}
+
+// loopbackTLS reports whether the local API server will speak HTTPS
+// (mirrors the certificate checks in Start).
+func (s *Server) loopbackTLS() bool {
+	if !s.config.HTTPS.Enabled {
+		return false
+	}
+	if _, err := os.Stat(s.config.HTTPS.CertPath); err != nil {
+		return false
+	}
+	if _, err := os.Stat(s.config.HTTPS.KeyPath); err != nil {
+		return false
+	}
+	return true
 }
 
 // 添加日志中间件函数
@@ -538,8 +602,15 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 
 // BasicAuthMiddleware enforces HTTP Basic Auth with dual authentication.
 // First checks super admin credentials from config, then checks user database.
+// Loopback requests carrying the server's internal token (the poll agent's
+// api / ws_bridge task calls) are allowed through.
 func (s *Server) BasicAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.internalToken != "" && r.Header.Get(poll.InternalTokenHeader) == s.internalToken && isLoopbackRequest(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		u, p, ok := r.BasicAuth()
 		if !ok {
 			w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
@@ -575,6 +646,16 @@ func (s *Server) BasicAuthMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 	})
+}
+
+// isLoopbackRequest reports whether the request originates from loopback.
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // API response helpers
@@ -861,6 +942,11 @@ func (s *Server) Stop() {
 	// Close Docker registry manager.
 	if s.dockerRegistryManager != nil {
 		s.dockerRegistryManager.Close()
+	}
+
+	// Stop the poll-mode agent (drains in-flight tasks and NACKs the rest).
+	if s.pollAgent != nil {
+		s.pollAgent.Stop()
 	}
 }
 
