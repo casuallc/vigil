@@ -48,6 +48,7 @@ import (
 	"github.com/casuallc/vigil/proxy"
 	dbsql "github.com/casuallc/vigil/sql"
 	"github.com/casuallc/vigil/vm"
+	"github.com/gorilla/websocket"
 	_ "modernc.org/sqlite"
 )
 
@@ -288,6 +289,7 @@ func NewServerWithManager(config *config.Config, manager *proc.Manager, configPa
 			InternalToken: server.internalToken,
 			LoopbackAddr:  server.loopbackAddr(),
 			LoopbackTLS:   server.loopbackTLS(),
+			ProxyRunner:   server.proxyRunner(),
 		})
 		if err != nil {
 			log.Printf("Warning: failed to initialize poll agent: %v", err)
@@ -327,6 +329,39 @@ func (s *Server) proxyAccessHook() proxy.AccessHook {
 			s.auditLogger.Log(entry)
 		}
 	}
+}
+
+// proxyRunner returns the poll.ProxyRunner for proxy_session tunnel tasks,
+// wrapped so each finished session writes one summary audit entry.
+// Nil when the proxy feature or the tunnel policy is disabled.
+func (s *Server) proxyRunner() poll.ProxyRunner {
+	if s.proxyManager == nil || !s.config.Proxy.Tunnel.Enabled {
+		return nil
+	}
+	return &auditingProxyRunner{core: s.proxyManager.Tunnel(), server: s}
+}
+
+// auditingProxyRunner adapts proxy.TunnelCore to poll.ProxyRunner and
+// audits session summaries.
+type auditingProxyRunner struct {
+	core   *proxy.TunnelCore
+	server *Server
+}
+
+func (a *auditingProxyRunner) RunProxySession(ctx context.Context, conn *websocket.Conn, target string, limits poll.SessionLimits) (poll.SessionStats, error) {
+	stats, err := a.core.RunProxySession(ctx, conn, target, limits)
+	if a.server.auditLogger != nil {
+		status := audit.StatusSuccess
+		if err != nil {
+			status = audit.StatusFailed
+		}
+		entry := audit.NewLogEntry(
+			"proxy", conn.RemoteAddr().String(), audit.ActionProxyTunnelSession, target,
+			status, fmt.Sprintf("tunnel session ended: %s", stats.EndReason), stats,
+		)
+		a.server.auditLogger.Log(entry)
+	}
+	return stats, err
 }
 
 // loopbackAddr derives the local API address (host:port) from config.Addr.

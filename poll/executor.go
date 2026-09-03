@@ -98,6 +98,8 @@ func (e *Executor) Execute(ctx context.Context, t *Task) (json.RawMessage, error
 		return e.execTailFile(ctx, t)
 	case "ws_bridge":
 		return e.execWSBridge(ctx, t)
+	case "proxy_session":
+		return e.execProxySession(ctx, t)
 	default:
 		return nil, fmt.Errorf("unknown action type %q", head.Type)
 	}
@@ -496,4 +498,52 @@ func (e *Executor) bridgeWS(ctx context.Context, a, b *websocket.Conn) string {
 	case <-done:
 	}
 	return endReason
+}
+
+// --- proxy_session: HTTP reverse proxy tunnel over an outbound WS ----------
+
+type proxySessionAction struct {
+	ConnectURL     string            `json:"connect_url"`
+	Headers        map[string]string `json:"headers"`
+	Target         string            `json:"target"`           // http(s)://host[:port] of the local service
+	MaxDurationSec int               `json:"max_duration_sec"` // caps the session; 0 = runner default
+	MaxBodyMB      int64             `json:"max_body_mb"`      // per-request body cap; 0 = runner default
+}
+
+// execProxySession dials the upstream-provided WS endpoint and hands the
+// connection to the injected ProxyRunner, which serves HTTP requests
+// arriving over the tunnel against the local target. The session lives
+// until either side closes, the task context ends, or the configured
+// duration cap hits; upstreams must set timeout_sec accordingly.
+func (e *Executor) execProxySession(ctx context.Context, t *Task) (json.RawMessage, error) {
+	if e.opts.ProxyRunner == nil {
+		return nil, fmt.Errorf("proxy tunnel is disabled on this agent (proxy.tunnel)")
+	}
+	var a proxySessionAction
+	if err := json.Unmarshal(t.Action, &a); err != nil {
+		return nil, fmt.Errorf("invalid proxy_session action: %w", err)
+	}
+	if a.ConnectURL == "" || a.Target == "" {
+		return nil, fmt.Errorf("proxy_session requires connect_url and target")
+	}
+
+	header := http.Header{}
+	for k, v := range a.Headers {
+		header.Set(k, v)
+	}
+	conn, _, err := e.wsDialer.DialContext(ctx, a.ConnectURL, header)
+	if err != nil {
+		return nil, fmt.Errorf("dial tunnel ws: %w", err)
+	}
+	defer conn.Close()
+
+	limits := SessionLimits{
+		MaxDuration: time.Duration(a.MaxDurationSec) * time.Second,
+		MaxBodyMB:   a.MaxBodyMB,
+	}
+	stats, err := e.opts.ProxyRunner.RunProxySession(ctx, conn, a.Target, limits)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(stats)
 }

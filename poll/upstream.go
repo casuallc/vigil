@@ -46,6 +46,9 @@ type Options struct {
 	LoopbackAddr string
 	// LoopbackTLS indicates the local API server speaks HTTPS.
 	LoopbackTLS bool
+	// ProxyRunner executes proxy_session tunnel tasks. Nil means the
+	// proxy tunnel feature is unavailable and such tasks fail.
+	ProxyRunner ProxyRunner
 }
 
 // Agent is the poll-mode entry point: it owns the dispatcher and one
