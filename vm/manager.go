@@ -23,6 +23,7 @@ import (
   "log"
   "os"
   "path/filepath"
+  "strings"
   "sync"
   "time"
 
@@ -530,6 +531,70 @@ func (m *Manager) SaveVMs() error {
   // 此方法保留用于兼容现有代码调用
   log.Printf("SaveVMs called - SQLite auto-saves, no action needed")
   return nil
+}
+
+// UpdateVMCredentials 更新 VM 的密码/密钥路径，并写入数据库。
+// 空字符串表示该字段不修改；写库前与 AddVM 一致地加密，内存中保留明文。
+func (m *Manager) UpdateVMCredentials(name, password, keyPath string) error {
+  if password == "" && keyPath == "" {
+    return fmt.Errorf("no credentials to update for VM: %s", name)
+  }
+
+  m.mu.Lock()
+  defer m.mu.Unlock()
+
+  existing, exists := m.vms[name]
+  if !exists {
+    return fmt.Errorf("VM not found: %s", name)
+  }
+
+  // 只更新传入的字段，避免把内存中的明文回写进本应存放密文的列
+  sets := make([]string, 0, 3)
+  args := make([]interface{}, 0, 4)
+  if password != "" {
+    encrypted, err := m.encrypt(password)
+    if err != nil {
+      return fmt.Errorf("failed to encrypt password: %v", err)
+    }
+    sets = append(sets, "password = ?")
+    args = append(args, encrypted)
+  }
+  if keyPath != "" {
+    encrypted, err := m.encrypt(keyPath)
+    if err != nil {
+      return fmt.Errorf("failed to encrypt key path: %v", err)
+    }
+    sets = append(sets, "key_path = ?")
+    args = append(args, encrypted)
+  }
+
+  updatedAt := time.Now()
+  sets = append(sets, "updated_at = ?")
+  args = append(args, updatedAt, name)
+
+  _, err := m.db.Exec("UPDATE vms SET "+strings.Join(sets, ", ")+" WHERE name = ?", args...)
+  if err != nil {
+    return fmt.Errorf("failed to update VM in database: %v", err)
+  }
+
+  if password != "" {
+    existing.Password = password
+  }
+  if keyPath != "" {
+    existing.KeyPath = keyPath
+  }
+  existing.UpdatedAt = updatedAt
+
+  log.Printf("Updated credentials for VM: %s", name)
+  return nil
+}
+
+// encrypt 在配置了 encryption_key 时加密敏感字段，否则原样返回。
+func (m *Manager) encrypt(value string) (string, error) {
+  if value == "" || m.encryptionKey == "" {
+    return value, nil
+  }
+  return crypto.Encrypt(value, m.encryptionKey)
 }
 
 // EnsureLocalhostVM checks for a localhost VM and creates one with passwordless SSH if missing.

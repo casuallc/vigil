@@ -599,8 +599,7 @@ func (s *Server) handleUpdateVM(w http.ResponseWriter, r *http.Request) {
   vmName := vars["name"]
 
   // Get VM info
-  vmInfo, err := s.vmManager.GetVM(vmName)
-  if err != nil {
+  if _, err := s.vmManager.GetVM(vmName); err != nil {
     writeError(w, http.StatusNotFound, err.Error())
     return
   }
@@ -615,16 +614,13 @@ func (s *Server) handleUpdateVM(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Update password and key path
-  if updateData.Password != "" {
-    vmInfo.Password = updateData.Password
-  }
-  if updateData.KeyPath != "" {
-    vmInfo.KeyPath = updateData.KeyPath
+  if updateData.Password == "" && updateData.KeyPath == "" {
+    writeError(w, http.StatusBadRequest, "password or key_path is required")
+    return
   }
 
-  // Save VM info
-  if err := s.vmManager.SaveVMs(); err != nil {
+  // Update password and key path (encrypted at rest, persisted to SQLite)
+  if err := s.vmManager.UpdateVMCredentials(vmName, updateData.Password, updateData.KeyPath); err != nil {
     writeError(w, http.StatusInternalServerError, err.Error())
     return
   }
