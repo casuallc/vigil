@@ -693,7 +693,7 @@ func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
 		details := map[string]interface{}{
 			"method":      r.Method,
 			"path":        r.URL.Path,
-			"query":       r.URL.RawQuery,
+			"query":       redactQueryCredentials(r.URL.RawQuery),
 			"status_code": lrw.statusCode,
 			"elapsed_ms":  duration.Milliseconds(),
 		}
@@ -719,32 +719,22 @@ func (s *Server) BasicAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		u, p, ok := r.BasicAuth()
-		if !ok {
-			w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// First, check if it's the super admin user from config
-		if s.config.BasicAuth.Enabled && u == s.config.BasicAuth.Username && p == s.config.BasicAuth.Password {
-			// Super admin has full access - pass through
+		u, p, _ := r.BasicAuth()
+		if s.authenticate(u, p) {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Second, check against registered users in the user database
-		if s.userDatabase != nil {
-			isValid, err := s.userDatabase.ValidatePassword(u, p)
-			if err != nil {
-				log.Printf("Error validating user password: %v", err)
-				w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			if isValid {
-				// Valid registered user - pass through
+		// Browsers cannot attach an Authorization header to a WebSocket
+		// handshake, so the web console passes the credentials as query
+		// parameters on the upgrade URL (see wsQueryCredentials). Without this
+		// fallback the handshake is answered with a 401 challenge, and the
+		// browser falls back to its cached Basic credentials — prompting the
+		// user for a password whenever that cached copy no longer matches the
+		// server (e.g. right after the password was changed).
+		if websocket.IsWebSocketUpgrade(r) {
+			qu, qp := wsQueryCredentials(r)
+			if s.authenticate(qu, qp) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -754,6 +744,63 @@ func (s *Server) BasicAuthMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("WWW-Authenticate", `Basic realm="vigil"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 	})
+}
+
+// authenticate reports whether the credentials match the super admin defined in
+// the config file or a registered user in the user database.
+func (s *Server) authenticate(username, password string) bool {
+	if username == "" || password == "" {
+		return false
+	}
+
+	// First, check if it's the super admin user from config
+	if s.config != nil && s.config.BasicAuth.Enabled &&
+		username == s.config.BasicAuth.Username && password == s.config.BasicAuth.Password {
+		// Super admin has full access
+		return true
+	}
+
+	// Second, check against registered users in the user database
+	if s.userDatabase != nil {
+		isValid, err := s.userDatabase.ValidatePassword(username, password)
+		if err != nil {
+			log.Printf("Error validating user password: %v", err)
+			return false
+		}
+		return isValid
+	}
+
+	return false
+}
+
+// wsQueryCredentials extracts the credentials a WebSocket client carries in the
+// upgrade URL (`?username=...&password=...`). Browsers are unable to set an
+// Authorization header on a WebSocket handshake, so this is the only way for a
+// web console to authenticate the connection with fresh credentials.
+func wsQueryCredentials(r *http.Request) (username, password string) {
+	q := r.URL.Query()
+	return q.Get("username"), q.Get("password")
+}
+
+// redactQueryCredentials masks password values in a raw query string so the
+// credentials carried by WebSocket upgrade URLs never reach the audit log.
+func redactQueryCredentials(rawQuery string) string {
+	if rawQuery == "" {
+		return rawQuery
+	}
+
+	parts := strings.Split(rawQuery, "&")
+	for i, part := range parts {
+		key := part
+		if idx := strings.Index(part, "="); idx >= 0 {
+			key = part[:idx]
+		}
+		switch strings.ToLower(key) {
+		case "password", "passwd", "pass", "pwd":
+			parts[i] = key + "=***"
+		}
+	}
+	return strings.Join(parts, "&")
 }
 
 // isLoopbackRequest reports whether the request originates from loopback.
