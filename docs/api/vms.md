@@ -116,7 +116,7 @@
 
 **请求参数**：
 - `name`：VM 名称（路径参数）
-- 请求体：VM 信息
+- 请求体：VM 信息，`password` 与 `key_path` 至少提供一个，空字符串表示该字段不变
 
 **请求体示例**：
 ```json
@@ -132,6 +132,8 @@
   "message": "VM updated successfully"
 }
 ```
+
+**说明**：变更立即写入 SQLite（`password` / `key_path` 加密存储），重启 bbx-server 后依然生效；仅修改 `password` 时 `key_path` 保持原值，反之亦然。
 
 ---
 
