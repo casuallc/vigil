@@ -606,6 +606,7 @@
 **请求参数**：
 - 查询参数：
   - `vm_name`：VM 名称
+  - `username` / `password`：认证凭据（浏览器 WebSocket 握手无法携带 `Authorization` 头，故支持放在查询参数里，详见 [5.3 WebSocket 认证](#53-websocket-认证)）
 
 **响应格式**：WebSocket 连接，双向通信
 
@@ -614,6 +615,12 @@
 2. 连接时需要提供 `vm_name` 查询参数指定要连接的 VM
 3. 连接建立后，客户端可以发送 SSH 命令，服务端返回命令执行结果
 4. 支持窗口大小调整，客户端可以发送 `resize:{"cols":120,"rows":40}` 格式的消息调整终端大小
+5. 认证失败时握手返回 401 并附带 `WWW-Authenticate` 挑战
+
+**示例**：
+```
+ws://host:57575/api/vms/ssh/ws?vm_name=web-1&username=admin&password=secret
+```
 
 ### 3.10 VM SSH 连接管理
 
@@ -1443,6 +1450,20 @@ curl -X POST -H "Content-Type: application/json" -d '{"username":"admin","passwo
   }
 }
 ```
+
+### 5.3 WebSocket 认证
+
+浏览器的 WebSocket 握手无法携带 `Authorization` 头，因此 WebSocket 端点（如
+`/api/vms/ssh/ws`）额外支持把凭据放在 URL 查询参数里：
+
+```
+ws://host:57575/api/vms/ssh/ws?vm_name=web-1&username=admin&password=secret
+```
+
+- 凭据校验规则与 Basic Auth 完全一致（超管或用户库用户）
+- `Authorization` 头优先；头里携带的是过期凭据时（例如浏览器缓存的旧密码），会回退到查询参数校验
+- 仅对 WebSocket 升级请求生效，普通 API 请求不校验查询参数
+- 审计日志中的 `password`/`passwd`/`pwd` 参数会被脱敏为 `***`
 
 ## 6. 版本控制
 

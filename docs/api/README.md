@@ -82,6 +82,20 @@ API 支持两种认证方式：
 
 2. **数据库用户认证** - 通过 `/api/users/login` 接口获取用户信息
 
+### WebSocket 认证
+
+浏览器的 WebSocket 握手无法携带 `Authorization` 头，因此 WebSocket 端点（如
+`/api/vms/ssh/ws`）额外支持把凭据放在 URL 查询参数里：
+
+```
+ws://host:port/api/vms/ssh/ws?vm_name=web-1&username=admin&password=secret
+```
+
+- 凭据校验规则与 Basic Auth 完全一致（超管或用户库用户）
+- `Authorization` 头优先；头里携带的是过期凭据时（浏览器缓存的旧密码），会回退到查询参数校验
+- 仅对 WebSocket 升级请求生效，普通 API 请求不校验查询参数
+- 审计日志中的 `password`/`passwd`/`pwd` 参数会被脱敏为 `***`
+
 ### 错误处理
 
 API 使用标准 HTTP 状态码：

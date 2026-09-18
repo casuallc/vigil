@@ -278,6 +278,7 @@
 **请求参数**：
 - 查询参数：
   - `vm_name`：VM 名称
+  - `username` / `password`：认证凭据（浏览器 WebSocket 握手无法携带 `Authorization` 头，故支持放在查询参数里，详见 [README 的「WebSocket 认证」](README.md#websocket-认证)）
 
 **响应格式**：WebSocket 连接，双向通信
 
@@ -286,6 +287,12 @@
 2. 连接时需要提供 `vm_name` 查询参数指定要连接的 VM
 3. 连接建立后，客户端可以发送 SSH 命令，服务端返回命令执行结果
 4. 支持窗口大小调整，客户端可以发送 `resize:{"cols":120,"rows":40}` 格式的消息调整终端大小
+5. 认证失败时握手返回 401 并附带 `WWW-Authenticate` 挑战
+
+**示例**：
+```
+ws://host:57575/api/vms/ssh/ws?vm_name=web-1&username=admin&password=secret
+```
 
 ---
 
