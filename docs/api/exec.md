@@ -26,10 +26,19 @@
 }
 ```
 
-**响应格式**：
+**响应格式**（成功，HTTP 200，纯文本，stdout 与 stderr 合并）：
 ```json
 "command output"
 ```
+
+**响应格式**（失败，HTTP 500，JSON）：
+```json
+{
+  "error": "Command execution failed: exit status 127, output: /bin/bash: line 1: ll: command not found"
+}
+```
+
+注意：v1 通过 HTTP 状态码区分成败，退出码与非零退出时的输出混在 `error` 文本中；如需结构化的退出码与 stdout/stderr 分离，请使用 `/api/v2/exec`。
 
 ---
 
