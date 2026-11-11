@@ -228,6 +228,41 @@ func (s *Server) handleFileMove(w http.ResponseWriter, r *http.Request) {
   writeJSON(w, http.StatusOK, map[string]string{"message": "File moved successfully"})
 }
 
+// handleFileFetch handles downloading files from remote URLs based on metadata
+func (s *Server) handleFileFetch(w http.ResponseWriter, r *http.Request) {
+  type FileFetchRequest struct {
+    Files []file.FetchRequest `json:"files"`
+  }
+
+  var req FileFetchRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    writeError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+  if len(req.Files) == 0 {
+    writeError(w, http.StatusBadRequest, "files is required and must not be empty")
+    return
+  }
+
+  // Create file manager
+  fileManager := file.NewManager("")
+
+  // Fetch files sequentially; a single failure does not affect the others
+  results := make([]file.FetchResult, 0, len(req.Files))
+  for i := range req.Files {
+    f := &req.Files[i]
+    result, err := fileManager.FetchFile(r.Context(), f)
+    if err != nil {
+      results = append(results, file.FetchResult{URL: f.URL, Success: false, Error: err.Error()})
+      continue
+    }
+    result.Success = true
+    results = append(results, *result)
+  }
+
+  writeJSON(w, http.StatusOK, map[string]interface{}{"results": results})
+}
+
 // handleFileMkdir handles creating directories
 func (s *Server) handleFileMkdir(w http.ResponseWriter, r *http.Request) {
   type MkdirRequest struct {

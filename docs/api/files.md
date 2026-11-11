@@ -13,6 +13,7 @@
 | /api/files/copy | POST | 复制文件 |
 | /api/files/move | POST | 移动文件 |
 | /api/files/mkdir | POST | 创建目录 |
+| /api/files/fetch | POST | 根据元数据（URL）下载文件，支持批量 |
 
 ---
 
@@ -255,6 +256,77 @@ Connection: keep-alive
 - 服务端读取到文件末尾后，每 500ms 轮询检查是否有新内容写入
 - 客户端断开连接时，服务端自动清理资源
 - 支持跨平台换行符（`\n` 和 `\r\n`）
+
+---
+
+## POST /api/files/fetch
+
+**功能描述**：根据元数据从远程 URL 下载文件到服务器本地，一次请求可下载多个文件
+
+**请求参数**：
+- 请求体：
+  - `files`：文件元数据数组（必填，非空），每个元素包含：
+    - `url`：下载地址（**必填**，仅支持 http/https）
+    - `dir`：目标目录（可选，默认服务端工作目录，不存在时自动创建）
+    - `name`：保存的文件名（可选，默认取 URL 路径的最后一段）
+    - `mode`：文件权限，八进制字符串，如 `"0755"`（可选）
+    - `owner`：文件所属用户，格式 `"user"` 或 `"user:group"`（可选，仅 Unix 有效；Windows 上设置会报错）
+    - `md5` / `sha1` / `sha256`：校验码（可选，提供则下载后校验，不匹配则该文件失败且不留残文件）
+    - `auth`：下载认证配置（可选）。目前仅支持 Basic Auth，预留其他认证类型的扩展点：
+      ```json
+      {"type": "basic", "username": "admin", "password": "secret"}
+      ```
+    - `headers`：额外的下载请求头（可选，键值对）
+
+**请求体示例**：
+```json
+{
+  "files": [
+    {
+      "url": "https://example.com/app.tar.gz",
+      "dir": "/opt/apps",
+      "name": "app.tar.gz",
+      "mode": "0755",
+      "owner": "root:root",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "url": "https://example.com/config.yaml",
+      "dir": "/opt/apps/conf",
+      "auth": {"type": "basic", "username": "admin", "password": "secret"}
+    }
+  ]
+}
+```
+
+**响应格式**：
+- 成功：200 OK（逐个文件返回结果，单个文件失败不影响其他文件）
+  ```json
+  {
+    "results": [
+      {
+        "url": "https://example.com/app.tar.gz",
+        "path": "/opt/apps/app.tar.gz",
+        "size": 1024,
+        "md5": "...",
+        "sha1": "...",
+        "sha256": "...",
+        "success": true
+      },
+      {
+        "url": "https://example.com/config.yaml",
+        "success": false,
+        "error": "unexpected status code: 404"
+      }
+    ]
+  }
+  ```
+- 失败：400 Bad Request（请求体非法或 `files` 为空）
+
+**说明**：
+- 下载为同步执行，跟随客户端连接上下文取消；大文件下载期间请保持连接
+- 文件先下载到目标目录的临时文件（`.fetch-*`），校验通过后再重命名为目标文件，失败不会留下残缺文件
+- 响应中的 `md5` / `sha1` / `sha256` 为服务端下载时实际计算的校验码，可用于事后核对
 
 ---
 

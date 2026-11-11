@@ -158,6 +158,7 @@ func (s *Server) Router() *mux.Router {
 	r.HandleFunc("/api/files/copy", s.handleFileCopy).Methods("POST")
 	r.HandleFunc("/api/files/move", s.handleFileMove).Methods("POST")
 	r.HandleFunc("/api/files/mkdir", s.handleFileMkdir).Methods("POST")
+	r.HandleFunc("/api/files/fetch", s.handleFileFetch).Methods("POST")
 
 	// File log streaming endpoint
 	r.HandleFunc("/api/files/logs/stream", s.handleLogStream).Methods("GET")
