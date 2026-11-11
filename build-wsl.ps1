@@ -134,6 +134,10 @@ if ($SudoPassword) {
 } else {
     $bashScript = $bashScript.Replace('__SUDO__', 'sudo ')
 }
+# Bash cannot handle CRLF line endings; normalize to LF before writing
+# (the .ps1 file itself is saved with CRLF, which the here-string inherits).
+$bashScript = $bashScript -replace "`r`n", "`n"
+
 # Write bash script to a temp file and pass it to WSL
 $TempFile = Join-Path $env:TEMP "build-vigil-wsl.sh"
 # PowerShell 5.1's Out-File -Encoding utf8 emits a UTF-8 BOM, which breaks
